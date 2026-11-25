@@ -39,11 +39,11 @@ partage expirant, et provisioning par QR code. D'où la `family-api`.
 - [x] `docker-compose.yml` Dokploy (volumes nommés, limites mémoire, pas de labels Traefik)
 - [x] `ops/retention.sql` (idempotent)
 - [x] **Pipeline validé en local** sur une instance jetable — voir `docs/P0-validation.md`
-- [ ] Service Compose créé sur Dokploy + 2 domaines (5055 et 8082)
-- [ ] Premier démarrage, création du compte admin (premier compte = administrateur)
-- [ ] Rétention appliquée et vérifiée dans `timescaledb_information.jobs`
+- [x] Service Compose créé sur Dokploy + 2 domaines (5055 et 8082), HTTPS Let's Encrypt
+- [x] Premier démarrage, création du compte admin (premier compte = administrateur)
+- [x] Rétention appliquée et vérifiée dans `timescaledb_information.jobs`
 - [ ] Re-test de bout en bout avec l'**APK Traccar Client officiel** : position reçue,
-      batterie reçue, géofence déclenchée
+      batterie reçue, géofence déclenchée (nécessite un téléphone réel)
 
 Critère de sortie : une position arrive en base et un événement de géofence
 produit une notification. Tant que ce n'est pas vrai, on n'écrit pas de Kotlin.
