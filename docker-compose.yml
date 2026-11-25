@@ -1,0 +1,89 @@
+# Traccar + TimescaleDB — moteur de suivi familial
+#
+# Cible : Dokploy (service de type Compose, mode Git).
+# - Aucun label Traefik ici : Dokploy les injecte au déploiement.
+# - Aucune section `networks` : Dokploy attache les conteneurs à dokploy-network.
+# - Le service base s'appelle `tracker-db` et pas `db` : sur dokploy-network,
+#   l'alias `db` est déjà pris par d'autres projets (résolution DNS croisée).
+# - Les volumes ont un `name:` fixe : sinon Dokploy préfixe et on perd la base
+#   à chaque redéploiement.
+#
+# Ports exposés au routeur Dokploy (pas de `ports:` pour éviter les conflits hôte) :
+#   8082 -> interface web + API REST + WebSocket   (derrière auth Traccar)
+#   5055 -> ingestion OsmAnd (POST des applis mobiles, HTTPS terminé par Traefik)
+
+services:
+
+  tracker:
+    image: traccar/traccar:6.17.0-alpine
+    restart: unless-stopped
+    depends_on:
+      tracker-db:
+        condition: service_healthy
+    # L'image n'a pas de gestion de JAVA_OPTS : il faut surcharger l'entrypoint
+    # pour contraindre le heap (vérifié dans docker/Dockerfile.alpine amont).
+    entrypoint: ["/opt/traccar/jre/bin/java", "-XX:+ExitOnOutOfMemoryError", "-Xms64m", "-Xmx448m"]
+    command: ["-jar", "tracker-server.jar", "conf/traccar.xml"]
+    environment:
+      - CONFIG_USE_ENVIRONMENT_VARIABLES=true
+      - DATABASE_DRIVER=org.postgresql.Driver
+      - DATABASE_URL=jdbc:postgresql://tracker-db:5432/tracker
+      - DATABASE_USER=tracker
+      - DATABASE_PASSWORD=${TRACKER_DB_PASSWORD}
+      # Fenêtre des requêtes "dernière position" : alignée sur la rétention (30 j).
+      # Évite de scanner des chunks Timescale vides.
+      - DATABASE_POSITION_PERIOD=2592000
+      # Jamais d'enregistrement automatique d'un device inconnu : l'identifiant
+      # de device tient lieu de secret sur le protocole OsmAnd.
+      - DATABASE_REGISTER_UNKNOWN=false
+      - WEB_PORT=8082
+      - OSMAND_PORT=5055
+    expose:
+      - "8082"
+      - "5055"
+    volumes:
+      - tracker-logs:/opt/traccar/logs
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8082/api/health"]
+      interval: 60s
+      timeout: 5s
+      start_period: 120s
+      retries: 3
+    mem_limit: 640m
+    stop_grace_period: 30s
+
+  tracker-db:
+    image: timescale/timescaledb:2.32.1-pg17
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=tracker
+      - POSTGRES_USER=tracker
+      - POSTGRES_PASSWORD=${TRACKER_DB_PASSWORD}
+      - TIMESCALEDB_TELEMETRY=off
+    # Réglages volontairement modestes : la VM héberge déjà ~40 conteneurs.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=128MB
+      - -c
+      - max_connections=40
+      - -c
+      - work_mem=8MB
+      - -c
+      - maintenance_work_mem=32MB
+    volumes:
+      - tracker-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tracker -d tracker"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 10
+    mem_limit: 512m
+    shm_size: 128m
+
+volumes:
+  tracker-pgdata:
+    name: tracker_pgdata
+  tracker-logs:
+    name: tracker_logs
