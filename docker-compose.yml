@@ -1,4 +1,4 @@
-# Traccar + TimescaleDB — moteur de suivi familial
+# KinWaypoint — Traccar + TimescaleDB, moteur de suivi familial
 #
 # Cible : Dokploy (service de type Compose, mode Git).
 # - Aucun label Traefik ici : Dokploy les injecte au déploiement.

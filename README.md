@@ -1,4 +1,7 @@
-# Tracker Famille
+# KinWaypoint
+
+> **Kin** — les siens. **Waypoint** — le point de route.
+> Le point de ralliement de la famille sur une carte.
 
 Suivi de localisation familial auto-hébergé. Deux applications Android natives
 (un seul APK, deux modes : Parent / Enfant) adossées à un serveur **Traccar**

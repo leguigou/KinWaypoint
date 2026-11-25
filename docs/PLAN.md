@@ -1,4 +1,4 @@
-# Plan — Tracker Famille
+# Plan — KinWaypoint
 
 Décisions validées avec Guillaume (25/11/2026) :
 
