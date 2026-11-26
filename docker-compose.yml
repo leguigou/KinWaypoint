@@ -42,9 +42,14 @@ services:
       # (alerte même app fermée, sans passer par Firebase). Le jeton du bot et
       # l'identifiant de conversation viennent de l'environnement Dokploy,
       # jamais du dépôt.
-      - NOTIFICATOR_TYPES=web,telegram
+      - NOTIFICATOR_TYPES=web,telegram,firebase
       - NOTIFICATOR_TELEGRAM_KEY=${TELEGRAM_BOT_TOKEN}
       - NOTIFICATOR_TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+      # Envoi direct vers l'app (notifications app fermée). Le compte de service
+      # Firebase reste dans l'environnement Dokploy, jamais dans le dépôt.
+      - NOTIFICATOR_FIREBASE_SERVICE_ACCOUNT=${FIREBASE_SERVICE_ACCOUNT}
+      # "direct" = notification native Android : elle s'affiche même app tuée.
+      - NOTIFICATOR_FIREBASE_MODE=direct
     expose:
       - "8082"
       - "5055"

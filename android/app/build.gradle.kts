@@ -2,6 +2,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -81,6 +82,10 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     // QR code : génération (zxing core) et scan caméra, sans Google Play Services.
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
+    // Notifications poussées (app fermée). Firebase ne transporte que le texte
+    // de l'alerte ; les positions restent sur notre serveur.
+    implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
+    implementation("com.google.firebase:firebase-messaging")
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
 }

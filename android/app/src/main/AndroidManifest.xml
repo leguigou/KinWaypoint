@@ -37,6 +37,14 @@
             android:exported="false"
             android:foregroundServiceType="location" />
 
+        <service
+            android:name=".push.PushService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
         <receiver
             android:name=".service.BootReceiver"
             android:enabled="true"

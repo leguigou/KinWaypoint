@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "156777619634",
+    "project_id": "kinwaypoint",
+    "storage_bucket": "kinwaypoint.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:156777619634:android:1d32b343815b9ab62469ab",
+        "android_client_info": {
+          "package_name": "fr.kinwaypoint.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDFSk9fb_LFPcAWUCbhOXObd9redZRq4pI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
