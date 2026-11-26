@@ -243,7 +243,7 @@ def render_index(items):
         <div class="meta">{human(it.get("size", 0))} · {html.escape(fr_when(it.get("uploadedAt", "")))}</div>
         {note_html}
       </div>
-      <div class="dl"><a class="pill" href="{html.escape(name)}">Télécharger</a></div>
+      <div class="dl"><a class="pill" href="/apk/{html.escape(name)}">Télécharger</a></div>
     </li>""")
     body = rows and f'<ul class="list">{"".join(rows)}</ul>' or '<p class="empty">Aucun APK pour le moment.</p>'
     count = f"{len(items)} version" + ("s" if len(items) > 1 else "")
@@ -327,7 +327,15 @@ class Handler(BaseHTTPRequestHandler):
 
     # -------------------------------------------------------------------- GET
     def do_GET(self):
-        path = self.path.split("?")[0].rstrip("/")
+        raw_path, _, query = self.path.partition("?")
+        path = raw_path.rstrip("/")
+
+        # URL canonique : sans le slash final, les liens relatifs d'un
+        # navigateur repartent de la racine du domaine (404 sur l'APK).
+        if raw_path == "/apk":
+            suffix = f"?{query}" if query else ""
+            self.reply_html(308, "", {"Location": f"/apk/{suffix}"})
+            return
 
         if path == "/health":
             self.reply(200, {"status": "ok"})
