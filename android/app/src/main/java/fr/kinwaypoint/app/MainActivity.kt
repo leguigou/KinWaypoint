@@ -22,6 +22,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 import fr.kinwaypoint.app.data.SettingsRepository
 import fr.kinwaypoint.app.ui.AppRoot
 import fr.kinwaypoint.app.ui.KinWaypointTheme
@@ -46,6 +48,12 @@ class MainActivity : ComponentActivity() {
         permissionsState = snapshotPermissions()
     }
 
+    private var onScanResult: ((String?) -> Unit)? = null
+    private val scanLauncher = registerForActivityResult(ScanContract()) { result ->
+        onScanResult?.invoke(result.contents)
+        onScanResult = null
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         permissionsState = snapshotPermissions()
@@ -55,6 +63,7 @@ class MainActivity : ComponentActivity() {
             openAppSettings = { openAppSettings() },
             openBatterySettings = { openBatterySettings() },
             openMap = { lat, lon, label -> openMap(lat, lon, label) },
+            scanQr = { callback -> scanQr(callback) },
         )
 
         setContent {
@@ -126,6 +135,16 @@ class MainActivity : ComponentActivity() {
         intent.data = Uri.fromParts("package", packageName, null)
         runCatching { startActivity(intent) }
             .recoverCatching { startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }
+    }
+
+    private fun scanQr(callback: (String?) -> Unit) {
+        onScanResult = callback
+        val options = ScanOptions()
+            .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+            .setPrompt("Vise le QR code affiché sur le téléphone du parent")
+            .setBeepEnabled(false)
+            .setOrientationLocked(false)
+        scanLauncher.launch(options)
     }
 
     /** Ouvre la position dans l'appli de cartes installée (Google Maps, OsmAnd, Organic Maps…). */

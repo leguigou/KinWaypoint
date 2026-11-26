@@ -18,6 +18,8 @@ data class TrackingStatusState(
     val sosPending: Boolean = false,
     /** Heure à laquelle le serveur a accepté la dernière alerte SOS. */
     val sosDeliveredAt: Long? = null,
+    /** Appareil immobile : GPS coupé, une position toutes les 10 min. */
+    val still: Boolean = false,
 )
 
 /** État partagé entre le service de suivi et l'interface (volontairement simple). */

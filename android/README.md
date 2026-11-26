@@ -25,6 +25,7 @@ est créé à ce moment-là.
 | `service/TrackingService.kt` | Foreground service `location`. GPS et réseau écoutés, **une seule** position envoyée par intervalle (la meilleure) |
 | `data/FixQueue.kt` | File SQLite persistante : sans réseau, les positions attendent (≤ 5000, ≤ 30 j) et repartent au retour de la connexion. Les SOS passent en premier |
 | `net/TrackerClient.kt` | POST OsmAnd (`id`, `lat`, `lon`, `batt`, `charge`, `alarm`, `fixAge`) |
+| Fréquence adaptative | Immobile 5 min → GPS coupé, une position toutes les 10 min (Wi-Fi / réseau). Retour au GPS dès que le capteur de mouvement significatif se déclenche ou qu'un déplacement > ~200 m est vu. Sans Play Services |
 | `service/BootReceiver.kt` | Reprise du suivi après redémarrage (mode enfant + suivi activé) |
 | `ui/ChildScreens.kt` | Écran enfant (état + SOS) et réglages protégés |
 
@@ -42,6 +43,13 @@ acceptée.
 | `net/TraccarApi.kt` | Connexion e-mail / mot de passe → **jeton Traccar valable 1 an** ; seul le jeton est conservé, envoyé en `Authorization: Bearer` |
 | `ui/ParentScreens.kt` | Liste des membres : en ligne / hors ligne, dernière position, batterie (rouge < 20 %), bouton « Voir sur la carte » (ouvre l'appli de cartes du téléphone) |
 | Alertes SOS | Bandeau rouge pour chaque SOS des dernières 24 h non marqué « J'ai vu » |
+
+**Ajouter un enfant** : le parent saisit un prénom, l'appli crée l'appareil sur
+le serveur avec un identifiant aléatoire de 28 caractères et affiche un **QR
+code**. Sur le téléphone de l'enfant : Réglages parent → « Scanner le QR code ».
+Chaque membre a aussi un bouton « QR code de configuration ». Le QR contient
+l'identifiant secret : ne pas le photographier ni l'envoyer.
+Créer un appareil demande un compte Traccar autorisé à le faire (l'admin l'est).
 
 Actualisation toutes les 30 s **quand l'appli est ouverte**. Les notifications
 en arrière-plan (géofences, SOS appli fermée) nécessitent Firebase : à faire.
@@ -100,7 +108,8 @@ gh run download --name kinwaypoint
 
 1. Installer l'APK (autoriser l'installation depuis cette source)
 2. Choisir **Enfant**, créer le PIN parent
-3. Saisir le serveur d'envoi (`https://track.…`), l'identifiant d'appareil, l'intervalle
+3. « Scanner le QR code de configuration » affiché par l'appli parent
+   (ou saisir à la main le serveur d'envoi `https://track.…` et l'identifiant)
 4. Localisation → **Toujours autoriser** ; désactiver l'optimisation batterie
 5. « Enregistrer et démarrer le suivi », puis « Terminé — verrouiller »
 
@@ -110,7 +119,6 @@ des « positions qui n'arrivent plus ».
 ## Reste à faire
 
 - notifications push Firebase (SOS et zones, appli parent fermée)
-- fréquence adaptative (1 min en mouvement, 10-15 min à l'arrêt)
 - carte intégrée (MapLibre), historique, gestion des géofences
-- provisioning par QR code au lieu du copier-coller de l'identifiant
+- mesurer la consommation batterie réelle sur plusieurs modèles
 - tests sur téléphones réels (chaque fabricant gère l'arrière-plan différemment)

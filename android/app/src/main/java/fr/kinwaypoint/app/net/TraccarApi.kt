@@ -7,7 +7,10 @@ import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
+import org.json.JSONObject
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
@@ -17,6 +20,8 @@ import java.util.concurrent.TimeUnit
 data class Member(
     val id: Long,
     val name: String,
+    /** Identifiant d'appareil côté Traccar : c'est le secret d'envoi des positions. */
+    val uniqueId: String,
     val online: Boolean,
     val lastUpdate: Long?,
     val position: MemberPosition?,
@@ -137,6 +142,7 @@ class TraccarApi(baseUrl: String) {
             Member(
                 id = id,
                 name = d.optString("name"),
+                uniqueId = d.optString("uniqueId"),
                 online = d.optString("status") == "online",
                 lastUpdate = parseTime(d.optString("lastUpdate")),
                 position = byDevice[id],
@@ -164,6 +170,25 @@ class TraccarApi(baseUrl: String) {
                 kind = e.optJSONObject("attributes")?.optString("alarm").orEmpty().ifBlank { "alarm" },
             )
         }.sortedByDescending { it.time }
+    }
+
+    /** Crée un appareil (un enfant) avec l'identifiant fourni. Renvoie son id Traccar. */
+    fun createDevice(token: String, name: String, uniqueId: String): Long {
+        val json = JSONObject().put("name", name.trim()).put("uniqueId", uniqueId).toString()
+        val request = Request.Builder()
+            .url(url("api/devices"))
+            .header("Authorization", "Bearer $token")
+            .header("Accept", "application/json")
+            .post(json.toRequestBody("application/json".toMediaType()))
+            .build()
+        http.newCall(request).execute().use { response ->
+            when {
+                response.code == 401 -> throw AuthException("Session expirée, reconnecte-toi")
+                response.code == 400 -> error("Création refusée : ce compte n'a peut-être pas le droit d'ajouter un appareil")
+                !response.isSuccessful -> error("Erreur serveur (HTTP ${response.code})")
+            }
+            return JSONObject(response.body?.string().orEmpty()).getLong("id")
+        }
     }
 
     private fun url(path: String): HttpUrl = base.newBuilder().addPathSegments(path).build()

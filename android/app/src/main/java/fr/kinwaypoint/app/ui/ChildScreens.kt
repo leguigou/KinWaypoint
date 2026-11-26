@@ -161,6 +161,25 @@ fun ChildSettingsScreen(
 
             StatusCard(status = status, permissions = permissions)
 
+            Button(
+                onClick = {
+                    actions.scanQr { text ->
+                        val payload = SetupPayload.decode(text)
+                        when {
+                            text == null -> Unit
+                            payload == null -> Toast.makeText(context, "Ce QR code n'est pas un code KinWaypoint", Toast.LENGTH_LONG).show()
+                            else -> {
+                                serverUrl = payload.serverUrl
+                                deviceId = payload.deviceId
+                                payload.intervalSeconds?.let { interval = it.toString() }
+                                Toast.makeText(context, "Configuration lue — vérifie puis enregistre", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+            ) { Text("Scanner le QR code de configuration") }
+
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -336,6 +355,9 @@ fun StatusCard(status: TrackingStatusState, permissions: PermissionSnapshot) {
                 Text(title, fontWeight = FontWeight.SemiBold)
             }
             status.lastSentAt?.let { Text("Dernier envoi : ${formatTime(it)}", fontSize = 13.sp, color = Muted) }
+            if (status.running && status.still) {
+                Text("À l'arrêt — GPS en pause, position toutes les 10 min", fontSize = 13.sp, color = Muted)
+            }
             status.battery?.let { Text("Batterie : $it %", fontSize = 13.sp, color = Muted) }
             status.accuracy?.let { Text("Précision : ${it.toInt()} m", fontSize = 13.sp, color = Muted) }
             if (status.queued > 0) {

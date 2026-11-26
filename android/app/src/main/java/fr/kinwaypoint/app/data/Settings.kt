@@ -31,6 +31,8 @@ data class TrackingConfig(
 /** Réglages du mode parent : accès à l'API Traccar (jeton, jamais le mot de passe). */
 data class ParentConfig(
     val apiUrl: String = "",
+    /** Adresse d'envoi des positions (port 5055), mise dans les QR codes de configuration. */
+    val trackUrl: String = "",
     val email: String = "",
     val token: String = "",
 ) {
@@ -60,6 +62,7 @@ class SettingsRepository(private val context: Context) {
         val API_URL = stringPreferencesKey("parent_api_url")
         val EMAIL = stringPreferencesKey("parent_email")
         val TOKEN = stringPreferencesKey("parent_token")
+        val TRACK_URL = stringPreferencesKey("parent_track_url")
 
         val PIN_HASH = stringPreferencesKey("pin_hash")
         val PIN_SALT = stringPreferencesKey("pin_salt")
@@ -85,6 +88,7 @@ class SettingsRepository(private val context: Context) {
     val parent: Flow<ParentConfig> = context.dataStore.data.map { prefs ->
         ParentConfig(
             apiUrl = prefs[Keys.API_URL].orEmpty(),
+            trackUrl = prefs[Keys.TRACK_URL].orEmpty(),
             email = prefs[Keys.EMAIL].orEmpty(),
             token = prefs[Keys.TOKEN].orEmpty(),
         )
@@ -130,6 +134,7 @@ class SettingsRepository(private val context: Context) {
     suspend fun saveParent(config: ParentConfig) {
         context.dataStore.edit { prefs ->
             prefs[Keys.API_URL] = config.apiUrl.trim()
+            prefs[Keys.TRACK_URL] = config.trackUrl.trim()
             prefs[Keys.EMAIL] = config.email.trim()
             prefs[Keys.TOKEN] = config.token
         }

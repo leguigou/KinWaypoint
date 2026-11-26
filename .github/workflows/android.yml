@@ -47,14 +47,14 @@ jobs:
             echo "::warning::Secret KW_KEYSTORE_BASE64 absent : APK signé avec une clé de debug jetable (test uniquement, non installable en mise à jour)."
           fi
 
-      - name: Build release APK
+      - name: Tests et build release APK
         env:
           KW_KEYSTORE_PASSWORD: ${{ secrets.KW_KEYSTORE_PASSWORD }}
           KW_KEY_ALIAS: ${{ secrets.KW_KEY_ALIAS }}
           KW_KEY_PASSWORD: ${{ secrets.KW_KEY_PASSWORD }}
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon --stacktrace assembleRelease
+          ./gradlew --no-daemon --stacktrace testReleaseUnitTest assembleRelease
           mv app/build/outputs/apk/release/app-release.apk "app/build/outputs/apk/release/kinwaypoint-${GITHUB_SHA::7}.apk"
 
       - name: Upload APK

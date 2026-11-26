@@ -63,6 +63,7 @@ fun ParentLoginScreen(
 ) {
     val scope = rememberCoroutineScope()
     var apiUrl by remember { mutableStateOf(current.apiUrl) }
+    var trackUrl by remember { mutableStateOf(current.trackUrl) }
     var email by remember { mutableStateOf(current.email) }
     var password by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
@@ -85,6 +86,16 @@ fun ParentLoginScreen(
                 onValueChange = { apiUrl = it },
                 label = { Text("Adresse du serveur (interface)") },
                 placeholder = { Text("https://api.exemple.fr") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+            )
+            OutlinedTextField(
+                value = trackUrl,
+                onValueChange = { trackUrl = it },
+                label = { Text("Adresse d'envoi des positions (facultatif)") },
+                placeholder = { Text(guessTrackUrl(apiUrl).ifBlank { "https://track.exemple.fr" }) },
+                supportingText = { Text("Utilisée dans les QR codes de configuration des enfants") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
@@ -121,8 +132,14 @@ fun ParentLoginScreen(
                         }
                         result.onSuccess { token ->
                             password = ""
+                            val normalized = TraccarApi.normalize(apiUrl).toString()
                             repository.saveParent(
-                                ParentConfig(apiUrl = TraccarApi.normalize(apiUrl).toString(), email = email, token = token),
+                                current.copy(
+                                    apiUrl = normalized,
+                                    trackUrl = trackUrl.trim().ifBlank { guessTrackUrl(normalized) },
+                                    email = email,
+                                    token = token,
+                                ),
                             )
                         }.onFailure {
                             error = it.message ?: "Connexion impossible"
@@ -164,6 +181,9 @@ fun ParentHomeScreen(
     var refreshedAt by remember { mutableLongStateOf(0L) }
     var refreshTick by remember { mutableIntStateOf(0) }
     var showMenu by remember { mutableStateOf(false) }
+    var showAddChild by remember { mutableStateOf(false) }
+    var qrFor by remember { mutableStateOf<Pair<String, SetupPayload>?>(null) }
+    val trackUrl = config.trackUrl.ifBlank { guessTrackUrl(config.apiUrl) }
 
     suspend fun refresh() {
         val result = withContext(Dispatchers.IO) {
@@ -271,7 +291,19 @@ fun ParentHomeScreen(
                 }
             }
 
-            items(members, key = { it.id }) { member -> MemberCard(member, actions) }
+            items(members, key = { it.id }) { member ->
+                MemberCard(
+                    member = member,
+                    actions = actions,
+                    onShowQr = { qrFor = member.name to SetupPayload(trackUrl, member.uniqueId) },
+                )
+            }
+
+            item {
+                Button(onClick = { showAddChild = true }, modifier = Modifier.fillMaxWidth().height(52.dp)) {
+                    Text("＋ Ajouter un enfant")
+                }
+            }
 
             item {
                 Text(
@@ -284,6 +316,21 @@ fun ParentHomeScreen(
             }
         }
     }
+
+    if (showAddChild) {
+        AddChildDialog(
+            repository = repository,
+            config = config,
+            onCreated = { name, payload ->
+                showAddChild = false
+                qrFor = name to payload
+                refreshTick++
+            },
+            onDismiss = { showAddChild = false },
+        )
+    }
+
+    qrFor?.let { (name, payload) -> SetupQrDialog(name, payload, onDismiss = { qrFor = null }) }
 
     if (showMenu) {
         AlertDialog(
@@ -316,7 +363,7 @@ fun ParentHomeScreen(
 }
 
 @Composable
-private fun MemberCard(member: Member, actions: PlatformActions) {
+private fun MemberCard(member: Member, actions: PlatformActions, onShowQr: () -> Unit) {
     val position = member.position
     val battery = position?.battery
     val charging = position?.charging == true
@@ -349,6 +396,7 @@ private fun MemberCard(member: Member, actions: PlatformActions) {
                     Text("Voir sur la carte")
                 }
             }
+            TextButton(onClick = onShowQr) { Text("QR code de configuration") }
             member.lastUpdate?.let {
                 Text("Dernière connexion : ${relative(it)}", fontSize = 12.sp, color = Muted)
             }

@@ -18,6 +18,8 @@ class PlatformActions(
     val openAppSettings: () -> Unit,
     val openBatterySettings: () -> Unit,
     val openMap: (latitude: Double, longitude: Double, label: String) -> Unit,
+    /** Ouvre la caméra ; le texte lu (ou null si annulé) est rendu au callback. */
+    val scanQr: (onResult: (String?) -> Unit) -> Unit,
 )
 
 fun formatTime(millis: Long): String =
