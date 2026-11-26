@@ -126,7 +126,7 @@ premier usage.
 ## Implémentation du serveur (déployée)
 
 Le serveur décrit ci-dessus est implémenté dans `server/config-api/` et tourne
-sur `https://config.deloffre.fr` (image `kinwaypoint-config:1.0`, volume
+sur `https://famille.deloffre.fr/config` (image `kinwaypoint-config:1.0`, volume
 `kwconfig_data` pour la persistance, 128 Mo de RAM max).
 
 | Route | Rôle |
@@ -138,7 +138,7 @@ sur `https://config.deloffre.fr` (image `kinwaypoint-config:1.0`, volume
 Créer un code :
 
 ```bash
-curl -s -X POST https://config.deloffre.fr/api/codes \
+curl -s -X POST https://famille.deloffre.fr/config/api/codes \
   -H "X-Admin-Token: $KW_ADMIN_TOKEN" -H 'content-type: application/json' \
   -d '{"mode":"child","label":"Téléphone de Léa",
        "child":{"serverUrl":"https://ingest.deloffre.fr",
