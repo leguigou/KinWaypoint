@@ -459,16 +459,6 @@ fun ParentHomeScreen(
                 }
             }
 
-            item {
-                Text(
-                    "Les alertes SOS ne s'affichent que lorsque cette application est ouverte : " +
-                        "les notifications en arrière-plan ne sont pas encore disponibles.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Muted,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 24.dp),
-                )
-            }
         }
     }
 
