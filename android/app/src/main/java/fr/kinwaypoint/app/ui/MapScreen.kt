@@ -13,6 +13,10 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -162,6 +166,24 @@ fun FamilyMapScreen(
         }
     }
 
+    // Zones mortes : la barre du haut (+ hauteur d'un avatar, dessiné AU-DESSUS du
+    // point) et les fiches du bas. Le cadrage et le centrage restent dans la partie visible.
+    val density = LocalDensity.current
+    val insets = with(density) {
+        MapInsets(
+            top = WindowInsets.statusBars.getTop(density) + (72.dp + 96.dp).roundToPx(),
+            bottom = WindowInsets.navigationBars.getBottom(density) +
+                (if (entries.isEmpty()) 24.dp else ENTRY_CARD_HEIGHT + 16.dp + 24.dp).roundToPx(),
+            side = 56.dp.roundToPx(),
+        )
+    }
+    // Marge appliquée à la caméra : un centrage sur une personne la place au milieu de la zone visible.
+    LaunchedEffect(state.map, insets) {
+        state.map?.moveCamera(
+            CameraUpdateFactory.paddingTo(insets.side.toDouble(), insets.top.toDouble(), insets.side.toDouble(), insets.bottom.toDouble()),
+        )
+    }
+
     val pagerState = rememberPagerState(
         initialPage = entries.indexOfFirst { it.id == focusId }.coerceAtLeast(0),
     ) { entries.size }
@@ -233,7 +255,7 @@ fun FamilyMapScreen(
         if (target != null) {
             m.animateCamera(CameraUpdateFactory.newLatLngZoom(target.latLng, 16.0))
         } else {
-            frameAll(m, entries.map { it.latLng })
+            frameAll(m, entries.map { it.latLng }, insets = insets)
         }
         framed = true
     }
@@ -280,7 +302,7 @@ fun FamilyMapScreen(
                     Icon(Icons.Default.MyLocation, contentDescription = "Afficher ma position")
                 }
             }
-            FilledTonalIconButton(onClick = { state.map?.let { frameAll(it, entries.map { e -> e.latLng }) } }) {
+            FilledTonalIconButton(onClick = { state.map?.let { frameAll(it, entries.map { e -> e.latLng }, insets = insets) } }) {
                 Icon(Icons.Default.ZoomOutMap, contentDescription = "Voir tout le monde")
             }
         }
