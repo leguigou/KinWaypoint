@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.People
+import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.PauseCircle
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Schedule
@@ -147,9 +148,9 @@ fun ChildHomeScreen(
                     modifier = Modifier.fillMaxWidth().height(56.dp),
                     shape = CircleShape,
                 ) {
-                    Icon(Icons.Default.People, contentDescription = null)
+                    Icon(Icons.Default.Map, contentDescription = null)
                     Spacer(Modifier.size(10.dp))
-                    Text("Voir mes parents")
+                    Text("Ouvrir la carte")
                 }
             }
 
@@ -645,9 +646,9 @@ fun InfoCard(
 }
 
 /**
- * Carte des parents, vue depuis le téléphone d'un enfant (compte en lecture seule).
- * N'y figurent que les parents qui partagent leur position hors mode fantôme :
- * c'est le serveur qui filtre, pas l'appli.
+ * Carte de la famille vue depuis le téléphone d'un enfant (compte en lecture seule) :
+ * les autres enfants, et les parents qui partagent leur position hors mode fantôme.
+ * C'est le serveur qui filtre, pas l'appli.
  */
 @Composable
 private fun ChildParentsMap(
@@ -679,17 +680,19 @@ private fun ChildParentsMap(
             permissions = permissions,
             actions = actions,
             onBack = onBack,
-            title = "Mes parents",
+            title = "Ma famille",
+            // Son propre appareil apparaît comme « Moi ».
+            ownDeviceId = parents.firstOrNull { it.uniqueId == config.deviceId }?.id ?: 0L,
         )
-        val message = error ?: if (parents.none { it.position != null }) {
-            "Aucun parent ne partage sa position pour le moment."
+        val message = error ?: if (parents.none { it.position != null && it.uniqueId != config.deviceId }) {
+            "Personne d'autre ne partage sa position pour le moment."
         } else {
             null
         }
         message?.let {
             androidx.compose.foundation.layout.Box(
                 Modifier.align(Alignment.Center).padding(32.dp),
-            ) { InfoCard(title = "Mes parents", detail = it, container = CardSurface, icon = Icons.Default.People) }
+            ) { InfoCard(title = "Ma famille", detail = it, container = CardSurface, icon = Icons.Default.People) }
         }
     }
 }

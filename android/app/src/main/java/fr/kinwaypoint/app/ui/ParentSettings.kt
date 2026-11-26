@@ -88,6 +88,7 @@ suspend fun enableParentSharing(
             uniqueId = generateDeviceId()
             ownId = api.createDevice(config.token, name, uniqueId!!)
         }
+        api.markAsParent(config.token, ownId)
         api.setVisibleToChildren(config.token, ownId, visible = !ghost)
     }
     repository.setOwnDeviceId(ownId)

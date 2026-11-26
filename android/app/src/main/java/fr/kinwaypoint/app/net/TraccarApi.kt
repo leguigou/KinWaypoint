@@ -31,6 +31,8 @@ data class Member(
     val photoVersion: Long = 0L,
     /** Couleur du tracé choisie par les parents (« #RRGGBB »), ou null = couleur par défaut. */
     val color: String? = null,
+    /** Appareil d'un parent (« Partager ma position ») et non d'un enfant. */
+    val isParent: Boolean = false,
 )
 
 /** Un point d'historique. */
@@ -172,6 +174,7 @@ class TraccarApi(baseUrl: String) {
                 photo = d.optJSONObject("attributes")?.optString("deviceImage")?.takeIf { it.isNotBlank() },
                 photoVersion = d.optJSONObject("attributes")?.optLong("kwPhotoVersion") ?: 0L,
                 color = d.optJSONObject("attributes")?.optString("kwColor")?.takeIf { it.matches(Regex("#[0-9A-Fa-f]{6}")) },
+                isParent = d.optJSONObject("attributes")?.optString("kwRole") == "parent",
             )
         }.sortedBy { it.name.lowercase() }
     }
@@ -287,6 +290,19 @@ class TraccarApi(baseUrl: String) {
             attrs.put("deviceImage", fileName)
             attrs.put("kwPhotoVersion", System.currentTimeMillis())
         }
+    }
+
+    /** Marque l'appareil comme celui d'un parent (jamais rendu visible automatiquement). */
+    fun markAsParent(token: String, id: Long) {
+        updateAttributes(token, id) { attrs -> attrs.put("kwRole", "parent") }
+    }
+
+    /**
+     * Les enfants se voient entre eux : chaque appareil d'enfant est lié au compte
+     * lecteur. Les appareils des parents ne sont pas touchés (mode fantôme respecté).
+     */
+    fun shareChildrenWithEachOther(token: String, members: List<Member>) {
+        members.filter { !it.isParent }.forEach { setVisibleToChildren(token, it.id, visible = true) }
     }
 
     /** Couleur du tracé d'un membre, partagée par tous les parents (attribut serveur). */

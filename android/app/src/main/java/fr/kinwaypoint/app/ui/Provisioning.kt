@@ -208,7 +208,13 @@ fun AddChildDialog(
                     scope.launch {
                         val id = generateDeviceId()
                         val result = withContext(Dispatchers.IO) {
-                            runCatching { TraccarApi(config.apiUrl).createDevice(config.token, name, id) }
+                            runCatching {
+                                val api = TraccarApi(config.apiUrl)
+                                val deviceId = api.createDevice(config.token, name, id)
+                                // Visible des autres enfants (et de lui-même) sur leur carte.
+                                runCatching { api.setVisibleToChildren(config.token, deviceId, visible = true) }
+                                deviceId
+                            }
                         }
                         result.onSuccess {
                             repository.saveParent(config.copy(trackUrl = trackUrl.trim()))

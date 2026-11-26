@@ -342,6 +342,13 @@ fun ParentHomeScreen(
         }
     }
 
+    // Les enfants se voient entre eux : appareils d'enfants liés au compte lecteur
+    // (une fois par ouverture, sans effet si c'est déjà fait).
+    LaunchedEffect(members.filter { !it.isParent }.map { it.id }) {
+        if (members.isEmpty()) return@LaunchedEffect
+        withContext(Dispatchers.IO) { runCatching { api.shareChildrenWithEachOther(config.token, members) } }
+    }
+
     // Tracés du jour, rechargés chaque minute tant que la carte est ouverte.
     LaunchedEffect(mapOpen, members.map { it.id }) {
         if (!mapOpen) return@LaunchedEffect
