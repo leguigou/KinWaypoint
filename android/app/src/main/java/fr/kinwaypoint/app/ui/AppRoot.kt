@@ -10,6 +10,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.ChildCare
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.FilledTonalButton
+import fr.kinwaypoint.app.net.RemoteConfig
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -91,6 +96,9 @@ fun AppRoot(
     val status by TrackingStatus.state.collectAsState()
 
     var screen by remember { mutableStateOf<Screen?>(null) }
+    // Configuration reçue par code au premier lancement, appliquée une fois le mode choisi (après le PIN).
+    var pendingRemote by remember { mutableStateOf<RemoteConfig?>(null) }
+    var showConfigCode by remember { mutableStateOf(false) }
 
     fun home(m: AppMode): Screen = when (m) {
         AppMode.UNSET -> Screen.ModeSelect
@@ -119,8 +127,20 @@ fun AppRoot(
             is AfterPin.NewPin -> screen = Screen.PinSetup(AfterPin.Go(action.back), back = action.back)
             is AfterPin.ChooseMode -> scope.launch {
                 repository.setMode(action.mode)
+                pendingRemote?.let { cfg ->
+                    cfg.applyTo(repository)
+                    pendingRemote = null
+                }
                 screen = if (action.mode == AppMode.CHILD) Screen.ChildSettings else Screen.Parent
             }
+        }
+    }
+
+    fun chooseMode(m: AppMode) {
+        screen = if (pin?.isSet == true) {
+            Screen.PinCheck(AfterPin.ChooseMode(m), back = Screen.ModeSelect)
+        } else {
+            Screen.PinSetup(AfterPin.ChooseMode(m), back = Screen.ModeSelect)
         }
     }
 
@@ -145,13 +165,8 @@ fun AppRoot(
 
     when (current) {
         Screen.ModeSelect -> ModeSelectScreen(
-            onChoose = { m ->
-                screen = if (pinState.isSet) {
-                    Screen.PinCheck(AfterPin.ChooseMode(m), back = Screen.ModeSelect)
-                } else {
-                    Screen.PinSetup(AfterPin.ChooseMode(m), back = Screen.ModeSelect)
-                }
-            },
+            onChoose = { m -> chooseMode(m) },
+            onConfigCode = { showConfigCode = true },
         )
 
         Screen.ChildHome -> ChildHomeScreen(
@@ -179,6 +194,7 @@ fun AppRoot(
             ParentLoginScreen(
                 repository = repository,
                 current = parentCfg,
+                actions = actions,
                 onCancel = { screen = home(AppMode.PARENT) },
             )
         } else {
@@ -226,10 +242,29 @@ fun AppRoot(
             onCancel = current.back?.let { back -> { screen = back } },
         )
     }
+
+    if (showConfigCode && current == Screen.ModeSelect) {
+        ConfigCodeDialog(
+            actions = actions,
+            expected = null,
+            onDismiss = { showConfigCode = false },
+            onResult = { cfg ->
+                showConfigCode = false
+                pendingRemote = cfg
+                // Mode imposé par le code, ou déduit de son contenu ; sinon l'utilisateur choisit.
+                val mode = cfg.mode ?: when {
+                    cfg.child != null && cfg.parent == null -> AppMode.CHILD
+                    cfg.parent != null && cfg.child == null -> AppMode.PARENT
+                    else -> null
+                }
+                if (mode != null) chooseMode(mode)
+            },
+        )
+    }
 }
 
 @Composable
-private fun ModeSelectScreen(onChoose: (AppMode) -> Unit) {
+private fun ModeSelectScreen(onChoose: (AppMode) -> Unit, onConfigCode: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -273,6 +308,11 @@ private fun ModeSelectScreen(onChoose: (AppMode) -> Unit) {
             detail = "Voit la famille sur la carte, protégé par code",
             onClick = { onChoose(AppMode.PARENT) },
         )
+        FilledTonalButton(onClick = onConfigCode, shape = CircleShape, modifier = Modifier.fillMaxWidth().height(52.dp)) {
+            Icon(Icons.Default.Link, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.size(8.dp))
+            Text("J'ai un code de configuration")
+        }
         Spacer(Modifier.height(8.dp))
         Text(
             "Un code PIN parent sera créé. Il protège l'espace parent et empêche l'enfant de modifier ou d'arrêter son suivi.",

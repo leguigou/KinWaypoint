@@ -13,8 +13,8 @@ android {
         applicationId = "fr.kinwaypoint.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 7
-        versionName = "0.7.0"
+        versionCode = 8
+        versionName = "0.8.0"
 
         // Téléphones réels uniquement (ARM) : divise par ~2 la taille due à la carte.
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
@@ -97,4 +97,6 @@ dependencies {
     implementation("com.google.firebase:firebase-messaging")
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
+    // org.json réel pour les tests JVM (celui d'android.jar n'est qu'un bouchon).
+    testImplementation("org.json:json:20240303")
 }

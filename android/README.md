@@ -109,6 +109,13 @@ gh run download --name kinwaypoint
 #   ⚠️ suivre la redirection SANS le header Authorization, sinon 401
 ```
 
+## Code de configuration (configuration à distance)
+
+Un lien HTTPS avec jeton (collé, ou lu dans un QR code) renvoie un JSON qui
+remplit l'appli : au premier lancement (choix du mode compris), dans les
+réglages enfant et sur l'écran de connexion parent. Format du JSON, exemples
+et recommandations de sécurité : [`docs/CONFIG-DISTANTE.md`](../docs/CONFIG-DISTANTE.md).
+
 ## Installation sur un téléphone enfant
 
 1. Installer l'APK (autoriser l'installation depuis cette source)
