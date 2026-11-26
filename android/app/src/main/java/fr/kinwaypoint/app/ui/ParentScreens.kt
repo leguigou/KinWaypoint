@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.HideImage
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material.icons.filled.BatteryFull
@@ -261,6 +262,9 @@ fun ParentHomeScreen(
     var refreshedAt by remember { mutableLongStateOf(0L) }
     var refreshTick by remember { mutableIntStateOf(0) }
     var settingsOpen by remember { mutableStateOf(false) }
+    var placesOpen by remember { mutableStateOf(false) }
+    var eventsOpen by remember { mutableStateOf(false) }
+    var places by remember { mutableStateOf<List<fr.kinwaypoint.app.net.Place>>(emptyList()) }
     var historyOpen by remember { mutableStateOf(false) }
     var historyFocus by remember { mutableStateOf<Long?>(null) }
     var todayTraces by remember { mutableStateOf<Map<Long, List<fr.kinwaypoint.app.net.TracePoint>>>(emptyMap()) }
@@ -305,6 +309,7 @@ fun ParentHomeScreen(
                 list to api.recentAlarms(config.token, list.map { it.id })
             }
         }
+        withContext(Dispatchers.IO) { runCatching { api.places(config.token) } }.onSuccess { places = it }
         result.onSuccess { (list, recent) ->
             members = list
             alarms = recent
@@ -344,9 +349,13 @@ fun ParentHomeScreen(
 
     // Les enfants se voient entre eux : appareils d'enfants liés au compte lecteur
     // (une fois par ouverture, sans effet si c'est déjà fait).
-    LaunchedEffect(members.filter { !it.isParent }.map { it.id }) {
+    LaunchedEffect(members.filter { !it.isParent }.map { it.id }, places.map { it.id }) {
         if (members.isEmpty()) return@LaunchedEffect
-        withContext(Dispatchers.IO) { runCatching { api.shareChildrenWithEachOther(config.token, members) } }
+        withContext(Dispatchers.IO) {
+            runCatching { api.shareChildrenWithEachOther(config.token, members) }
+            // Chaque lieu s'applique à tous les appareils (y compris un enfant ajouté après le lieu).
+            places.forEach { place -> runCatching { api.linkPlace(config.token, place.id, members.map { it.id }) } }
+        }
     }
 
     // Tracés du jour, rechargés chaque minute tant que la carte est ouverte.
@@ -366,8 +375,31 @@ fun ParentHomeScreen(
     val names = members.associate { it.id to it.name }
     val newAlarms = alarms.filter { it.id > acknowledgedAlarmId }
 
-    if (settingsOpen) {
+    val sosIds = alarms.filter { it.id > acknowledgedAlarmId }.map { it.deviceId }.toSet()
+
+    if (placesOpen) {
+        PlacesScreen(
+            api = api,
+            token = config.token,
+            places = places,
+            members = members,
+            permissions = permissions,
+            onChanged = { refreshTick++ },
+            onBack = { placesOpen = false },
+        )
+    } else if (eventsOpen) {
+        EventsScreen(
+            api = api,
+            token = config.token,
+            members = members,
+            photos = photos,
+            places = places,
+            onOpenMember = { id -> eventsOpen = false; openMap(id) },
+            onBack = { eventsOpen = false },
+        )
+    } else if (settingsOpen) {
         ParentSettingsScreen(
+            onOpenPlaces = { placesOpen = true },
             repository = repository,
             config = config,
             api = api,
@@ -385,6 +417,7 @@ fun ParentHomeScreen(
         )
     } else if (historyOpen) {
         HistoryScreen(
+            places = places,
             api = api,
             token = config.token,
             members = members,
@@ -395,6 +428,8 @@ fun ParentHomeScreen(
         )
     } else if (mapOpen) {
         FamilyMapScreen(
+            places = places,
+            sosIds = sosIds,
             traces = todayTraces,
             ownDeviceId = ownDeviceId,
             onOpenHistory = { historyFocus = null; historyOpen = true },
@@ -421,6 +456,9 @@ fun ParentHomeScreen(
                     }
                     FilledTonalIconButton(onClick = { refreshTick++ }) {
                         Icon(Icons.Default.Refresh, contentDescription = "Actualiser")
+                    }
+                    FilledTonalIconButton(onClick = { eventsOpen = true }) {
+                        Icon(Icons.Default.Notifications, contentDescription = "Notifications")
                     }
                     FilledTonalIconButton(onClick = { historyFocus = null; historyOpen = true }) {
                         Icon(Icons.Default.History, contentDescription = "Historique")

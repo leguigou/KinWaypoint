@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -116,6 +117,7 @@ fun ParentSettingsScreen(
     onLock: () -> Unit,
     onChangePin: () -> Unit,
     onChangeMode: () -> Unit,
+    onOpenPlaces: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -203,6 +205,18 @@ fun ParentSettingsScreen(
             if (sharing) {
                 StatusCard(status = status, permissions = permissions)
                 PermissionWarnings(permissions, actions)
+            }
+
+            // --- Lieux ---------------------------------------------------------------
+            SectionCard {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    IconBadge(Icons.Default.Place, MaterialTheme.colorScheme.primary, size = 40.dp)
+                    Column(Modifier.weight(1f)) {
+                        Text("Lieux", style = MaterialTheme.typography.titleSmall)
+                        Text("Maison, école… : alerte quand un enfant arrive ou part.", style = MaterialTheme.typography.bodySmall, color = Muted)
+                    }
+                }
+                OutlinedButton(onClick = onOpenPlaces, modifier = Modifier.fillMaxWidth(), shape = CircleShape) { Text("Gérer les lieux") }
             }
 
             // --- Couleurs -----------------------------------------------------------

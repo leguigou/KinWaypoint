@@ -35,6 +35,8 @@ class TrackerClient {
             .apply {
                 fix.alarm?.let { add("alarm", it) }
                 fix.fixAgeSeconds?.let { add("fixAge", it.toString()) }
+                fix.ringer?.let { add("ringer", it) }
+                fix.wifi?.let { add("wifi", it) }
             }
             .build()
 

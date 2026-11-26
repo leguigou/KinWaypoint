@@ -32,6 +32,9 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Route
 import androidx.compose.material.icons.filled.ZoomOutMap
+import androidx.compose.material.icons.filled.Vibration
+import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalButton
@@ -103,6 +106,9 @@ fun FamilyMapScreen(
     ownDeviceId: Long = 0L,
     onOpenHistory: (() -> Unit)? = null,
     title: String = "Ma famille",
+    places: List<fr.kinwaypoint.app.net.Place> = emptyList(),
+    /** Membres avec un SOS en cours (non acquitté). */
+    sosIds: Set<Long> = emptySet(),
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -127,6 +133,19 @@ fun FamilyMapScreen(
     }
     val mapTraces: Map<Long, List<TracePoint>> = traces.mapKeys { (id, _) -> if (id == ownDeviceId && ownDeviceId != 0L) ME_ID else id }
 
+    // Étiquette au-dessus de chaque avatar : SOS, ou lieu et durée (« École · 12 min »).
+    var clock by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(60_000); clock = System.currentTimeMillis() } }
+    val placeOf: Map<Long, fr.kinwaypoint.app.net.Place?> = entries.associate { it.id to placeAt(it.latitude, it.longitude, places) }
+    val labels: Map<Long, String?> = entries.associate { e ->
+        val place = placeOf[e.id]
+        e.id to when {
+            e.id in sosIds -> "SOS"
+            place != null -> place.name + (inPlaceSince(mapTraces[e.id].orEmpty(), place)?.let { " · " + shortDuration(clock - it) } ?: "")
+            else -> null
+        }
+    }
+
     val pagerState = rememberPagerState(
         initialPage = entries.indexOfFirst { it.id == focusId }.coerceAtLeast(0),
     ) { entries.size }
@@ -146,7 +165,7 @@ fun FamilyMapScreen(
     }
 
     // Images des avatars (photo ou initiale), régénérées quand une photo, une couleur ou un statut change.
-    val markerKey = entries.map { listOf(it.id, it.name, it.member?.online, it.colorHex) } to photos.values.map { it.generationId }
+    val markerKey = entries.map { listOf(it.id, it.name, it.member?.online, it.colorHex, labels[it.id]) } to photos.values.map { it.generationId }
     LaunchedEffect(state.style, markerKey) {
         val st = state.style ?: return@LaunchedEffect
         entries.forEach { e ->
@@ -161,9 +180,15 @@ fun FamilyMapScreen(
                     else -> 0xFF9AA0B4.toInt()
                 },
                 isMe = e.isMe && ownMember?.let { photos[it.id] } == null,
+                label = labels[e.id],
+                sos = e.id in sosIds,
             )
             st.addImage("avatar-${e.id}", bitmap)
         }
+    }
+
+    LaunchedEffect(state.style, places) {
+        state.style?.setPlaces(context, places)
     }
 
     // Points, avatars et tracés.
@@ -243,6 +268,36 @@ fun FamilyMapScreen(
             }
         }
 
+        // SOS en cours : bandeau rouge, toucher = centrer sur la personne.
+        val sosEntries = entries.filter { it.id in sosIds }
+        if (sosEntries.isNotEmpty()) {
+            Column(
+                modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 72.dp, start = 16.dp, end = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                sosEntries.forEach { e ->
+                    Card(
+                        onClick = {
+                            val index = entries.indexOf(e)
+                            scope.launch { pagerState.animateScrollToPage(index) }
+                            state.map?.animateCamera(CameraUpdateFactory.newLatLngZoom(e.latLng, 16.0))
+                        },
+                        shape = MaterialTheme.shapes.large,
+                        colors = CardDefaults.cardColors(containerColor = Danger, contentColor = Color.White),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+                    ) {
+                        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Avatar(e.name, size = 40.dp, photo = photos[e.id], colorHex = e.colorHex)
+                            Column(Modifier.weight(1f)) {
+                                Text("${e.name} a besoin d'aide", style = MaterialTheme.typography.titleMedium, color = Color.White)
+                                Text("SOS actif · touche pour centrer", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.9f))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         if (entries.isNotEmpty()) {
             HorizontalPager(
                 state = pagerState,
@@ -252,6 +307,8 @@ fun FamilyMapScreen(
             ) { page ->
                 val entry = entries[page]
                 EntryCard(
+                    place = placeOf[entry.id],
+                    placeLabel = labels[entry.id],
                     entry = entry,
                     photo = if (entry.isMe) ownMember?.let { photos[it.id] } else photos[entry.id],
                     color = Color(colors[entry.id] ?: 0xFF5B5BD6.toInt()),
@@ -268,6 +325,8 @@ fun FamilyMapScreen(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun EntryCard(
+    place: fr.kinwaypoint.app.net.Place? = null,
+    placeLabel: String? = null,
     entry: MapEntry,
     photo: Bitmap?,
     color: Color,
@@ -292,6 +351,9 @@ private fun EntryCard(
                 }
                 Column(Modifier.weight(1f)) {
                     Text(if (entry.isMe) "Ma position" else entry.name, style = MaterialTheme.typography.titleMedium)
+                    if (place != null && placeLabel != null && placeLabel != "SOS") {
+                        Text("${placeEmoji(place.icon)} $placeLabel", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+                    }
                     val p = entry.member?.position
                     Text(
                         when {
@@ -326,6 +388,12 @@ private fun EntryCard(
                 } else {
                     me?.let { StatusPill("± ${it.accuracy.toInt()} m", Muted, icon = Icons.Default.GpsFixed) }
                 }
+                // État du téléphone : sonnerie coupée, Wi-Fi.
+                when (member?.position?.ringer) {
+                    "silent" -> StatusPill("Silencieux", Warning, icon = Icons.AutoMirrored.Filled.VolumeOff)
+                    "vibrate" -> StatusPill("Vibreur", Muted, icon = Icons.Default.Vibration)
+                }
+                member?.position?.wifi?.let { StatusPill(it, Muted, icon = Icons.Default.Wifi) }
                 if (trace.size >= 2) {
                     StatusPill(formatDistance(traceLength(trace)) + " aujourd'hui", color, icon = Icons.Default.Route)
                 }

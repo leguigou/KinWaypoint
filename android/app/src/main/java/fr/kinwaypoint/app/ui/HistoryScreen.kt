@@ -65,28 +65,54 @@ import java.util.Locale
 /** Durée de conservation côté serveur (rétention TimescaleDB). */
 private const val RETENTION_DAYS = 30L
 
-/** Une ligne de la chronologie : un arrêt (regroupé) ou un point en mouvement. */
+/** Une ligne de la chronologie : un arrêt, ou un trajet entre deux arrêts. */
 private sealed interface HistoryRow {
     val memberId: Long
+    /** Point mis en avant sur la carte quand on touche la ligne. */
     val point: TracePoint
     val start: Long
+    val end: Long
 
-    data class Stop(override val memberId: Long, override val point: TracePoint, val end: Long) : HistoryRow {
+    data class Stop(override val memberId: Long, override val point: TracePoint, override val end: Long) : HistoryRow {
         override val start get() = point.time
     }
 
-    data class Move(override val memberId: Long, override val point: TracePoint) : HistoryRow {
-        override val start get() = point.time
+    data class Trip(override val memberId: Long, val points: List<TracePoint>) : HistoryRow {
+        override val point get() = points.first()
+        override val start get() = points.first().time
+        override val end get() = points.last().time
+        val distance: Float get() = traceLength(points)
+        /** Vitesse moyenne en km/h, sur la durée du trajet. */
+        val averageKmh: Double get() = if (end > start) distance / 1000.0 / ((end - start) / 3_600_000.0) else 0.0
     }
 }
 
+/** Mode de déplacement déduit de la vitesse moyenne (estimation, sans capteur). */
+private fun tripMode(kmh: Double): Pair<String, String> = when {
+    kmh < 7 -> "🚶" to "Marche"
+    kmh < 25 -> "🚲" to "Vélo / trottinette"
+    else -> "🚗" to "Véhicule"
+}
+
 /**
- * Regroupe les points : plusieurs points à moins de 60 m pendant 3 min ou plus
- * deviennent un seul « arrêt », le reste reste en points de passage.
+ * Découpe la journée : plusieurs points à moins de 60 m pendant 3 min ou plus
+ * forment un « arrêt » ; ce qu'il y a entre deux arrêts forme un « trajet ».
  */
 private fun buildRows(memberId: Long, points: List<TracePoint>): List<HistoryRow> {
     val rows = mutableListOf<HistoryRow>()
     val result = FloatArray(1)
+    val moving = mutableListOf<TracePoint>()
+
+    fun closeTrip(next: TracePoint?) {
+        val tripPoints = buildList {
+            (rows.lastOrNull() as? HistoryRow.Stop)?.let { add(it.point) }
+            addAll(moving)
+            next?.let { add(it) }
+        }
+        if (tripPoints.size >= 2 && traceLength(tripPoints) >= 50f) rows += HistoryRow.Trip(memberId, tripPoints)
+        moving.clear()
+    }
+
     var i = 0
     while (i < points.size) {
         val anchor = points[i]
@@ -98,13 +124,15 @@ private fun buildRows(memberId: Long, points: List<TracePoint>): List<HistoryRow
             j++
         }
         if (j > i && points[j].time - anchor.time >= 3 * 60_000L) {
+            closeTrip(anchor)
             rows += HistoryRow.Stop(memberId, anchor, points[j].time)
             i = j + 1
         } else {
-            rows += HistoryRow.Move(memberId, anchor)
+            moving += anchor
             i++
         }
     }
+    closeTrip(null)
     return rows
 }
 
@@ -121,7 +149,9 @@ fun HistoryScreen(
     ownDeviceId: Long,
     initialFocus: Long?,
     onBack: () -> Unit,
+    places: List<fr.kinwaypoint.app.net.Place> = emptyList(),
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val zone = ZoneId.systemDefault()
     val today = LocalDate.now(zone)
     var day by remember { mutableStateOf(today) }
@@ -158,6 +188,8 @@ fun HistoryScreen(
     }
 
     // Carte : tracés visibles, point mis en avant, cadrage sur la journée.
+    LaunchedEffect(state.style, places) { state.style?.setPlaces(context, places) }
+
     LaunchedEffect(state.style, visible, highlighted) {
         val st = state.style ?: return@LaunchedEffect
         st.setTraces(visible, colors)
@@ -240,7 +272,7 @@ fun HistoryScreen(
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
                         verticalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
-                        items(rows, key = { "${it.memberId}-${it.start}" }) { row ->
+                        items(rows, key = { "${it.memberId}-${it.start}-${it is HistoryRow.Stop}" }) { row ->
                             val member = members.firstOrNull { it.id == row.memberId }
                             TimelineRow(
                                 row = row,
@@ -248,12 +280,15 @@ fun HistoryScreen(
                                 showName = focus == null,
                                 color = Color(colors[row.memberId] ?: 0),
                                 selected = highlighted == row,
+                                place = (row as? HistoryRow.Stop)?.let { placeAt(it.point.latitude, it.point.longitude, places) },
                                 onClick = {
                                     highlighted = row
-                                    state.map?.animateCamera(
-                                        CameraUpdateFactory.newLatLngZoom(LatLng(row.point.latitude, row.point.longitude), 16.0),
-                                        500,
-                                    )
+                                    val m = state.map
+                                    if (row is HistoryRow.Trip && m != null) {
+                                        frameAll(m, row.points.map { LatLng(it.latitude, it.longitude) }, bottomPaddingPx = 120)
+                                    } else {
+                                        m?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(row.point.latitude, row.point.longitude), 16.0), 500)
+                                    }
                                 },
                             )
                         }
@@ -271,7 +306,15 @@ private fun InfoCardPadded(title: String, detail: String) {
 
 /** Une ligne de la frise : heure, pastille de couleur reliée par un trait, description. */
 @Composable
-private fun TimelineRow(row: HistoryRow, name: String, showName: Boolean, color: Color, selected: Boolean, onClick: () -> Unit) {
+private fun TimelineRow(
+    row: HistoryRow,
+    name: String,
+    showName: Boolean,
+    color: Color,
+    selected: Boolean,
+    onClick: () -> Unit,
+    place: fr.kinwaypoint.app.net.Place? = null,
+) {
     val time = DateTimeFormatter.ofPattern("HH:mm", Locale.FRANCE)
     fun hhmm(t: Long) = java.time.Instant.ofEpochMilli(t).atZone(ZoneId.systemDefault()).format(time)
 
@@ -292,7 +335,10 @@ private fun TimelineRow(row: HistoryRow, name: String, showName: Boolean, color:
                 Modifier.size(if (row is HistoryRow.Stop) 26.dp else 12.dp).clip(CircleShape).background(color),
                 contentAlignment = Alignment.Center,
             ) {
-                if (row is HistoryRow.Stop) Icon(Icons.Default.Pause, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+                if (row is HistoryRow.Stop) {
+                    if (place != null) Text(placeEmoji(place.icon), style = MaterialTheme.typography.labelSmall)
+                    else Icon(Icons.Default.Pause, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+                }
             }
             Box(Modifier.width(2.dp).height(6.dp).background(color.copy(alpha = 0.4f)))
         }
@@ -301,15 +347,17 @@ private fun TimelineRow(row: HistoryRow, name: String, showName: Boolean, color:
             when (row) {
                 is HistoryRow.Stop -> {
                     val minutes = (row.end - row.start) / 60_000
-                    Text("${who}Arrêt · ${hhmm(row.start)} → ${hhmm(row.end)}", style = MaterialTheme.typography.bodyMedium)
-                    Text(durationLabel(minutes), style = MaterialTheme.typography.bodySmall, color = Muted)
+                    Text("$who${place?.name ?: "Arrêt"}", style = MaterialTheme.typography.titleSmall)
+                    Text("${hhmm(row.start)} → ${hhmm(row.end)} · ${durationLabel(minutes)}", style = MaterialTheme.typography.bodySmall, color = Muted)
                 }
-                is HistoryRow.Move -> {
+                is HistoryRow.Trip -> {
+                    val (emoji, mode) = tripMode(row.averageKmh)
+                    Text("$who$emoji $mode", style = MaterialTheme.typography.bodyMedium)
                     Text(
-                        who + if (row.point.speedKmh >= 3) "En déplacement · ${row.point.speedKmh.toInt()} km/h" else "Point de passage",
-                        style = MaterialTheme.typography.bodyMedium,
+                        "${formatDistance(row.distance)} · ${durationLabel((row.end - row.start) / 60_000)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Muted,
                     )
-                    row.point.battery?.let { Text("Batterie $it %", style = MaterialTheme.typography.bodySmall, color = Muted) }
                 }
             }
         }

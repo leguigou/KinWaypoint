@@ -52,6 +52,30 @@ data class MemberPosition(
     val accuracy: Double,
     val battery: Int?,
     val charging: Boolean?,
+    /** "normal", "vibrate", "silent" (envoyé par l'appli), ou null. */
+    val ringer: String? = null,
+    /** Nom du Wi-Fi connecté, ou null. */
+    val wifi: String? = null,
+)
+
+/** Un lieu de la famille (zone circulaire Traccar) : maison, école… */
+data class Place(
+    val id: Long,
+    val name: String,
+    val latitude: Double,
+    val longitude: Double,
+    val radius: Double,
+    /** home, school, work, sport, shop, other */
+    val icon: String,
+)
+
+/** Un événement à afficher dans la cloche : arrivée, départ, SOS. */
+data class FamilyEvent(
+    val id: Long,
+    val deviceId: Long,
+    val type: String,
+    val time: Long,
+    val placeId: Long,
 )
 
 data class Alarm(
@@ -158,6 +182,8 @@ class TraccarApi(baseUrl: String) {
                 accuracy = p.optDouble("accuracy", 0.0),
                 battery = attrs?.takeIf { it.has("batteryLevel") }?.optDouble("batteryLevel")?.toInt(),
                 charging = attrs?.takeIf { it.has("charge") }?.optBoolean("charge"),
+                ringer = attrs?.optString("ringer")?.takeIf { it.isNotBlank() },
+                wifi = attrs?.optString("wifi")?.takeIf { it.isNotBlank() },
             )
         }
 
@@ -303,6 +329,76 @@ class TraccarApi(baseUrl: String) {
      */
     fun shareChildrenWithEachOther(token: String, members: List<Member>) {
         members.filter { !it.isParent }.forEach { setVisibleToChildren(token, it.id, visible = true) }
+    }
+
+    // --- Lieux (zones Traccar) --------------------------------------------------------
+
+    /** Lieux circulaires de la famille. Les zones polygonales (créées sur le web) sont ignorées. */
+    fun places(token: String): List<Place> {
+        val array = getArray(token, url("api/geofences"))
+        val circle = Regex("""CIRCLE\s*\(\s*(-?[0-9.]+)\s+(-?[0-9.]+)\s*,\s*([0-9.]+)\s*\)""")
+        return (0 until array.length()).mapNotNull { i ->
+            val g = array.getJSONObject(i)
+            val m = circle.find(g.optString("area")) ?: return@mapNotNull null
+            Place(
+                id = g.getLong("id"),
+                name = g.optString("name"),
+                latitude = m.groupValues[1].toDouble(),
+                longitude = m.groupValues[2].toDouble(),
+                radius = m.groupValues[3].toDouble(),
+                icon = g.optJSONObject("attributes")?.optString("kwIcon")?.takeIf { it.isNotBlank() } ?: "other",
+            )
+        }.sortedBy { it.name.lowercase() }
+    }
+
+    /** Crée un lieu et l'applique à tous les appareils (alertes d'entrée / sortie). */
+    fun createPlace(token: String, name: String, icon: String, lat: Double, lon: Double, radius: Int, deviceIds: List<Long>): Long {
+        val body = JSONObject()
+            .put("name", name.trim())
+            .put("area", String.format(java.util.Locale.US, "CIRCLE (%.6f %.6f, %d)", lat, lon, radius))
+            .put("attributes", JSONObject().put("kwIcon", icon))
+        val create = Request.Builder().url(url("api/geofences"))
+            .post(body.toString().toRequestBody("application/json".toMediaType()))
+        val id = authorized(token, create).use { response ->
+            check(response)
+            JSONObject(response.body?.string().orEmpty()).getLong("id")
+        }
+        linkPlace(token, id, deviceIds)
+        return id
+    }
+
+    fun deletePlace(token: String, id: Long) {
+        authorized(token, Request.Builder().url(url("api/geofences/$id")).delete()).use { check(it) }
+    }
+
+    /** Rattache un lieu à des appareils (déjà rattaché : ignoré). */
+    fun linkPlace(token: String, placeId: Long, deviceIds: List<Long>) {
+        deviceIds.forEach { deviceId ->
+            val body = JSONObject().put("deviceId", deviceId).put("geofenceId", placeId).toString()
+                .toRequestBody("application/json".toMediaType())
+            runCatching { authorized(token, Request.Builder().url(url("api/permissions")).post(body)).close() }
+        }
+    }
+
+    /** Arrivées, départs et SOS des appareils donnés, du plus récent au plus ancien. */
+    fun events(token: String, deviceIds: List<Long>, from: Long, to: Long): List<FamilyEvent> {
+        if (deviceIds.isEmpty()) return emptyList()
+        val builder = url("api/reports/events").newBuilder()
+            .addQueryParameter("from", iso(from))
+            .addQueryParameter("to", iso(to))
+        listOf("geofenceEnter", "geofenceExit", "alarm").forEach { builder.addQueryParameter("type", it) }
+        deviceIds.forEach { builder.addQueryParameter("deviceId", it.toString()) }
+        val array = getArray(token, builder.build())
+        return (0 until array.length()).map { i ->
+            val e = array.getJSONObject(i)
+            FamilyEvent(
+                id = e.getLong("id"),
+                deviceId = e.getLong("deviceId"),
+                type = e.optString("type"),
+                time = parseTime(e.optString("eventTime")) ?: 0L,
+                placeId = e.optLong("geofenceId", 0L),
+            )
+        }.sortedByDescending { it.time }
     }
 
     /** Couleur du tracé d'un membre, partagée par tous les parents (attribut serveur). */

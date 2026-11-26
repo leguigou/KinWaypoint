@@ -386,6 +386,8 @@ class TrackingService : Service(), LocationListener {
             charging = charging,
             alarm = alarm,
             fixAgeSeconds = sosNow?.let { ((it - fixTime) / 1000L).coerceAtLeast(0L) },
+            ringer = readRinger(),
+            wifi = readWifiName(),
         )
 
         TrackingStatus.update { it.copy(battery = battery) }
@@ -503,6 +505,22 @@ class TrackingService : Service(), LocationListener {
     }
 
     // --- Divers ---------------------------------------------------------------
+
+    /** Sonnerie : normal / vibreur / silencieux (affiché aux parents). */
+    private fun readRinger(): String? = runCatching {
+        when ((getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager).ringerMode) {
+            android.media.AudioManager.RINGER_MODE_SILENT -> "silent"
+            android.media.AudioManager.RINGER_MODE_VIBRATE -> "vibrate"
+            else -> "normal"
+        }
+    }.getOrNull()
+
+    /** Nom du Wi-Fi connecté (null si pas de Wi-Fi ou nom masqué par Android). */
+    @Suppress("DEPRECATION")
+    private fun readWifiName(): String? = runCatching {
+        val wifi = applicationContext.getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
+        wifi.connectionInfo?.ssid?.trim('"')?.takeIf { it.isNotBlank() && it != "<unknown ssid>" }
+    }.getOrNull()
 
     @Suppress("DEPRECATION")
     private fun readBattery(): Pair<Int, Boolean> {

@@ -37,6 +37,9 @@ import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.expressions.Expression
 import org.maplibre.android.style.layers.CircleLayer
+import org.maplibre.android.style.layers.FillLayer
+import org.maplibre.geojson.Polygon
+import fr.kinwaypoint.app.net.Place
 import org.maplibre.android.style.layers.LineLayer
 import org.maplibre.android.style.layers.Property
 import org.maplibre.android.style.layers.PropertyFactory
@@ -63,6 +66,8 @@ internal const val FAMILY_SOURCE = "family"
 internal const val TRACE_SOURCE = "traces"
 internal const val HIGHLIGHT_SOURCE = "highlight"
 internal const val AVATAR_LAYER = "family-avatar"
+internal const val PLACE_AREA_SOURCE = "places-area"
+internal const val PLACE_PIN_SOURCE = "places-pin"
 
 /** Carte et style prêts à l'emploi, partagés par l'écran carte et l'historique. */
 internal class KinMapState {
@@ -128,6 +133,40 @@ internal fun KinMap(state: KinMapState, modifier: Modifier = Modifier, attributi
 
 private fun prepareLayers(style: Style): Style {
     if (style.getSource(FAMILY_SOURCE) != null) return style
+
+    // Lieux : zone teintée + contour, sous tout le reste.
+    style.addSource(GeoJsonSource(PLACE_AREA_SOURCE))
+    style.addLayer(
+        FillLayer("places-fill", PLACE_AREA_SOURCE).withProperties(
+            PropertyFactory.fillColor("#5B5BD6"),
+            PropertyFactory.fillOpacity(0.10f),
+        ),
+    )
+    style.addLayer(
+        LineLayer("places-outline", PLACE_AREA_SOURCE).withProperties(
+            PropertyFactory.lineColor("#5B5BD6"),
+            PropertyFactory.lineWidth(1.5f),
+            PropertyFactory.lineOpacity(0.6f),
+            PropertyFactory.lineDasharray(arrayOf(2f, 2f)),
+        ),
+    )
+    style.addSource(GeoJsonSource(PLACE_PIN_SOURCE))
+    style.addLayer(
+        SymbolLayer("places-pin", PLACE_PIN_SOURCE).withProperties(
+            PropertyFactory.iconImage(Expression.get("icon")),
+            PropertyFactory.iconAllowOverlap(true),
+            PropertyFactory.iconIgnorePlacement(true),
+            PropertyFactory.textField(Expression.get("name")),
+            PropertyFactory.textFont(arrayOf("Noto Sans Bold")),
+            PropertyFactory.textSize(12f),
+            PropertyFactory.textAnchor("top"),
+            PropertyFactory.textOffset(arrayOf(0f, 1.5f)),
+            PropertyFactory.textColor("#3F3FB0"),
+            PropertyFactory.textHaloColor("#FFFFFF"),
+            PropertyFactory.textHaloWidth(2f),
+            PropertyFactory.textOptional(true),
+        ),
+    )
 
     // Tracés : liseré blanc dessous pour rester lisible sur tous les fonds.
     style.addSource(GeoJsonSource(TRACE_SOURCE))
@@ -247,23 +286,49 @@ internal fun markerBitmap(
     gradient: List<Int>,
     status: Int?,
     isMe: Boolean,
+    /** Texte au-dessus de l'avatar, ex. « École · 12 min » (null = aucun). */
+    label: String? = null,
+    /** SOS en cours : contour rouge et étiquette rouge. */
+    sos: Boolean = false,
 ): Bitmap {
     val d = context.resources.displayMetrics.density
     val circle = 52 * d
     val border = 3 * d
     val pointer = 10 * d
     val pad = 5 * d
-    val w = (circle + pad * 2).toInt()
-    val h = (pad + circle + pointer).toInt()
+
+    val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = if (sos) android.graphics.Color.WHITE else 0xFF16172B.toInt()
+        textSize = 12 * d
+        typeface = Typeface.DEFAULT_BOLD
+        textAlign = Paint.Align.CENTER
+    }
+    val labelText = label?.let { if (it.length > 28) it.take(27) + "…" else it }
+    val labelW = labelText?.let { labelPaint.measureText(it) + 20 * d } ?: 0f
+    val labelH = if (labelText != null) 24 * d else 0f
+    val gap = if (labelText != null) 4 * d else 0f
+
+    val w = maxOf(circle + pad * 2, labelW + pad * 2).toInt()
+    val top = pad + labelH + gap
+    val h = (top + circle + pointer).toInt()
     val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
     bitmap.density = context.resources.displayMetrics.densityDpi
     val canvas = Canvas(bitmap)
     val cx = w / 2f
-    val cy = pad + circle / 2
+    val cy = top + circle / 2
 
     val white = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = android.graphics.Color.WHITE
+        color = if (sos) 0xFFE5484D.toInt() else android.graphics.Color.WHITE
         setShadowLayer(3 * d, 0f, 1 * d, 0x55000000)
+    }
+    if (labelText != null) {
+        val pill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = if (sos) 0xFFE5484D.toInt() else android.graphics.Color.WHITE
+            setShadowLayer(3 * d, 0f, 1 * d, 0x44000000)
+        }
+        val rect = RectF(cx - labelW / 2, pad, cx + labelW / 2, pad + labelH)
+        canvas.drawRoundRect(rect, labelH / 2, labelH / 2, pill)
+        canvas.drawText(labelText, cx, rect.centerY() - (labelPaint.descent() + labelPaint.ascent()) / 2, labelPaint)
     }
     val tip = Path().apply {
         moveTo(cx - 8 * d, cy + circle / 2 - 6 * d)
@@ -303,6 +368,101 @@ internal fun markerBitmap(
         canvas.drawCircle(dx, dy, dot, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = status })
     }
     return bitmap
+}
+
+// --- Lieux ------------------------------------------------------------------------
+
+/** Emoji d'un type de lieu (dessiné sur la carte) et libellé. */
+internal fun placeEmoji(icon: String) = when (icon) {
+    "home" -> "🏠"
+    "school" -> "🏫"
+    "work" -> "💼"
+    "sport" -> "⚽"
+    "shop" -> "🛒"
+    "friends" -> "👫"
+    else -> "📍"
+}
+
+internal val PlaceTypes = listOf(
+    "home" to "Maison",
+    "school" to "École",
+    "work" to "Travail",
+    "sport" to "Sport",
+    "friends" to "Amis / famille",
+    "shop" to "Commerces",
+    "other" to "Autre",
+)
+
+private fun circlePolygon(lat: Double, lon: Double, radius: Double): Polygon {
+    val points = (0..64).map { i ->
+        val angle = Math.toRadians(i * 360.0 / 64)
+        val dLat = radius / 111_320.0 * kotlin.math.cos(angle)
+        val dLon = radius / (111_320.0 * kotlin.math.cos(Math.toRadians(lat))) * kotlin.math.sin(angle)
+        Point.fromLngLat(lon + dLon, lat + dLat)
+    }
+    return Polygon.fromLngLats(listOf(points))
+}
+
+/** Pastille ronde blanche avec l'emoji du lieu. */
+private fun placeBitmap(context: Context, icon: String): Bitmap {
+    val d = context.resources.displayMetrics.density
+    val size = (34 * d).toInt()
+    val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+    bitmap.density = context.resources.displayMetrics.densityDpi
+    val canvas = Canvas(bitmap)
+    val bg = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xFF5B5BD6.toInt()
+        setShadowLayer(2 * d, 0f, 1 * d, 0x44000000)
+    }
+    canvas.drawRoundRect(RectF(2 * d, 2 * d, size - 2 * d, size - 2 * d), 10 * d, 10 * d, bg)
+    val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 17 * d; textAlign = Paint.Align.CENTER }
+    canvas.drawText(placeEmoji(icon), size / 2f, size / 2f - (text.descent() + text.ascent()) / 2, text)
+    return bitmap
+}
+
+/** Affiche les lieux sur la carte. */
+internal fun Style.setPlaces(context: Context, places: List<Place>) {
+    places.forEach { addImage("place-${it.id}", placeBitmap(context, it.icon)) }
+    getSourceAs<GeoJsonSource>(PLACE_AREA_SOURCE)?.setGeoJson(
+        FeatureCollection.fromFeatures(places.map { Feature.fromGeometry(circlePolygon(it.latitude, it.longitude, it.radius)) }),
+    )
+    getSourceAs<GeoJsonSource>(PLACE_PIN_SOURCE)?.setGeoJson(
+        FeatureCollection.fromFeatures(
+            places.map { p ->
+                Feature.fromGeometry(Point.fromLngLat(p.longitude, p.latitude)).apply {
+                    addStringProperty("icon", "place-${p.id}")
+                    addStringProperty("name", p.name)
+                }
+            },
+        ),
+    )
+}
+
+/** Lieu dans lequel se trouve ce point (le plus proche s'il y en a plusieurs). */
+internal fun placeAt(latitude: Double, longitude: Double, places: List<Place>): Place? {
+    val result = FloatArray(1)
+    return places.mapNotNull { p ->
+        Location.distanceBetween(latitude, longitude, p.latitude, p.longitude, result)
+        if (result[0] <= p.radius) p to result[0] else null
+    }.minByOrNull { it.second }?.first
+}
+
+/** Depuis quand le tracé est-il dans ce lieu (en remontant le temps), ou null. */
+internal fun inPlaceSince(trace: List<TracePoint>, place: Place): Long? {
+    val result = FloatArray(1)
+    var since: Long? = null
+    for (p in trace.asReversed()) {
+        Location.distanceBetween(p.latitude, p.longitude, place.latitude, place.longitude, result)
+        if (result[0] > place.radius) break
+        since = p.time
+    }
+    return since
+}
+
+/** « 12 min », « 2 h 05 ». */
+internal fun shortDuration(millis: Long): String {
+    val minutes = (millis / 60_000).coerceAtLeast(0)
+    return if (minutes < 60) "$minutes min" else "${minutes / 60} h ${String.format(java.util.Locale.FRANCE, "%02d", minutes % 60)}"
 }
 
 /** Position de ce téléphone, mise à jour toutes les 10 s tant que l'écran est affiché. */
