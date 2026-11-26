@@ -62,7 +62,22 @@ jobs:
           APK=$(ls app/build/outputs/apk/release/*.apk | head -1)
           BT=$(ls -d "${ANDROID_HOME:-$ANDROID_SDK_ROOT}"/build-tools/* | sort -V | tail -1)
           echo "apk : $APK"
-          "$BT/apksigner" verify --print-certs "$APK"
+          "$BT/apksigner" verify --print-certs "$APK" | tee /tmp/certs.txt
+
+          # Garde-fou : sans cette clé exacte, plus aucune mise à jour ne
+          # s'installerait par-dessus l'app déjà déployée sur les téléphones.
+          EXPECTED=12619199f2345cdefe4373c5d7a26fde2227f4d7b70d16cf44aca63f36fe0ee4
+          grep -qi "$EXPECTED" /tmp/certs.txt || {
+            echo "::error::APK signé avec une autre clé que celle de KinWaypoint — mise à jour impossible en l'état."
+            exit 1
+          }
+
+          # Garde-fou : un applicationId différent crée une application distincte.
+          "$BT/aapt2" dump badging "$APK" | grep -E "^package:" || true
+          "$BT/aapt2" dump badging "$APK" | grep -q "package: name='fr.kinwaypoint.app'" || {
+            echo "::error::applicationId inattendu : l'app ne remplacerait pas l'installation existante."
+            exit 1
+          }
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
