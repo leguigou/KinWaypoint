@@ -11,6 +11,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.filled.AddAPhoto
 import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.HideImage
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material.icons.filled.BatteryFull
 import androidx.compose.material.icons.filled.CloudOff
@@ -96,12 +97,14 @@ private const val REFRESH_MS = 30_000L
 fun ParentLoginScreen(
     repository: SettingsRepository,
     current: ParentConfig,
+    actions: PlatformActions,
     onCancel: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    var apiUrl by remember { mutableStateOf(current.apiUrl) }
-    var trackUrl by remember { mutableStateOf(current.trackUrl) }
-    var email by remember { mutableStateOf(current.email) }
+    var apiUrl by remember(current.apiUrl) { mutableStateOf(current.apiUrl) }
+    var trackUrl by remember(current.trackUrl) { mutableStateOf(current.trackUrl) }
+    var email by remember(current.email) { mutableStateOf(current.email) }
+    var showConfigCode by remember { mutableStateOf(false) }
     var password by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -113,6 +116,11 @@ fun ParentLoginScreen(
         ) {
             BrandMark(size = 56.dp)
             Text("Espace parent", style = MaterialTheme.typography.headlineMedium)
+            FilledTonalButton(onClick = { showConfigCode = true }, shape = CircleShape) {
+                Icon(Icons.Default.Link, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.size(8.dp))
+                Text("J'ai un code de configuration")
+            }
             Text(
                 "Connecte-toi avec ton compte du serveur familial. Le mot de passe n'est pas conservé : " +
                     "le téléphone garde seulement un jeton d'accès valable un an.",
@@ -200,6 +208,30 @@ fun ParentLoginScreen(
             }
         }
     }
+
+    if (showConfigCode) {
+        ParentConfigCode(
+            actions = actions,
+            onDismiss = { showConfigCode = false },
+            onFilled = { a, t, e ->
+                showConfigCode = false
+                apiUrl = a
+                t?.let { trackUrl = it }
+                e?.let { email = it }
+            },
+        )
+    }
+}
+
+/** Champs de connexion pré-remplis par un code de configuration (le mot de passe reste à saisir). */
+@Composable
+private fun ParentConfigCode(actions: PlatformActions, onFilled: (apiUrl: String, trackUrl: String?, email: String?) -> Unit, onDismiss: () -> Unit) {
+    ConfigCodeDialog(
+        actions = actions,
+        expected = fr.kinwaypoint.app.data.AppMode.PARENT,
+        onDismiss = onDismiss,
+        onResult = { cfg -> cfg.parent?.let { onFilled(it.apiUrl, it.trackUrl, it.email) } },
+    )
 }
 
 /** Tableau de bord parent : chaque membre, sa dernière position, sa batterie, les SOS. */

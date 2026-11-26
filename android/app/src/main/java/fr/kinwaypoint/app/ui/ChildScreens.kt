@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.BatteryFull
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.GpsFixed
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.NotificationsOff
@@ -172,10 +173,13 @@ fun ChildSettingsScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var serverUrl by remember { mutableStateOf(config.serverUrl) }
-    var deviceId by remember { mutableStateOf(config.deviceId) }
-    var interval by remember { mutableStateOf(config.intervalSeconds.toString()) }
+    // Clé = config : si la configuration change (code reçu, enregistrement), les champs suivent.
+    var serverUrl by remember(config) { mutableStateOf(config.serverUrl) }
+    var deviceId by remember(config) { mutableStateOf(config.deviceId) }
+    var interval by remember(config) { mutableStateOf(config.intervalSeconds.toString()) }
     var confirmModeChange by remember { mutableStateOf(false) }
+    var showConfigCode by remember { mutableStateOf(false) }
+    var scannedLink by remember { mutableStateOf<String?>(null) }
 
     BackHandler(onBack = onClose)
 
@@ -214,6 +218,11 @@ fun ChildSettingsScreen(
                         val payload = SetupPayload.decode(text)
                         when {
                             text == null -> Unit
+                            // QR contenant un lien de configuration : on va chercher la configuration.
+                            fr.kinwaypoint.app.net.RemoteConfig.looksLikeLink(text) -> {
+                                scannedLink = text.trim()
+                                showConfigCode = true
+                            }
                             payload == null -> Toast.makeText(context, "Ce QR code n'est pas un code KinWaypoint", Toast.LENGTH_LONG).show()
                             else -> {
                                 serverUrl = payload.serverUrl
@@ -230,6 +239,16 @@ fun ChildSettingsScreen(
                 Icon(Icons.Default.QrCodeScanner, contentDescription = null)
                 Spacer(Modifier.size(10.dp))
                 Text("Scanner le QR code de configuration")
+            }
+
+            OutlinedButton(
+                onClick = { scannedLink = null; showConfigCode = true },
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+                shape = CircleShape,
+            ) {
+                Icon(Icons.Default.Link, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.size(8.dp))
+                Text("J'ai un code de configuration")
             }
 
             SectionCard {
@@ -312,6 +331,28 @@ fun ChildSettingsScreen(
                 Text("Terminé — verrouiller")
             }
         }
+    }
+
+    if (showConfigCode) {
+        ConfigCodeDialog(
+            actions = actions,
+            expected = fr.kinwaypoint.app.data.AppMode.CHILD,
+            initialLink = scannedLink,
+            onDismiss = { showConfigCode = false },
+            onResult = { cfg ->
+                showConfigCode = false
+                cfg.child?.let { c ->
+                    serverUrl = c.serverUrl
+                    deviceId = c.deviceId
+                    c.intervalSeconds?.let { interval = it.toString() }
+                }
+                Toast.makeText(
+                    context,
+                    (cfg.label?.let { "$it — " } ?: "") + "configuration reçue, vérifie puis enregistre",
+                    Toast.LENGTH_LONG,
+                ).show()
+            },
+        )
     }
 
     if (confirmModeChange) {
