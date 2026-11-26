@@ -2,6 +2,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -81,12 +82,19 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("androidx.datastore:datastore-preferences:1.1.1")
     implementation("androidx.biometric:biometric:1.1.0")
+    // zxing-android-embedded tire une version de Fragment trop ancienne : lint
+    // refuse le build release (InvalidFragmentVersionForActivityResult).
+    implementation("androidx.fragment:fragment-ktx:1.8.5")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     // QR code : génération (zxing core) et scan caméra, sans Google Play Services.
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
     // Carte : MapLibre (open source, sans clé ni compte) + tuiles OpenStreetMap.
     implementation("org.maplibre.gl:android-sdk:11.10.0")
+    // Notifications poussées (app fermée). Firebase ne transporte que le texte
+    // de l'alerte ; les positions restent sur notre serveur.
+    implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
+    implementation("com.google.firebase:firebase-messaging")
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
 }

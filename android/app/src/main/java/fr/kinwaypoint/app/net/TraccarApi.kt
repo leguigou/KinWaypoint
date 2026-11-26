@@ -227,6 +227,58 @@ class TraccarApi(baseUrl: String) {
 
     private fun url(path: String): HttpUrl = base.newBuilder().addPathSegments(path).build()
 
+    /**
+     * Déclare le jeton Firebase du téléphone sur le compte, dans l'attribut
+     * `notificationTokens` que lit le notificateur Firebase de Traccar.
+     *
+     * Traccar refuse un PUT partiel (400) et son update réécrit toutes les
+     * colonnes sauf `id` : il faut donc relire l'objet utilisateur complet,
+     * modifier l'attribut, puis le renvoyer tel quel (vérifié en prod).
+     */
+    fun registerPushToken(token: String, fcmToken: String) {
+        // /api/session n'accepte pas le Bearer : l'identité passe par ?token=
+        val sessionUrl = url("api/session").newBuilder().addQueryParameter("token", token).build()
+        val me = getObject(token, sessionUrl)
+        val userId = me.getLong("id")
+        val user = getObject(token, url("api/users/$userId"))
+        val attributes = user.optJSONObject("attributes") ?: JSONObject()
+        val existing = attributes.optString("notificationTokens")
+            .split(Regex("[, ]+"))
+            .filter { it.isNotBlank() }
+        if (fcmToken in existing) return
+        attributes.put("notificationTokens", (existing + fcmToken).joinToString(","))
+        user.put("attributes", attributes)
+        putObject(token, url("api/users/$userId"), user.toString())
+    }
+
+    private fun getObject(token: String, url: HttpUrl): JSONObject {
+        val request = Request.Builder()
+            .url(url)
+            .header("Authorization", "Bearer $token")
+            .header("Accept", "application/json")
+            .get()
+            .build()
+        http.newCall(request).execute().use { response ->
+            if (response.code == 401) throw AuthException("Session expirée, reconnecte-toi")
+            if (!response.isSuccessful) error("Erreur serveur (HTTP ${response.code})")
+            return JSONObject(response.body?.string().orEmpty())
+        }
+    }
+
+    private fun putObject(token: String, url: HttpUrl, body: String): JSONObject {
+        val request = Request.Builder()
+            .url(url)
+            .header("Authorization", "Bearer $token")
+            .header("Accept", "application/json")
+            .put(body.toRequestBody("application/json".toMediaType()))
+            .build()
+        http.newCall(request).execute().use { response ->
+            if (response.code == 401) throw AuthException("Session expirée, reconnecte-toi")
+            if (!response.isSuccessful) error("Erreur serveur (HTTP ${response.code})")
+            return JSONObject(response.body?.string().orEmpty())
+        }
+    }
+
     private fun getArray(token: String, url: HttpUrl): JSONArray {
         val request = Request.Builder()
             .url(url)

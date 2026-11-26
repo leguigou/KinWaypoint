@@ -10,6 +10,7 @@ import android.os.Bundle
 import android.os.PowerManager
 import android.os.SystemClock
 import android.provider.Settings
+import android.util.Log
 import android.widget.Toast
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG
@@ -26,14 +27,22 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
+import com.google.firebase.messaging.FirebaseMessaging
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import org.maplibre.android.MapLibre
 import fr.kinwaypoint.app.data.SettingsRepository
+import fr.kinwaypoint.app.net.TraccarApi
 import fr.kinwaypoint.app.ui.AppRoot
 import fr.kinwaypoint.app.ui.KinWaypointTheme
 import fr.kinwaypoint.app.ui.PermissionSnapshot
 import fr.kinwaypoint.app.ui.PlatformActions
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Locale
 
 // FragmentActivity (et non ComponentActivity) : exigée par BiometricPrompt.
@@ -68,6 +77,32 @@ class MainActivity : FragmentActivity() {
         // Initialisation de la carte, une fois, avant tout affichage.
         MapLibre.getInstance(applicationContext)
         val repository = SettingsRepository(applicationContext)
+
+        // Notifications poussées : on récupère le jeton FCM, puis on le déclare
+        // au serveur dès que le parent est connecté (attribut notificationTokens
+        // lu par le notificateur Firebase de Traccar).
+        lifecycleScope.launch {
+            runCatching {
+                FirebaseMessaging.getInstance().token.addOnSuccessListener { token ->
+                    lifecycleScope.launch { repository.savePushToken(token) }
+                }
+            }.onFailure { Log.w("KinWaypoint", "Firebase indisponible : ${it.message}") }
+        }
+
+        lifecycleScope.launch {
+            combine(repository.parent, repository.pushToken) { parent, token -> parent to token }
+                .collect { (parent, token) ->
+                    if (parent.isConnected && !token.isNullOrBlank()) {
+                        runCatching {
+                            withContext(Dispatchers.IO) {
+                                TraccarApi(parent.apiUrl).registerPushToken(parent.token, token)
+                            }
+                        }.onFailure {
+                            Log.w("KinWaypoint", "jeton push non déclaré : ${it.message}")
+                        }
+                    }
+                }
+        }
         val actions = PlatformActions(
             requestLocation = { requestLocation.launch(locationPermissions()) },
             openAppSettings = { openAppSettings() },
