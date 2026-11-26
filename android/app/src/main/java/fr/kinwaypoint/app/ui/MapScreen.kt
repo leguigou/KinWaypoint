@@ -78,9 +78,9 @@ private const val FALLBACK_STYLE = """
 
 private const val SOURCE_ID = "family"
 private const val ME_ID = -1L
-private const val COLOR_ME = "#1565C0"
-private const val COLOR_ONLINE = "#2E7D32"
-private const val COLOR_OFFLINE = "#757575"
+private const val COLOR_ME = "#5B5BD6"
+private const val COLOR_ONLINE = "#12B886"
+private const val COLOR_OFFLINE = "#9AA0B4"
 
 /**
  * Carte de la famille : chaque membre (vert = en ligne, gris = hors ligne) et
@@ -199,7 +199,7 @@ fun FamilyMapScreen(
             FilledTonalIconButton(onClick = onBack) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Retour")
             }
-            Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
+            Card(colors = CardDefaults.cardColors(containerColor = CardSurface)) {
                 Text(
                     "Carte de la famille",
                     fontWeight = FontWeight.SemiBold,
@@ -214,7 +214,7 @@ fun FamilyMapScreen(
         ) {
             val member = members.firstOrNull { it.id == selected }
             member?.position?.let { p ->
-                Card(colors = CardDefaults.cardColors(containerColor = Color.White), modifier = Modifier.fillMaxWidth()) {
+                Card(colors = CardDefaults.cardColors(containerColor = CardSurface), modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(member.name, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
                         Text(
@@ -236,7 +236,7 @@ fun FamilyMapScreen(
                 AssistChip(
                     onClick = { map?.let { frameAll(it, points.map { p -> p.second }) }; selected = null },
                     label = { Text("Tout le monde") },
-                    colors = AssistChipDefaults.assistChipColors(containerColor = Color.White),
+                    colors = AssistChipDefaults.assistChipColors(containerColor = CardSurface),
                 )
                 if (me != null) {
                     AssistChip(
@@ -244,14 +244,14 @@ fun FamilyMapScreen(
                             map?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(me.latitude, me.longitude), 16.0))
                             selected = null
                         },
-                        label = { Text("● Moi", color = Color(0xFF1565C0)) },
-                        colors = AssistChipDefaults.assistChipColors(containerColor = Color.White),
+                        label = { Text("● Moi", color = AppTheme.colors.me) },
+                        colors = AssistChipDefaults.assistChipColors(containerColor = CardSurface),
                     )
                 } else {
                     AssistChip(
                         onClick = actions.requestLocation,
                         label = { Text("Afficher ma position") },
-                        colors = AssistChipDefaults.assistChipColors(containerColor = Color.White),
+                        colors = AssistChipDefaults.assistChipColors(containerColor = CardSurface),
                     )
                 }
                 members.forEach { m ->
@@ -262,7 +262,7 @@ fun FamilyMapScreen(
                             selected = m.id
                         },
                         label = { Text("● ${m.name}", color = if (m.online) Ok else Idle) },
-                        colors = AssistChipDefaults.assistChipColors(containerColor = Color.White),
+                        colors = AssistChipDefaults.assistChipColors(containerColor = CardSurface),
                     )
                 }
             }
@@ -276,7 +276,7 @@ private fun prepare(style: Style): Style {
         style.addSource(GeoJsonSource(SOURCE_ID))
         style.addLayer(
             CircleLayer("family-dot", SOURCE_ID).withProperties(
-                PropertyFactory.circleRadius(9f),
+                PropertyFactory.circleRadius(10f),
                 PropertyFactory.circleColor(Expression.toColor(Expression.get("color"))),
                 PropertyFactory.circleStrokeColor("#FFFFFF"),
                 PropertyFactory.circleStrokeWidth(3f),
@@ -289,7 +289,7 @@ private fun prepare(style: Style): Style {
                 PropertyFactory.textSize(14f),
                 PropertyFactory.textOffset(arrayOf(0f, 1.4f)),
                 PropertyFactory.textAnchor("top"),
-                PropertyFactory.textColor("#1F2A27"),
+                PropertyFactory.textColor("#16172B"),
                 PropertyFactory.textHaloColor("#FFFFFF"),
                 PropertyFactory.textHaloWidth(2f),
                 PropertyFactory.textAllowOverlap(true),

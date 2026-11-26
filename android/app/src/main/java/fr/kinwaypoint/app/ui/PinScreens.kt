@@ -15,7 +15,18 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Fingerprint
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.automirrored.filled.Backspace
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -42,7 +53,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
-/** Pavé numérique générique : points, chiffres, effacer, valider. */
+/** Pavé numérique générique : logo, points animés, touches rondes, empreinte. */
 @Composable
 fun PinPad(
     title: String,
@@ -54,60 +65,97 @@ fun PinPad(
     onBiometric: (() -> Unit)? = null,
 ) {
     var pin by remember { mutableStateOf("") }
+    val haptic = LocalHapticFeedback.current
 
     onCancel?.let { BackHandler(onBack = it) }
 
+    fun press(key: String) {
+        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        when (key) {
+            "⌫" -> pin = pin.dropLast(1)
+            "OK" -> if (Pin.isWellFormed(pin)) {
+                val value = pin
+                pin = ""
+                onSubmit(value)
+            }
+            else -> if (pin.length < Pin.MAX_LENGTH) pin += key
+        }
+    }
+
     Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .systemBarsPadding()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 24.dp, vertical = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Text(title, fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Green, textAlign = TextAlign.Center)
-        Spacer(Modifier.height(8.dp))
-        Text(subtitle, fontSize = 14.sp, color = Muted, textAlign = TextAlign.Center)
-        Spacer(Modifier.height(24.dp))
+        BrandMark(size = 64.dp)
+        Spacer(Modifier.height(20.dp))
+        Text(title, style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(6.dp))
+        Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = Muted, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(28.dp))
 
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        // Points : un par chiffre saisi (au moins 4), qui grossissent quand ils se remplissent.
+        Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
             repeat(maxOf(Pin.MIN_LENGTH, pin.length)) { i ->
+                val filled = i < pin.length
+                val dot by animateDpAsState(if (filled) 16.dp else 12.dp, label = "dot")
                 Box(
-                    Modifier.size(16.dp).clip(CircleShape)
-                        .background(if (i < pin.length) Green else Color(0xFFD5DEDB)),
+                    Modifier.size(dot).clip(CircleShape).background(
+                        if (filled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                    ),
                 )
             }
         }
 
-        Spacer(Modifier.height(16.dp))
-        Text(error.orEmpty(), color = Danger, fontSize = 14.sp, textAlign = TextAlign.Center, modifier = Modifier.height(40.dp))
+        Spacer(Modifier.height(12.dp))
+        Text(
+            error.orEmpty(),
+            color = Danger,
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.height(44.dp),
+        )
 
         val rows = listOf(listOf("1", "2", "3"), listOf("4", "5", "6"), listOf("7", "8", "9"), listOf("⌫", "0", "OK"))
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
             rows.forEach { row ->
-                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(22.dp)) {
                     row.forEach { key ->
-                        FilledTonalButton(
-                            onClick = {
-                                when (key) {
-                                    "⌫" -> pin = pin.dropLast(1)
-                                    "OK" -> if (Pin.isWellFormed(pin)) {
-                                        val value = pin
-                                        pin = ""
-                                        onSubmit(value)
-                                    }
-                                    else -> if (pin.length < Pin.MAX_LENGTH) pin += key
-                                }
-                            },
-                            enabled = enabled && (key != "OK" || Pin.isWellFormed(pin)),
-                            modifier = Modifier.size(72.dp),
+                        val isOk = key == "OK"
+                        val keyEnabled = enabled && (!isOk || Pin.isWellFormed(pin)) && (key != "⌫" || pin.isNotEmpty())
+                        Surface(
+                            onClick = { press(key) },
+                            enabled = keyEnabled,
                             shape = CircleShape,
-                        ) { Text(key, fontSize = if (key.length > 1) 16.sp else 24.sp) }
+                            color = when {
+                                isOk && keyEnabled -> MaterialTheme.colorScheme.primary
+                                key == "⌫" -> Color.Transparent
+                                else -> AppTheme.colors.keypad
+                            },
+                            contentColor = if (isOk && keyEnabled) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.size(76.dp).alpha(if (keyEnabled || key.length == 1) 1f else 0.4f),
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                when (key) {
+                                    "⌫" -> Icon(Icons.AutoMirrored.Filled.Backspace, contentDescription = "Effacer")
+                                    "OK" -> Icon(Icons.Default.Check, contentDescription = "Valider", modifier = Modifier.size(30.dp))
+                                    else -> Text(key, fontSize = 28.sp, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
 
         if (onBiometric != null) {
-            Spacer(Modifier.height(16.dp))
-            OutlinedButton(onClick = onBiometric) {
+            Spacer(Modifier.height(24.dp))
+            FilledTonalButton(onClick = onBiometric, shape = CircleShape) {
                 Icon(Icons.Default.Fingerprint, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
                 Text("Utiliser l'empreinte")
@@ -115,7 +163,7 @@ fun PinPad(
         }
 
         if (onCancel != null) {
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(8.dp))
             TextButton(onClick = onCancel) { Text("Annuler") }
         }
     }

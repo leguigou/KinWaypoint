@@ -16,6 +16,7 @@ import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG
 import androidx.biometric.BiometricPrompt
 import androidx.fragment.app.FragmentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
@@ -61,6 +62,8 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Barres système transparentes : l'appli dessine jusqu'aux bords (clair et sombre).
+        enableEdgeToEdge()
         permissionsState = snapshotPermissions()
         // Initialisation de la carte, une fois, avant tout affichage.
         MapLibre.getInstance(applicationContext)
