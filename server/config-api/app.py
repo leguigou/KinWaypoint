@@ -50,6 +50,18 @@ TRACCAR_API_URL = os.environ.get("KW_TRACCAR_API_URL", "").rstrip("/")
 TRACCAR_TRACK_URL = os.environ.get("KW_TRACCAR_TRACK_URL", "").rstrip("/")
 COOKIE_NAME = "kwapk"
 COOKIE_DAYS = 30
+# Une consommation n'est pas instantanément fatale : on tolère quelques
+# relectures dans une courte fenêtre (double-tap, mauvais réseau, retour arrière
+# du navigateur) avant de fermer définitivement le jeton.
+GRACE_MINUTES = 10
+MAX_READS = 3
+# Aperçus de liens : ces agents consommaient le jeton avant l'utilisateur
+# (Telegram a brûlé un code en 2 s) et envoyaient la configuration à un tiers.
+PREVIEW_BOTS = (
+    "telegrambot", "whatsapp", "facebookexternalhit", "twitterbot", "slackbot",
+    "discordbot", "linkedinbot", "googlebot", "bingbot", "embedly",
+    "quora link preview", "pinterest", "skype", "vkshare", "outbrain",
+)
 MAX_APK_BYTES = 200 * 1024 * 1024
 
 LOCK = threading.Lock()
@@ -61,6 +73,13 @@ def now():
 
 def iso(dt):
     return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def parse_iso(text):
+    try:
+        return datetime.strptime(text, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except (TypeError, ValueError):
+        return None
 
 
 def load():
@@ -136,18 +155,6 @@ def load_apks():
     items = [v for v in meta.values() if os.path.isfile(os.path.join(APK_DIR, v.get("file", "")))]
     items.sort(key=lambda x: (x.get("uploadedAt", ""), x.get("file", "")), reverse=True)
     return items
-
-
-def latest_apk():
-    """Dernier APK publié : le plus grand versionCode (« 1.2.0 (15) »), à égalité le plus récent."""
-    best = None
-    for item in load_apks():  # déjà trié du plus récent au plus ancien
-        name, code = split_version(item.get("version", ""))
-        if not code.isdigit():
-            continue
-        if best is None or int(code) > best[0]:
-            best = (int(code), name, item)
-    return best
 
 
 def human(size):
@@ -230,6 +237,18 @@ def split_version(raw):
     return (raw or "").strip(), ""
 
 
+def latest_apk():
+    """Dernier APK publié : le plus grand versionCode, à égalité le plus récent."""
+    best = None
+    for item in load_apks():  # déjà trié du plus récent au plus ancien
+        name, code = split_version(item.get("version", ""))
+        if not code.isdigit():
+            continue
+        if best is None or int(code) > best[0]:
+            best = (int(code), name, item)
+    return best
+
+
 def render_login(error=""):
     return page(f"""<div class="brand"><span class="dot"></span>KinWaypoint</div>
 <h1>Dépôt d'APK</h1>
@@ -259,7 +278,7 @@ def render_index(items):
         <div class="meta">{human(it.get("size", 0))} · {html.escape(fr_when(it.get("uploadedAt", "")))}</div>
         {note_html}
       </div>
-      <div class="dl"><a class="pill" href="{html.escape(name)}">Télécharger</a></div>
+      <div class="dl"><a class="pill" href="/apk/{html.escape(name)}">Télécharger</a></div>
     </li>""")
     body = rows and f'<ul class="list">{"".join(rows)}</ul>' or '<p class="empty">Aucun APK pour le moment.</p>'
     count = f"{len(items)} version" + ("s" if len(items) > 1 else "")
@@ -343,7 +362,15 @@ class Handler(BaseHTTPRequestHandler):
 
     # -------------------------------------------------------------------- GET
     def do_GET(self):
-        path = self.path.split("?")[0].rstrip("/")
+        raw_path, _, query = self.path.partition("?")
+        path = raw_path.rstrip("/")
+
+        # URL canonique : sans le slash final, les liens relatifs d'un
+        # navigateur repartent de la racine du domaine (404 sur l'APK).
+        if raw_path == "/apk":
+            suffix = f"?{query}" if query else ""
+            self.reply_html(308, "", {"Location": f"/apk/{suffix}"})
+            return
 
         if path == "/health":
             self.reply(200, {"status": "ok"})
@@ -432,6 +459,11 @@ class Handler(BaseHTTPRequestHandler):
 
         if path.startswith("/kw/"):
             token = path[len("/kw/"):]
+            user_agent = (self.headers.get("User-Agent") or "").lower()
+            if any(bot in user_agent for bot in PREVIEW_BOTS):
+                self.log_message("apercu de lien refuse (UA: %s)", user_agent[:50])
+                self.reply(403, {"error": "apercu de lien refuse"})
+                return
             if not token or "/" in token:
                 self.reply(404, {"error": "inconnu"})
                 return
@@ -441,26 +473,87 @@ class Handler(BaseHTTPRequestHandler):
                 if entry is None:
                     self.reply(404, {"error": "inconnu"})
                     return
-                if entry.get("used"):
-                    self.log_message("token deja utilise")
-                    self.reply(410, {"error": "deja utilise"})
-                    return
                 if expired(entry):
                     self.log_message("token expire")
                     self.reply(410, {"error": "expire"})
                     return
-                entry["used"] = True
-                entry["usedAt"] = iso(now())
+                if entry.get("used"):
+                    used_at = parse_iso(entry.get("usedAt"))
+                    reads = int(entry.get("usedCount", 1))
+                    too_old = used_at is None or (now() - used_at) > timedelta(minutes=GRACE_MINUTES)
+                    if too_old or reads >= MAX_READS:
+                        self.log_message("token deja utilise (lectures: %d)", reads)
+                        self.reply(410, {"error": "deja utilise"})
+                        return
+                    entry["usedCount"] = reads + 1
+                    self.log_message("relecture toleree (%d/%d)", reads + 1, MAX_READS)
+                else:
+                    entry["used"] = True
+                    entry["usedAt"] = iso(now())
+                    entry["usedCount"] = 1
+                    self.log_message("configuration servie (usage unique)")
                 entry["usedFrom"] = self.client_address[0]
                 data[token] = entry
                 save(data)
                 payload = dict(entry["payload"])
                 payload["expiresAt"] = entry["expiresAt"]
-            self.log_message("configuration servie (usage unique)")
             self.reply(200, payload)
             return
 
         self.reply(404, {"error": "route inconnue"})
+
+    # ------------------------------------------------------------------- HEAD
+    def do_HEAD(self):
+        """Répond aux vérifications de lien (curl -I, gestionnaires de
+        téléchargement Android) : mêmes en-têtes que GET, sans le corps."""
+        raw_path, _, query = self.path.partition("?")
+        path = raw_path.rstrip("/")
+
+        def empty(code):
+            self.send_response(code)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+        if path == "/health":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+
+        if path == "/apk/latest.json":
+            self.send_response(200 if latest_apk() else 404)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+
+        target = ""
+        if path == "/apk/latest.apk":
+            best = latest_apk()
+            target = os.path.join(APK_DIR, best[2]["file"]) if best else ""
+            if not best or not os.path.isfile(target):
+                empty(404)
+                return
+        elif path.startswith("/apk/"):
+            if not self.apk_authorized():
+                empty(401)
+                return
+            name = safe_name(path[len("/apk/"):])
+            target = os.path.join(APK_DIR, name)
+            if not name or not os.path.isfile(target):
+                empty(404)
+                return
+        else:
+            empty(404)
+            return
+
+        size = os.path.getsize(target)
+        self.send_response(200)
+        self.send_header("Content-Type", "application/vnd.android.package-archive")
+        self.send_header("Content-Length", str(size))
+        self.send_header("Content-Disposition", f'attachment; filename="{os.path.basename(target)}"')
+        self.end_headers()
 
     # ------------------------------------------------------------------- POST
     def do_POST(self):

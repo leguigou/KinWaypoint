@@ -146,4 +146,16 @@ curl -s -X POST https://famille.deloffre.fr/config/api/codes \
 ```
 
 Le jeton fait 256 bits (`secrets.token_urlsafe(32)`), la durée de vie est de
-48 h par défaut (`KW_TTL_HOURS`) et chaque code est à usage unique.
+48 h par défaut (`KW_TTL_HOURS`).
+
+**Usage unique, mais pas au sens strict** — deux garde-fous appris à l'usage :
+
+- les agents d'aperçu de liens (Telegram, WhatsApp, Facebook, Slack…) reçoivent
+  un `403` **sans consommer le jeton** : ils déroulaient le lien avant que
+  l'utilisateur ne le colle, et envoyaient la configuration à un tiers ;
+- après la première lecture, le même jeton reste lisible **3 fois pendant
+  10 minutes** (`MAX_READS` / `GRACE_MINUTES`), le temps de survivre à un
+  double-tap ou à un retour arrière du navigateur ; au-delà, `410`.
+
+Conséquence pratique : ne pas envoyer ces liens par messagerie sans cette
+protection, et préférer un copier-coller direct.
