@@ -50,6 +50,10 @@
         </service>
 
         <receiver
+            android:name=".service.StopRingReceiver"
+            android:exported="false" />
+
+        <receiver
             android:name=".service.BootReceiver"
             android:enabled="true"
             android:exported="true">

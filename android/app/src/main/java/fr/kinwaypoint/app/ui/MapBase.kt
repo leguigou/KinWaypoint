@@ -264,14 +264,22 @@ internal fun formatDistance(meters: Float): String = when {
     else -> "${(meters / 1000).toInt()} km"
 }
 
-internal fun frameAll(map: MapLibreMap, points: List<LatLng>, bottomPaddingPx: Int = 520) {
+/** Zones de la carte masquées (barre du haut, fiches du bas), en pixels. */
+internal data class MapInsets(val top: Int, val bottom: Int, val side: Int)
+
+/**
+ * Cadre tous les points dans la partie visible de la carte : les marges
+ * (« zones mortes ») tiennent compte des éléments posés par-dessus.
+ */
+internal fun frameAll(map: MapLibreMap, points: List<LatLng>, bottomPaddingPx: Int = 520, insets: MapInsets? = null) {
     if (points.isEmpty()) return
+    val pad = insets ?: MapInsets(top = 260, bottom = bottomPaddingPx, side = 120)
     val bounds = LatLngBounds.Builder().includes(points).build()
     // Points quasi confondus : un cadrage « bounds » zoomerait au maximum.
     if (points.size == 1 || bounds.latitudeSpan < 0.002 && bounds.longitudeSpan < 0.002) {
         map.animateCamera(CameraUpdateFactory.newLatLngZoom(bounds.center, 15.0))
     } else {
-        map.animateCamera(CameraUpdateFactory.newLatLngBounds(bounds, 120, 260, 120, bottomPaddingPx))
+        map.animateCamera(CameraUpdateFactory.newLatLngBounds(bounds, pad.side, pad.top, pad.side, pad.bottom))
     }
 }
 

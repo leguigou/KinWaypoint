@@ -189,6 +189,17 @@ fun ChildHomeScreen(
                 }
             }
 
+            if (config.isValid && config.enabled) {
+                OutlinedButton(
+                    onClick = {
+                        TrackingService.checkIn(context)
+                        Toast.makeText(context, "Message envoyé : tu es bien arrivé·e ✅", Toast.LENGTH_LONG).show()
+                    },
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    shape = CircleShape,
+                ) { Text("✅ Je suis bien arrivé·e") }
+            }
+
             if (config.isValid) {
                 Spacer(Modifier.height(4.dp))
                 SosHoldButton(
@@ -271,6 +282,8 @@ fun ChildSettingsScreen(
             }
 
             StatusCard(status = status, permissions = permissions)
+
+            UpdateBanner()
 
             Button(
                 onClick = {
@@ -709,6 +722,7 @@ private fun ChildParentsMap(
 ) {
     val api = remember(config.apiUrl) { fr.kinwaypoint.app.net.TraccarApi(config.apiUrl) }
     var parents by remember { mutableStateOf<List<fr.kinwaypoint.app.net.Member>>(emptyList()) }
+    var places by remember { mutableStateOf<List<fr.kinwaypoint.app.net.Place>>(emptyList()) }
     var error by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(api) {
@@ -717,6 +731,10 @@ private fun ChildParentsMap(
                 runCatching { api.members(config.viewerToken) }
             }.onSuccess { parents = it; error = null }
                 .onFailure { error = it.message ?: "Serveur injoignable" }
+            // Lieux (maison, école…) partagés par les parents ; absents si non partagés.
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                runCatching { api.places(config.viewerToken) }
+            }.onSuccess { places = it }
             kotlinx.coroutines.delay(30_000)
         }
     }
@@ -731,6 +749,7 @@ private fun ChildParentsMap(
             actions = actions,
             onBack = onBack,
             title = "Ma famille",
+            places = places,
             // Son propre appareil apparaît comme « Moi ».
             ownDeviceId = parents.firstOrNull { it.uniqueId == config.deviceId }?.id ?: 0L,
         )
