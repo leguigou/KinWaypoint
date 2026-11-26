@@ -233,6 +233,18 @@ def split_version(raw):
     return (raw or "").strip(), ""
 
 
+def latest_apk():
+    """Dernier APK publié : le plus grand versionCode, à égalité le plus récent."""
+    best = None
+    for item in load_apks():  # déjà trié du plus récent au plus ancien
+        name, code = split_version(item.get("version", ""))
+        if not code.isdigit():
+            continue
+        if best is None or int(code) > best[0]:
+            best = (int(code), name, item)
+    return best
+
+
 def render_login(error=""):
     return page(f"""<div class="brand"><span class="dot"></span>KinWaypoint</div>
 <h1>Dépôt d'APK</h1>
@@ -367,6 +379,44 @@ class Handler(BaseHTTPRequestHandler):
             })
             return
 
+        # --- Mise à jour depuis l'appli : PUBLIC (sans code), et uniquement la
+        # dernière version. La liste complète et les anciens APK restent protégés.
+        if path == "/apk/latest.json":
+            best = latest_apk()
+            if best is None:
+                self.reply(404, {"error": "aucun APK versionne"})
+                return
+            code, name, item = best
+            self.reply(200, {
+                "versionCode": code,
+                "versionName": name,
+                "file": item.get("file"),
+                "size": item.get("size"),
+                "sha256": item.get("sha256", ""),
+                "uploadedAt": item.get("uploadedAt", ""),
+                "note": item.get("note", ""),
+                "apkUrl": f"{APK_BASE_URL}/apk/latest.apk",
+            })
+            return
+
+        if path == "/apk/latest.apk":
+            best = latest_apk()
+            full = os.path.join(APK_DIR, best[2]["file"]) if best else ""
+            if not best or not os.path.isfile(full):
+                self.reply(404, {"error": "aucun APK"})
+                return
+            size = os.path.getsize(full)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/vnd.android.package-archive")
+            self.send_header("Content-Length", str(size))
+            self.send_header("Content-Disposition", f'attachment; filename="{best[2]["file"]}"')
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            with open(full, "rb") as f:
+                shutil.copyfileobj(f, self.wfile, 64 * 1024)
+            self.log_message("apk (mise a jour) servi: %s (%d o)", best[2]["file"], size)
+            return
+
         if path == "/apk" or path.startswith("/apk/"):
             if not self.require_apk_auth():
                 return
@@ -439,6 +489,59 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         self.reply(404, {"error": "route inconnue"})
+
+    # ------------------------------------------------------------------- HEAD
+    def do_HEAD(self):
+        """Répond aux vérifications de lien (curl -I, gestionnaires de
+        téléchargement Android) : mêmes en-têtes que GET, sans le corps."""
+        raw_path, _, query = self.path.partition("?")
+        path = raw_path.rstrip("/")
+
+        def empty(code):
+            self.send_response(code)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+        if path == "/health":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+
+        if path == "/apk/latest.json":
+            self.send_response(200 if latest_apk() else 404)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+
+        target = ""
+        if path == "/apk/latest.apk":
+            best = latest_apk()
+            target = os.path.join(APK_DIR, best[2]["file"]) if best else ""
+            if not best or not os.path.isfile(target):
+                empty(404)
+                return
+        elif path.startswith("/apk/"):
+            if not self.apk_authorized():
+                empty(401)
+                return
+            name = safe_name(path[len("/apk/"):])
+            target = os.path.join(APK_DIR, name)
+            if not name or not os.path.isfile(target):
+                empty(404)
+                return
+        else:
+            empty(404)
+            return
+
+        size = os.path.getsize(target)
+        self.send_response(200)
+        self.send_header("Content-Type", "application/vnd.android.package-archive")
+        self.send_header("Content-Length", str(size))
+        self.send_header("Content-Disposition", f'attachment; filename="{os.path.basename(target)}"')
+        self.end_headers()
 
     # ------------------------------------------------------------------- POST
     def do_POST(self):
