@@ -57,6 +57,13 @@ jobs:
           ./gradlew --no-daemon --stacktrace testReleaseUnitTest assembleRelease
           mv app/build/outputs/apk/release/app-release.apk "app/build/outputs/apk/release/kinwaypoint-${GITHUB_SHA::7}.apk"
 
+      - name: Vérifier la signature de l'APK
+        run: |
+          APK=$(ls app/build/outputs/apk/release/*.apk | head -1)
+          BT=$(ls -d "${ANDROID_HOME:-$ANDROID_SDK_ROOT}"/build-tools/* | sort -V | tail -1)
+          echo "apk : $APK"
+          "$BT/apksigner" verify --print-certs "$APK"
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
