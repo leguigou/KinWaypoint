@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="432" height="432">
+<defs>
+ <linearGradient id="bg" x1="0" y1="0" x2="108" y2="108" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#A24BFA"/><stop offset="0.5" stop-color="#6E1BF0"/><stop offset="1" stop-color="#4512CC"/></linearGradient>
+ <radialGradient id="glow" cx="30" cy="22" r="60" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#FFFFFF" stop-opacity="0.28"/><stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/></radialGradient>
+ <linearGradient id="bar" x1="0" y1="27.8" x2="0" y2="82.8" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#E6DCFF"/></linearGradient>
+ <linearGradient id="leg" x1="51.1" y1="57.6" x2="66.7" y2="70.9" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#C8B6FA"/><stop offset="1" stop-color="#EEE8FF"/></linearGradient>
+ <linearGradient id="road" x1="40.5" y1="70.8" x2="67.3" y2="45.0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#F3EEFF"/><stop offset="1" stop-color="#FFFFFF"/></linearGradient>
+ <linearGradient id="pin" x1="0" y1="-7.1" x2="0" y2="11.0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#FF9A2E"/><stop offset="1" stop-color="#FF4D3A"/></linearGradient>
+</defs>
+<rect id="BG" width="108" height="108" fill="url(#bg)"/><rect width="108" height="108" fill="url(#glow)"/>
+<g id="FG">
+ <path d="M40.46,39.82 L40.46,70.78" stroke="url(#bar)" stroke-width="12.82" stroke-linecap="round" fill="none"/>
+ <path d="M51.12,57.60 L66.74,70.92" stroke="url(#leg)" stroke-width="12.53" stroke-linecap="round" fill="none"/>
+ <path d="M40.46,70.78 C40.75,59.76 47.16,52.92 67.32,45.00" transform="translate(0.6,1.6)" stroke="#4B1ED2" stroke-opacity="0.14" stroke-width="14.04" stroke-linecap="round" fill="none"/>
+ <path d="M40.46,70.78 C40.75,59.76 47.16,52.92 67.32,45.00" stroke="url(#road)" stroke-width="12.82" stroke-linecap="round" fill="none"/>
+ <path d="M40.69,67.98 L41.16,65.57 M41.89,63.35 L42.95,61.18 M44.28,59.16 L45.89,57.28 M47.55,55.70 L49.48,54.14 M51.40,52.79 L53.55,51.46 M55.61,50.30 L57.73,49.20 M59.89,48.16 L62.07,47.17" stroke="#6A35EA" stroke-width="1.87" stroke-linecap="round" fill="none"/>
+ <g transform="translate(68.90,36.22) rotate(-4)">
+  <path d="M0,11.05 C-2.49,7.84 -7.13,3.21 -7.13,0 A7.13,7.13 0 1,1 7.13,0 C7.13,3.21 2.49,7.84 0,11.05 Z" fill="url(#pin)"/>
+  <circle r="3.21" fill="#FFFFFF"/>
+ </g>
+</g>
+</svg>

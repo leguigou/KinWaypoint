@@ -308,6 +308,13 @@ class TrackingService : Service(), LocationListener {
             config = cfg
             intervalMs = cfg.intervalSeconds.coerceIn(15, 3600) * 1000L
             refreshQueueStatus()
+            // Mises à jour : vérification toutes les 12 h, notification si nouvelle version.
+            launch {
+                while (true) {
+                    runCatching { fr.kinwaypoint.app.ui.notifyIfUpdateAvailable(applicationContext) }
+                    delay(12 * 3600_000L)
+                }
+            }
             withContext(Dispatchers.Main) {
                 registerLocation()
                 registerNetwork()

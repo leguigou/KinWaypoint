@@ -1,10 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Logo KinWaypoint : un « K » dont une branche est une route en pointillés menant à une épingle. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp"
-    android:height="24dp"
-    android:viewportWidth="24"
-    android:viewportHeight="24"
-    android:tint="#FFFFFF">
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M12,2C8.13,2 5,5.13 5,9c0,5.25 7,13 7,13s7,-7.75 7,-13c0,-3.87 -3.13,-7 -7,-7zM12,11.5c-1.38,0 -2.5,-1.12 -2.5,-2.5s1.12,-2.5 2.5,-2.5 2.5,1.12 2.5,2.5 -1.12,2.5 -2.5,2.5z" />
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="56" android:viewportHeight="56">
+<group android:translateX="-26" android:translateY="-26">
+<path android:pathData="M40.46,39.82 L40.46,70.78" android:strokeWidth="12.82" android:strokeLineCap="round" android:strokeColor="#FFFFFFFF"/>
+<path android:pathData="M51.12,57.60 L66.74,70.92" android:strokeWidth="12.53" android:strokeLineCap="round" android:strokeColor="#FFFFFFFF"/>
+<path android:pathData="M40.46,70.78 C40.75,59.76 47.16,52.92 67.32,45.00" android:strokeWidth="12.82" android:strokeLineCap="round" android:strokeColor="#FFFFFFFF"/>
+<group android:translateX="68.90" android:translateY="36.22" android:rotation="-4">
+<path android:pathData="M0,11.05 C-2.49,7.84 -7.13,3.21 -7.13,0 A7.13,7.13 0 1,1 7.13,0 C7.13,3.21 2.49,7.84 0,11.05 Z M-3.21,0 a3.21,3.21 0 1,0 6.42,0 a3.21,3.21 0 1,0 -6.42,0 Z" android:fillType="evenOdd" android:fillColor="#FFFFFFFF"/>
+</group>
+</group>
 </vector>

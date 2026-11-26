@@ -18,13 +18,21 @@ curl "https://famille.deloffre.fr/apk/index.json?code=azerty"
 `GET /apk/index.json` renvoie la liste en JSON. `GET /apk/<fichier>` sert le
 fichier avec le bon type MIME.
 
-## Mise à jour depuis l'application (routes publiques)
+## Mise à jour depuis l'appli (routes publiques)
 
-`GET /apk/latest.json` renvoie la version la plus haute (`versionCode`), avec sa
-taille et son SHA-256 ; `GET /apk/latest.apk` sert ce fichier. Les deux sont
-**publics** : l'appli les interroge sans code. Seuls le dernier APK et ses
-métadonnées sortent — la liste complète et les anciennes versions restent
-derrière le code.
+Deux routes sont accessibles **sans code**, et ne concernent que la dernière
+version (le plus grand `versionCode`, lu dans « 0.14.1 (15) ») :
+
+| Route | Contenu |
+|---|---|
+| `GET /apk/latest.json` | `{"versionCode": 15, "versionName": "0.14.1", "sha256": "…", "apkUrl": "…/apk/latest.apk", …}` |
+| `GET /apk/latest.apk` | le dernier APK |
+
+L'appli consulte `latest.json` au lancement et toutes les 12 h (service de
+suivi), télécharge l'APK, **vérifie son SHA-256**, puis lance l'installeur
+Android (confirmation obligatoire). GitHub (`test-latest/version.json`) sert de
+secours si le dépôt ne répond pas. La liste complète et les anciennes versions
+restent derrière le code.
 
 **Le serveur retient toujours le plus grand numéro de version.** Penser à
 incrémenter `versionCode` à chaque livraison, quelle que soit la branche qui
@@ -32,8 +40,9 @@ compile.
 
 ## Connexion simplifiée (route publique)
 
-`GET /apk/server.json` donne à l'appli les adresses du serveur Traccar, pour que
-l'écran de connexion parent ne demande qu'un **e-mail** et un **mot de passe** :
+`GET /apk/server.json` donne à l'appli les adresses du serveur Traccar, pour
+que l'écran de connexion parent ne demande qu'un **e-mail** et un **mot de
+passe** :
 
 ```json
 {"version": 1, "apiUrl": "https://api.exemple.fr", "trackUrl": "https://track.exemple.fr"}

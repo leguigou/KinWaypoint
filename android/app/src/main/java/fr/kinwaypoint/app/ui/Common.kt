@@ -68,3 +68,22 @@ fun activityLabel(activity: String?, kmh: Double?): String? {
         else -> null
     }
 }
+
+/** Serveur familial (dépôt d'APK, configuration) : il indique aussi les adresses de Traccar. */
+const val FAMILY_HUB = "https://famille.deloffre.fr"
+
+/** Adresses du serveur Traccar annoncées par le serveur familial (/apk/server.json). */
+data class ServerInfo(val apiUrl: String, val trackUrl: String)
+
+/** Découverte : null si le serveur familial ne répond pas ou n'est pas configuré. */
+suspend fun discoverServer(hub: String = FAMILY_HUB): ServerInfo? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+    runCatching {
+        val http = okhttp3.OkHttpClient.Builder().callTimeout(15, java.util.concurrent.TimeUnit.SECONDS).build()
+        http.newCall(okhttp3.Request.Builder().url("${hub.trimEnd('/')}/apk/server.json").build()).execute().use { response ->
+            if (!response.isSuccessful) return@use null
+            val json = org.json.JSONObject(response.body?.string().orEmpty())
+            val api = json.optString("apiUrl").takeIf { it.startsWith("https://") } ?: return@use null
+            ServerInfo(api, json.optString("trackUrl").takeIf { it.startsWith("https://") } ?: guessTrackUrl(api))
+        }
+    }.getOrNull()
+}

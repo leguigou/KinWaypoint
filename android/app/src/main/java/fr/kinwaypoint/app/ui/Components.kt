@@ -36,19 +36,16 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/** Logo de l'appli : épingle blanche sur un carré arrondi en dégradé. */
+/** Logo de l'appli : le « K » route + épingle (même dessin que l'icône). */
 @Composable
 fun BrandMark(size: Dp = 64.dp) {
-    Box(
+    Image(
+        painter = androidx.compose.ui.res.painterResource(fr.kinwaypoint.app.R.drawable.ic_logo),
+        contentDescription = null,
         modifier = Modifier
             .size(size)
-            .shadow(elevation = 12.dp, shape = RoundedCornerShape(size * 0.3f), ambientColor = AppTheme.colors.heroGradient.first())
-            .clip(RoundedCornerShape(size * 0.3f))
-            .background(Brush.linearGradient(AppTheme.colors.heroGradient)),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(Icons.Default.LocationOn, contentDescription = null, tint = Color.White, modifier = Modifier.size(size * 0.55f))
-    }
+            .shadow(elevation = 12.dp, shape = RoundedCornerShape(size * 0.28f), ambientColor = AppTheme.colors.heroGradient.first()),
+    )
 }
 
 /** Carte de contenu standard : fond plein, coins arrondis, ombre très légère. */
