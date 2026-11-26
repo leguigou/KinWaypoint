@@ -146,7 +146,7 @@ class FixQueue private constructor(context: Context) :
 
     @Synchronized
     fun hasPendingAlarm(): Boolean =
-        readableDatabase.rawQuery("SELECT 1 FROM fixes WHERE alarm IS NOT NULL LIMIT 1", null).use { it.moveToFirst() }
+        readableDatabase.rawQuery("SELECT 1 FROM fixes WHERE alarm = 'SOS' LIMIT 1", null).use { it.moveToFirst() }
 
     private fun trim(db: SQLiteDatabase) {
         val cutoff = System.currentTimeMillis() - MAX_AGE_MS

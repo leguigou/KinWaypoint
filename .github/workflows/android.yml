@@ -125,6 +125,16 @@ jobs:
             gh api -X DELETE "repos/$REPO/releases/assets/$id"
           done
           gh api -X PATCH "repos/$REPO/releases/assets/$NEW_ID" -f name="$FINAL" >/dev/null
+
+          # version.json : lu par l'appli pour proposer la mise à jour.
+          BT=$(ls -d "${ANDROID_HOME:-$ANDROID_SDK_ROOT}"/build-tools/* | sort -V | tail -1)
+          BADGE=$("$BT/aapt2" dump badging "$RUNNER_TEMP/$TEMP" | grep -E "^package:")
+          VCODE=$(echo "$BADGE" | sed -E "s/.*versionCode='([0-9]+)'.*/\1/")
+          VNAME=$(echo "$BADGE" | sed -E "s/.*versionName='([^']+)'.*/\1/")
+          printf '{"versionCode": %s, "versionName": "%s", "commit": "%s", "apkUrl": "https://github.com/%s/releases/download/%s/%s"}\n' \
+            "$VCODE" "$VNAME" "${GITHUB_SHA::7}" "$REPO" "$TAG" "$FINAL" > "$RUNNER_TEMP/version.json"
+          cat "$RUNNER_TEMP/version.json"
+          gh release upload "$TAG" "$RUNNER_TEMP/version.json" -R "$REPO" --clobber
           gh release edit "$TAG" -R "$REPO" --notes "$NOTES"
           echo "Publié : https://github.com/${REPO}/releases/download/${TAG}/${FINAL}"
 

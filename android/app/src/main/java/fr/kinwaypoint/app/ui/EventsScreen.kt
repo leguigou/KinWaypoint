@@ -107,9 +107,13 @@ fun EventsScreen(
                             val name = member?.name ?: "Appareil ${e.deviceId}"
                             val place = places.firstOrNull { it.id == e.placeId }
                             val placeName = place?.name ?: "un lieu"
-                            val (text, sos) = when (e.type) {
-                                "geofenceEnter" -> "$name est arrivé·e à $placeName" to false
-                                "geofenceExit" -> "$name a quitté $placeName" to false
+                            val (text, sos) = when {
+                                e.type == "geofenceEnter" -> "$name est arrivé·e à $placeName" to false
+                                e.type == "geofenceExit" -> "$name a quitté $placeName" to false
+                                e.type == "deviceUnknown" -> "📵 Pas de nouvelles de $name depuis 1 h" to false
+                                e.type == "deviceOverspeed" -> "🚗 $name roule au-delà de la limite" to false
+                                e.alarm.equals("lowBattery", ignoreCase = true) -> "🔋 Batterie faible pour $name" to false
+                                e.alarm.equals("general", ignoreCase = true) -> "✅ $name est bien arrivé·e" to false
                                 else -> "$name a déclenché un SOS" to true
                             }
                             SectionCard(container = if (sos) SoftRed else CardSurface, modifier = Modifier.fillMaxWidth()) {

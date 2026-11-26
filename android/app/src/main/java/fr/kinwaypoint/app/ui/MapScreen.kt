@@ -13,6 +13,10 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import fr.kinwaypoint.app.motion.Eta
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -71,6 +75,9 @@ import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.Point
 
 private const val ME_ID = -1L
+
+/** Hauteur commune des fiches en bas de la carte. */
+private val ENTRY_CARD_HEIGHT = 300.dp
 
 /** Un point affiché : un membre de la famille, ou « Moi » (ce téléphone). */
 private data class MapEntry(
@@ -138,11 +145,17 @@ fun FamilyMapScreen(
     var clock by remember { mutableStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(60_000); clock = System.currentTimeMillis() } }
     val placeOf: Map<Long, fr.kinwaypoint.app.net.Place?> = entries.associate { it.id to placeAt(it.latitude, it.longitude, places) }
+    val etas: Map<Long, Eta.Arrival?> = entries.associate { e ->
+        val kmh = if (e.isMe) me?.speed?.let { it * 3.6 } else e.member?.position?.kmh
+        e.id to if (placeOf[e.id] != null) null else Eta.estimate(mapTraces[e.id].orEmpty(), e.latitude, e.longitude, kmh, places, clock)
+    }
     val labels: Map<Long, String?> = entries.associate { e ->
         val place = placeOf[e.id]
         e.id to when {
             e.id in sosIds -> "SOS"
             place != null -> place.name + (inPlaceSince(mapTraces[e.id].orEmpty(), place)?.let { " · " + shortDuration(clock - it) } ?: "")
+            // En route vers un lieu : temps d'arrivée estimé.
+            etas[e.id] != null -> etas[e.id]!!.let { "→ ${it.place.name} ~${it.minutes} min" }
             // En déplacement rapide : la vitesse au-dessus de l'avatar.
             e.member?.position?.activity == "vehicle" -> e.member?.position?.kmh?.let { "${it.toInt()} km/h" }
             else -> null
@@ -307,7 +320,10 @@ fun FamilyMapScreen(
                 state = pagerState,
                 contentPadding = PaddingValues(horizontal = 28.dp),
                 pageSpacing = 12.dp,
-                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(bottom = 16.dp),
+                // Hauteur commune à toutes les fiches, alignées en bas.
+                verticalAlignment = Alignment.Bottom,
+                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(bottom = 16.dp)
+                    .height(ENTRY_CARD_HEIGHT),
             ) { page ->
                 val entry = entries[page]
                 EntryCard(
@@ -319,6 +335,7 @@ fun FamilyMapScreen(
                     trace = mapTraces[entry.id].orEmpty(),
                     me = me,
                     actions = actions,
+                    arrival = etas[entry.id],
                 )
             }
         }
@@ -337,16 +354,19 @@ private fun EntryCard(
     trace: List<TracePoint>,
     me: Location?,
     actions: PlatformActions,
+    arrival: Eta.Arrival? = null,
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().fillMaxHeight(),
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(containerColor = CardSurface),
         elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
     ) {
         // Liseré de la couleur du profil : la même que son tracé.
         Box(Modifier.fillMaxWidth().height(5.dp).background(color))
-        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(Modifier.fillMaxSize().padding(18.dp)) {
+        // Contenu trop long (beaucoup de pastilles) : il défile ; le bouton reste en bas.
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 if (entry.isMe && photo == null) {
                     IconBadge(Icons.Default.MyLocation, color, size = 48.dp)
@@ -404,9 +424,19 @@ private fun EntryCard(
                     StatusPill(formatDistance(traceLength(trace)) + " aujourd'hui", color, icon = Icons.Default.Route)
                 }
             }
+            arrival?.let {
+                Text(
+                    "${placeEmoji(it.place.icon)} En route vers ${it.place.name} · arrivée dans ~${it.minutes} min",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
             // Objectif de pas du jour.
             entry.member?.let { m -> m.position?.steps?.let { StepGoalBar(it, m.stepGoal, color) } }
+        }
+            // Le bouton reste en bas, à la même place sur toutes les fiches.
             if (!entry.isMe) {
+                Spacer(Modifier.height(10.dp))
                 FilledTonalButton(
                     onClick = { actions.openMap(entry.latitude, entry.longitude, entry.name) },
                     shape = CircleShape,

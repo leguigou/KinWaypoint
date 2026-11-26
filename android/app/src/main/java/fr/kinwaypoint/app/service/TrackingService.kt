@@ -46,6 +46,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.first
 
 /**
  * Service de premier plan qui lit la position et la pousse sur le serveur.
@@ -69,6 +70,10 @@ class TrackingService : Service(), LocationListener {
     companion object {
         const val ACTION_START = "fr.kinwaypoint.app.action.START"
         const val ACTION_SOS = "fr.kinwaypoint.app.action.SOS"
+        /** Un parent demande une position tout de suite (réveil Firebase). */
+        const val ACTION_PING = "fr.kinwaypoint.app.action.PING"
+        /** L'enfant signale « je suis bien arrivé·e ». */
+        const val ACTION_CHECKIN = "fr.kinwaypoint.app.action.CHECKIN"
         private const val CHANNEL_ID = "tracking"
         private const val NOTIFICATION_ID = 42
         private const val TAG = "KinWaypoint"
@@ -98,6 +103,23 @@ class TrackingService : Service(), LocationListener {
         fun sos(context: Context) {
             val intent = Intent(context, TrackingService::class.java).setAction(ACTION_SOS)
             ContextCompat.startForegroundService(context, intent)
+        }
+
+        /**
+         * Réveil à distance : envoie une position immédiatement. La réponse du
+         * serveur contient les commandes en attente (ex. « ring »).
+         */
+        fun ping(context: Context) = deliver(context, ACTION_PING)
+
+        fun checkIn(context: Context) = deliver(context, ACTION_CHECKIN)
+
+        private fun deliver(context: Context, action: String) {
+            val intent = Intent(context, TrackingService::class.java).setAction(action)
+            // Service déjà au premier plan : simple startService (autorisé depuis l'arrière-plan).
+            runCatching {
+                if (TrackingStatus.state.value.running) context.startService(intent)
+                else ContextCompat.startForegroundService(context, intent)
+            }.onFailure { Log.w(TAG, "réveil du suivi impossible", it) }
         }
 
         fun stop(context: Context) {
@@ -272,8 +294,10 @@ class TrackingService : Service(), LocationListener {
             startStepsIfAllowed()
         }
 
-        if (intent?.action == ACTION_SOS) {
-            triggerSos()
+        when (intent?.action) {
+            ACTION_SOS -> triggerSos()
+            ACTION_PING -> sendNow(alarm = null)
+            ACTION_CHECKIN -> sendNow(alarm = "general")
         }
         return START_STICKY
     }
@@ -443,6 +467,13 @@ class TrackingService : Service(), LocationListener {
         if (sosNow == null) lastQueuedFixTime = location.time
 
         val (battery, charging) = readBattery()
+        // Batterie faible : une seule alerte sous 15 % ; réarmée après recharge (≥ 25 % ou en charge).
+        var alarm = alarm
+        if (charging || battery >= 25) pushPrefs.edit().putBoolean("lowBatterySent", false).apply()
+        if (alarm == null && !charging && battery in 1..15 && !pushPrefs.getBoolean("lowBatterySent", false)) {
+            alarm = "lowBattery"
+            pushPrefs.edit().putBoolean("lowBatterySent", true).apply()
+        }
         val fixTime = if (location.time > 0L) location.time else System.currentTimeMillis()
         val fix = LocationFix(
             latitude = location.latitude,
@@ -469,6 +500,22 @@ class TrackingService : Service(), LocationListener {
         scope.launch {
             queue.add(fix)
             refreshQueueStatus()
+            flush()
+        }
+    }
+
+    /**
+     * Envoie tout de suite la dernière position connue (horodatée maintenant),
+     * puis la prochaine mesure fraîche sans attendre l'intervalle.
+     * alarm = "general" : « je suis bien arrivé·e ».
+     */
+    private fun sendNow(alarm: String?) {
+        if (still) enterMoving()
+        sendNextImmediately = true
+        val known = best ?: lastKnownLocation()
+        if (known != null) {
+            enqueue(known, alarm = alarm, sosNow = System.currentTimeMillis())
+        } else {
             flush()
         }
     }
@@ -519,17 +566,62 @@ class TrackingService : Service(), LocationListener {
             if (batch.isEmpty()) break
 
             for (entry in batch) {
-                val result = client.send(cfg.serverUrl, cfg.deviceId, entry.fix)
+                val token = pushTokenToSend()
+                val result = client.send(cfg.serverUrl, cfg.deviceId, entry.fix, token)
                 if (result.isFailure) {
+                    // Garde-fou : une position refusée 10 fois de suite alors que le
+                    // réseau fonctionne est écartée, sinon elle bloquerait toute la file.
+                    if (entry.id == lastFailedId) failedCount++ else { lastFailedId = entry.id; failedCount = 1 }
+                    if (failedCount >= 10 && networkValidated()) {
+                        Log.w(TAG, "position ${entry.id} refusée 10 fois : écartée")
+                        queue.remove(entry.id)
+                        failedCount = 0
+                        continue
+                    }
                     onSendFailure(result.exceptionOrNull())
                     return
                 }
+                failedCount = 0
+                token?.let { markPushTokenSent(it) }
                 queue.remove(entry.id)
                 onSendSuccess(entry.fix)
+                handleServerCommands(result.getOrNull().orEmpty())
             }
         }
         retryJob?.cancel()
         retryDelayMs = 30_000L
+    }
+
+    private var lastFailedId = -1L
+    private var failedCount = 0
+
+    private fun networkValidated(): Boolean = runCatching {
+        val cm = getSystemService(ConnectivityManager::class.java)
+        cm.getNetworkCapabilities(cm.activeNetwork)
+            ?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
+    }.getOrDefault(false)
+
+    // --- Commandes à distance -----------------------------------------------------
+
+    private val pushPrefs by lazy { getSharedPreferences("push", Context.MODE_PRIVATE) }
+
+    /** Jeton Firebase à transmettre au serveur s'il ne l'a pas encore été (sinon null). */
+    private suspend fun pushTokenToSend(): String? {
+        val token = SettingsRepository(applicationContext).pushToken.first() ?: return null
+        return token.takeIf { pushPrefs.getString("sent", null) != it }
+    }
+
+    private fun markPushTokenSent(token: String) {
+        pushPrefs.edit().putString("sent", token).apply()
+    }
+
+    /** Traccar renvoie les commandes en attente dans la réponse : « ring » = faire sonner. */
+    private fun handleServerCommands(body: String) {
+        if (body.isBlank()) return
+        if (body.lines().any { it.trim().equals("ring", ignoreCase = true) }) {
+            Log.i(TAG, "commande reçue : faire sonner")
+            RingAlarm.start(applicationContext)
+        }
     }
 
     private fun onSendSuccess(fix: LocationFix) {

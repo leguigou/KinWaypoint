@@ -20,7 +20,14 @@ class TrackerClient {
         .retryOnConnectionFailure(true)
         .build()
 
-    fun send(serverUrl: String, deviceId: String, fix: LocationFix): Result<Unit> = runCatching {
+    /**
+     * Envoie une position. Renvoie le corps de la réponse : Traccar y place les
+     * commandes en attente pour cet appareil (ex. « ring » pour faire sonner).
+     *
+     * @param notificationToken jeton Firebase du téléphone, à transmettre une fois :
+     *   Traccar l'enregistre sur l'appareil pour pouvoir le réveiller à distance.
+     */
+    fun send(serverUrl: String, deviceId: String, fix: LocationFix, notificationToken: String? = null): Result<String> = runCatching {
         val body = FormBody.Builder()
             .add("id", deviceId)
             .add("timestamp", (fix.time / 1000L).toString())
@@ -37,7 +44,10 @@ class TrackerClient {
                 fix.alarm?.let { add("alarm", it) }
                 fix.fixAgeSeconds?.let { add("fixAge", it.toString()) }
                 fix.ringer?.let { add("ringer", it) }
-                fix.wifi?.let { add("wifi", it) }
+                // « ssid » et non « wifi » : « wifi » est réservé par le protocole OsmAnd
+                // (liste de bornes) et un nom de réseau y fait échouer la position.
+                fix.wifi?.let { add("ssid", it) }
+                notificationToken?.let { add("notificationToken", it) }
                 fix.steps?.let { add("steps", it.toString()) }
                 fix.activity?.let { add("activity", it) }
                 fix.kmh?.let { add("kmh", String.format(Locale.US, "%.1f", it)) }
@@ -53,6 +63,7 @@ class TrackerClient {
             if (!response.isSuccessful) {
                 error("HTTP ${response.code}")
             }
+            response.body?.string().orEmpty().trim()
         }
     }
 }

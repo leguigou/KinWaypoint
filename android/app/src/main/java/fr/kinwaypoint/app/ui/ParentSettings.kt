@@ -27,6 +27,10 @@ import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.BatteryAlert
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
@@ -129,6 +133,15 @@ fun ParentSettingsScreen(
     var busy by remember { mutableStateOf(false) }
     var colorFor by remember { mutableStateOf<Member?>(null) }
     var goalFor by remember { mutableStateOf<Member?>(null) }
+    var rules by remember { mutableStateOf<Set<String>?>(null) } // null = chargement
+    val children = members.filter { !it.isParent }
+    var speedLimit by remember(children.map { it.speedLimitKmh }) {
+        mutableStateOf((children.firstNotNullOfOrNull { it.speedLimitKmh } ?: 50).toFloat())
+    }
+
+    LaunchedEffect(Unit) {
+        rules = withContext(Dispatchers.IO) { runCatching { api.alertRules(config.token).keys }.getOrNull() } ?: emptySet()
+    }
     val sharing = tracking.enabled && ownDeviceId != 0L
 
     BackHandler(onBack = onBack)
@@ -206,6 +219,73 @@ fun ParentSettingsScreen(
             if (sharing) {
                 StatusCard(status = status, permissions = permissions)
                 PermissionWarnings(permissions, actions)
+            }
+
+            // --- Alertes -------------------------------------------------------------
+            SectionCard {
+                Text("Alertes", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "Envoyées en notification (et sur Telegram) par le serveur, même appli fermée.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Muted,
+                )
+                fun toggle(rule: fr.kinwaypoint.app.net.AlertRule, on: Boolean) = launchOp {
+                    withContext(Dispatchers.IO) { api.setAlertRule(config.token, rule, on) }
+                    rules = (rules.orEmpty() - rule.key) + if (on) setOf(rule.key) else emptySet()
+                    // L'excès de vitesse a besoin d'une limite sur chaque appareil d'enfant.
+                    if (rule == fr.kinwaypoint.app.net.AlertRule.OVERSPEED) {
+                        withContext(Dispatchers.IO) {
+                            children.forEach { api.setSpeedLimit(config.token, it.id, if (on) speedLimit.toInt() else null) }
+                        }
+                        onMembersChanged()
+                    }
+                }
+                val loaded = rules != null
+                ToggleRow(
+                    icon = Icons.Default.CloudOff,
+                    title = "Pas de nouvelles",
+                    detail = "Un téléphone n'envoie plus rien depuis 1 h : éteint, appli coupée ou désinstallée.",
+                    checked = rules?.contains("noNews") == true,
+                    enabled = loaded && !busy,
+                    onChange = { toggle(fr.kinwaypoint.app.net.AlertRule.NO_NEWS, it) },
+                )
+                ToggleRow(
+                    icon = Icons.Default.BatteryAlert,
+                    title = "Batterie faible",
+                    detail = "Sous 15 %, une seule fois par recharge.",
+                    checked = rules?.contains("lowBattery") == true,
+                    enabled = loaded && !busy,
+                    onChange = { toggle(fr.kinwaypoint.app.net.AlertRule.LOW_BATTERY, it) },
+                )
+                ToggleRow(
+                    icon = Icons.Default.CheckCircle,
+                    title = "« Je suis bien arrivé·e »",
+                    detail = "L'enfant te prévient d'un geste depuis son téléphone.",
+                    checked = rules?.contains("checkIn") == true,
+                    enabled = loaded && !busy,
+                    onChange = { toggle(fr.kinwaypoint.app.net.AlertRule.CHECK_IN, it) },
+                )
+                ToggleRow(
+                    icon = Icons.Default.Speed,
+                    title = "Excès de vitesse",
+                    detail = "Au-delà de ${speedLimit.toInt()} km/h (scooter, voiture d'un tiers…).",
+                    checked = rules?.contains("overspeed") == true,
+                    enabled = loaded && !busy,
+                    onChange = { toggle(fr.kinwaypoint.app.net.AlertRule.OVERSPEED, it) },
+                )
+                if (rules?.contains("overspeed") == true) {
+                    androidx.compose.material3.Slider(
+                        value = speedLimit,
+                        onValueChange = { speedLimit = (Math.round(it / 10f) * 10f) },
+                        onValueChangeFinished = {
+                            launchOp {
+                                withContext(Dispatchers.IO) { children.forEach { api.setSpeedLimit(config.token, it.id, speedLimit.toInt()) } }
+                                onMembersChanged()
+                            }
+                        },
+                        valueRange = 20f..130f,
+                    )
+                }
             }
 
             // --- Lieux ---------------------------------------------------------------

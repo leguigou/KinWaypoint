@@ -44,6 +44,11 @@ services:
       # jamais du dépôt.
       # Photos des membres (envoyées depuis l'appli parent) : dossier persistant.
       - MEDIA_PATH=/opt/traccar/media
+      # « Pas de nouvelles » : appareil considéré injoignable après 1 h sans position
+      # (le mode « à l'arrêt » envoie toutes les 10 min, d'où une marge large).
+      - STATUS_TIMEOUT=3600
+      # Réveil des téléphones par Firebase (faire sonner, localiser maintenant).
+      - COMMAND_CLIENT_SERVICE_ACCOUNT=${FIREBASE_SERVICE_ACCOUNT}
       - NOTIFICATOR_TYPES=web,telegram,firebase
       - NOTIFICATOR_TELEGRAM_KEY=${TELEGRAM_BOT_TOKEN}
       - NOTIFICATOR_TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}

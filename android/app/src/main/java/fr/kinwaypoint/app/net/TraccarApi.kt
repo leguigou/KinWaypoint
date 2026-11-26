@@ -35,6 +35,8 @@ data class Member(
     val isParent: Boolean = false,
     /** Objectif de pas quotidien (8 000 par défaut). */
     val stepGoal: Int = DEFAULT_STEP_GOAL,
+    /** Limite de vitesse (km/h) déclenchant l'alerte « excès de vitesse », ou null. */
+    val speedLimitKmh: Int? = null,
 )
 
 /** Objectif de pas quotidien proposé par défaut. */
@@ -93,7 +95,17 @@ data class FamilyEvent(
     val type: String,
     val time: Long,
     val placeId: Long,
+    /** Pour une alarme : « sos », « lowBattery », « general » (bien arrivé·e)… */
+    val alarm: String = "",
 )
+
+/** Alertes réglables depuis l'appli (règles de notification Traccar). */
+enum class AlertRule(val key: String, val type: String, val alarms: String? = null) {
+    NO_NEWS("noNews", "deviceUnknown"),
+    LOW_BATTERY("lowBattery", "alarm", "lowBattery"),
+    CHECK_IN("checkIn", "alarm", "general"),
+    OVERSPEED("overspeed", "deviceOverspeed"),
+}
 
 data class Alarm(
     val id: Long,
@@ -198,8 +210,50 @@ class TraccarApi(baseUrl: String) {
         val byDevice = HashMap<Long, MemberPosition>()
         for (i in 0 until positions.length()) {
             val p = positions.getJSONObject(i)
-            val attrs = p.optJSONObject("attributes")
-            byDevice[p.getLong("deviceId")] = MemberPosition(
+            byDevice[p.getLong("deviceId")] = parsePosition(p)
+        }
+
+        return (0 until devices.length()).map { i ->
+            val d = devices.getJSONObject(i)
+            parseMember(d, byDevice[d.getLong("id")])
+        }.sortedBy { it.name.lowercase() }
+    }
+
+    /** Message reçu en direct : nouvelles positions, statut des appareils, événements. */
+    data class LiveMessage(
+        val positions: Map<Long, MemberPosition>,
+        val online: Map<Long, Boolean>,
+        val hasEvents: Boolean,
+    )
+
+    fun parseLiveMessage(text: String): LiveMessage {
+        val json = runCatching { JSONObject(text) }.getOrNull() ?: return LiveMessage(emptyMap(), emptyMap(), false)
+        val positions = json.optJSONArray("positions")?.let { a ->
+            (0 until a.length()).associate { i -> a.getJSONObject(i).let { it.getLong("deviceId") to parsePosition(it) } }
+        }.orEmpty()
+        val online = json.optJSONArray("devices")?.let { a ->
+            (0 until a.length()).associate { i -> a.getJSONObject(i).let { it.getLong("id") to (it.optString("status") == "online") } }
+        }.orEmpty()
+        return LiveMessage(positions, online, (json.optJSONArray("events")?.length() ?: 0) > 0)
+    }
+
+    /**
+     * Connexion permanente au serveur (WebSocket /api/socket) : chaque nouvelle
+     * position arrive tout de suite. La session (cookie) est ouverte avec le jeton.
+     */
+    fun openLiveSocket(token: String, listener: okhttp3.WebSocketListener): okhttp3.WebSocket {
+        val session = url("api/session").newBuilder().addQueryParameter("token", token).build()
+        mediaHttp.newCall(Request.Builder().url(session).get().build()).execute().use { response ->
+            if (response.code == 401) throw AuthException("Session expirée, reconnecte-toi")
+            if (!response.isSuccessful) error("Connexion en direct refusée (HTTP ${response.code})")
+        }
+        val live = mediaHttp.newBuilder().pingInterval(30, TimeUnit.SECONDS).readTimeout(0, TimeUnit.SECONDS).build()
+        return live.newWebSocket(Request.Builder().url(url("api/socket")).build(), listener)
+    }
+
+    private fun parsePosition(p: JSONObject): MemberPosition {
+        val attrs = p.optJSONObject("attributes")
+        return MemberPosition(
                 latitude = p.getDouble("latitude"),
                 longitude = p.getDouble("longitude"),
                 fixTime = parseTime(p.optString("fixTime")) ?: 0L,
@@ -207,31 +261,30 @@ class TraccarApi(baseUrl: String) {
                 battery = attrs?.takeIf { it.has("batteryLevel") }?.optDouble("batteryLevel")?.toInt(),
                 charging = attrs?.takeIf { it.has("charge") }?.optBoolean("charge"),
                 ringer = attrs?.optString("ringer")?.takeIf { it.isNotBlank() },
-                wifi = attrs?.optString("wifi")?.takeIf { it.isNotBlank() },
+                wifi = attrs?.optString("ssid")?.takeIf { it.isNotBlank() },
                 steps = attrs?.takeIf { it.has("steps") }?.optDouble("steps")?.toInt(),
                 activity = attrs?.optString("activity")?.takeIf { it.isNotBlank() }
                     ?: activityFromSpeed(p.optDouble("speed", 0.0) * 1.852),
                 kmh = attrs?.takeIf { it.has("kmh") }?.optDouble("kmh") ?: p.optDouble("speed", 0.0) * 1.852,
             )
-        }
+    }
 
-        return (0 until devices.length()).map { i ->
-            val d = devices.getJSONObject(i)
+    private fun parseMember(d: JSONObject, position: MemberPosition?): Member {
             val id = d.getLong("id")
-            Member(
+            return Member(
                 id = id,
                 name = d.optString("name"),
                 uniqueId = d.optString("uniqueId"),
                 online = d.optString("status") == "online",
                 lastUpdate = parseTime(d.optString("lastUpdate")),
-                position = byDevice[id],
+                position = position,
                 photo = d.optJSONObject("attributes")?.optString("deviceImage")?.takeIf { it.isNotBlank() },
                 photoVersion = d.optJSONObject("attributes")?.optLong("kwPhotoVersion") ?: 0L,
                 color = d.optJSONObject("attributes")?.optString("kwColor")?.takeIf { it.matches(Regex("#[0-9A-Fa-f]{6}")) },
                 isParent = d.optJSONObject("attributes")?.optString("kwRole") == "parent",
                 stepGoal = d.optJSONObject("attributes")?.optInt("kwStepGoal", DEFAULT_STEP_GOAL)?.takeIf { it > 0 } ?: DEFAULT_STEP_GOAL,
+                speedLimitKmh = d.optJSONObject("attributes")?.takeIf { it.has("speedLimit") }?.optDouble("speedLimit")?.let { (it * 1.852).toInt() },
             )
-        }.sortedBy { it.name.lowercase() }
     }
 
     /** Alertes SOS des dernières `hours` heures pour les appareils donnés. */
@@ -253,7 +306,10 @@ class TraccarApi(baseUrl: String) {
                 time = parseTime(e.optString("eventTime")) ?: 0L,
                 kind = e.optJSONObject("attributes")?.optString("alarm").orEmpty().ifBlank { "alarm" },
             )
-        }.sortedByDescending { it.time }
+        }
+            // Seuls les SOS déclenchent le bandeau rouge (pas la batterie faible ni « bien arrivé »).
+            .filter { it.kind.equals("sos", ignoreCase = true) }
+            .sortedByDescending { it.time }
     }
 
     /** Crée un appareil (un enfant) avec l'identifiant fourni. Renvoie son id Traccar. */
@@ -445,7 +501,7 @@ class TraccarApi(baseUrl: String) {
         val builder = url("api/reports/events").newBuilder()
             .addQueryParameter("from", iso(from))
             .addQueryParameter("to", iso(to))
-        listOf("geofenceEnter", "geofenceExit", "alarm").forEach { builder.addQueryParameter("type", it) }
+        listOf("geofenceEnter", "geofenceExit", "alarm", "deviceUnknown", "deviceOverspeed").forEach { builder.addQueryParameter("type", it) }
         deviceIds.forEach { builder.addQueryParameter("deviceId", it.toString()) }
         val array = getArray(token, builder.build())
         return (0 until array.length()).map { i ->
@@ -456,6 +512,7 @@ class TraccarApi(baseUrl: String) {
                 type = e.optString("type"),
                 time = parseTime(e.optString("eventTime")) ?: 0L,
                 placeId = e.optLong("geofenceId", 0L),
+                alarm = e.optJSONObject("attributes")?.optString("alarm").orEmpty(),
             )
         }.sortedByDescending { it.time }
     }
@@ -463,6 +520,72 @@ class TraccarApi(baseUrl: String) {
     /** Objectif de pas quotidien d'un membre, partagé par tous les parents. */
     fun setStepGoal(token: String, id: Long, goal: Int) {
         updateAttributes(token, id) { attrs -> attrs.put("kwStepGoal", goal) }
+    }
+
+    // --- Commandes à distance -------------------------------------------------------
+
+    /**
+     * Fait sonner le téléphone : la commande « ring » est mise en attente sur le
+     * serveur, puis le téléphone est réveillé par Firebase pour envoyer sa position
+     * — la réponse lui transmet « ring ». Renvoie false si le réveil immédiat est
+     * impossible (téléphone pas encore inscrit) : il sonnera à son prochain envoi.
+     */
+    fun ring(token: String, deviceId: Long): Boolean {
+        sendCommand(token, JSONObject().put("deviceId", deviceId).put("type", "custom").put("attributes", JSONObject().put("data", "ring")))
+        return locateNow(token, deviceId)
+    }
+
+    /** Demande une position tout de suite (réveil Firebase). false si le téléphone n'est pas joignable ainsi. */
+    fun locateNow(token: String, deviceId: Long): Boolean = runCatching {
+        sendCommand(token, JSONObject().put("deviceId", deviceId).put("type", "positionSingle"))
+    }.isSuccess
+
+    private fun sendCommand(token: String, command: JSONObject) {
+        val request = Request.Builder().url(url("api/commands/send"))
+            .post(command.toString().toRequestBody("application/json".toMediaType()))
+        authorized(token, request).use { check(it) }
+    }
+
+    // --- Alertes (règles de notification Traccar) --------------------------------------
+
+    /** Règles déjà créées par l'appli (attribut kwRule), par clé. */
+    fun alertRules(token: String): Map<String, Long> {
+        val array = getArray(token, url("api/notifications"))
+        return (0 until array.length()).map { array.getJSONObject(it) }
+            .mapNotNull { n -> n.optJSONObject("attributes")?.optString("kwRule")?.takeIf { it.isNotBlank() }?.let { it to n.getLong("id") } }
+            .toMap()
+    }
+
+    /** Active ou désactive une alerte pour tous les appareils du compte (notifications push + Telegram). */
+    fun setAlertRule(token: String, rule: AlertRule, enabled: Boolean, notificators: String = "firebase,telegram,web") {
+        val existing = alertRules(token)[rule.key]
+        if (enabled && existing == null) {
+            val attrs = JSONObject().put("kwRule", rule.key)
+            rule.alarms?.let { attrs.put("alarms", it) }
+            val body = JSONObject().put("type", rule.type).put("always", true).put("notificators", notificators).put("attributes", attrs)
+            val request = Request.Builder().url(url("api/notifications"))
+                .post(body.toString().toRequestBody("application/json".toMediaType()))
+            authorized(token, request).use { check(it) }
+        } else if (!enabled && existing != null) {
+            authorized(token, Request.Builder().url(url("api/notifications/$existing")).delete()).use { check(it) }
+        }
+    }
+
+    /** Limite de vitesse d'un appareil (km/h) : au-delà, Traccar génère « excès de vitesse ». */
+    fun setSpeedLimit(token: String, id: Long, kmh: Int?) {
+        updateAttributes(token, id) { attrs ->
+            if (kmh == null) attrs.remove("speedLimit") else attrs.put("speedLimit", kmh / 1.852) // Traccar : nœuds
+        }
+    }
+
+    /** Les lieux sont visibles des enfants (carte en lecture seule). */
+    fun sharePlacesWithChildren(token: String, placeIds: List<Long>) {
+        val viewerId = runCatching { ensureChildViewer(token) }.getOrNull() ?: return
+        placeIds.forEach { placeId ->
+            val body = JSONObject().put("userId", viewerId).put("geofenceId", placeId).toString()
+                .toRequestBody("application/json".toMediaType())
+            runCatching { authorized(token, Request.Builder().url(url("api/permissions")).post(body)).close() }
+        }
     }
 
     /** Couleur du tracé d'un membre, partagée par tous les parents (attribut serveur). */

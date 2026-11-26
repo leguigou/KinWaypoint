@@ -14,6 +14,10 @@ import androidx.compose.material.icons.filled.HideImage
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material.icons.filled.BatteryFull
@@ -69,6 +73,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -264,6 +269,7 @@ fun ParentHomeScreen(
     var settingsOpen by remember { mutableStateOf(false) }
     var placesOpen by remember { mutableStateOf(false) }
     var eventsOpen by remember { mutableStateOf(false) }
+    var weeklyOpen by remember { mutableStateOf(false) }
     var places by remember { mutableStateOf<List<fr.kinwaypoint.app.net.Place>>(emptyList()) }
     var historyOpen by remember { mutableStateOf(false) }
     var historyFocus by remember { mutableStateOf<Long?>(null) }
@@ -325,17 +331,46 @@ fun ParentHomeScreen(
         loading = false
     }
 
+    val photos = rememberMemberPhotos(api, config.token, members)
+
+    // Mise à jour en direct : positions poussées par le serveur dès leur arrivée.
+    val live = rememberLiveUpdates(api, config.token) { message ->
+        if (message.positions.isNotEmpty() || message.online.isNotEmpty()) {
+            members = members.map { m ->
+                val p = message.positions[m.id]
+                when {
+                    p != null -> m.copy(position = p, online = true, lastUpdate = p.fixTime)
+                    message.online[m.id] != null -> m.copy(online = message.online[m.id]!!)
+                    else -> m
+                }
+            }
+            refreshedAt = System.currentTimeMillis()
+            // Le tracé du jour s'allonge en direct quand la carte est ouverte.
+            if (mapOpen) {
+                todayTraces = todayTraces.toMutableMap().apply {
+                    message.positions.forEach { (id, p) ->
+                        val trace = this[id].orEmpty()
+                        if (trace.lastOrNull()?.time?.let { p.fixTime > it } != false) this[id] = trace + p.toTracePoint()
+                    }
+                }
+            }
+        }
+        // Nouvel événement (SOS, lieu…) : on recharge les alertes.
+        if (message.hasEvents) refreshTick++
+    }
+    val liveNow by rememberUpdatedState(live)
+
     // Actualisation toutes les 30 s, uniquement quand l'écran est visible.
     LaunchedEffect(api, refreshTick) {
         lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             while (true) {
                 refresh()
-                delay(REFRESH_MS)
+                // Connexion en direct établie : simple vérification toutes les 5 min.
+                delay(if (liveNow) 300_000L else REFRESH_MS)
             }
         }
     }
 
-    val photos = rememberMemberPhotos(api, config.token, members)
     val context = LocalContext.current
 
     /** Choix d'une photo dans la galerie, puis envoi au serveur (visible par tous les parents). */
@@ -355,6 +390,8 @@ fun ParentHomeScreen(
             runCatching { api.shareChildrenWithEachOther(config.token, members) }
             // Chaque lieu s'applique à tous les appareils (y compris un enfant ajouté après le lieu).
             places.filter { it.alerts }.forEach { place -> runCatching { api.linkPlace(config.token, place.id, members.map { it.id }) } }
+            // Les lieux apparaissent aussi sur la carte des enfants.
+            runCatching { api.sharePlacesWithChildren(config.token, places.map { it.id }) }
         }
     }
 
@@ -377,7 +414,17 @@ fun ParentHomeScreen(
 
     val sosIds = alarms.filter { it.id > acknowledgedAlarmId }.map { it.deviceId }.toSet()
 
-    if (placesOpen) {
+    if (weeklyOpen) {
+        WeeklyScreen(
+            api = api,
+            token = config.token,
+            members = members,
+            photos = photos,
+            places = places,
+            ownDeviceId = ownDeviceId,
+            onBack = { weeklyOpen = false },
+        )
+    } else if (placesOpen) {
         PlacesScreen(
             api = api,
             token = config.token,
@@ -502,6 +549,22 @@ fun ParentHomeScreen(
                 }
             }
 
+            item { UpdateBanner() }
+
+            // Bilan de la semaine
+            item {
+                SectionCard(modifier = Modifier.clickable { weeklyOpen = true }) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        IconBadge(Icons.Default.BarChart, MaterialTheme.colorScheme.secondary, size = 44.dp)
+                        Column(Modifier.weight(1f)) {
+                            Text("Bilan de la semaine", style = MaterialTheme.typography.titleMedium)
+                            Text("Pas, objectif, distance, temps passé à l'école…", style = MaterialTheme.typography.bodySmall, color = Muted)
+                        }
+                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = Muted)
+                    }
+                }
+            }
+
             if (newAlarms.isNotEmpty()) {
                 items(newAlarms, key = { "alarm-${it.id}" }) { alarm ->
                     val member = members.firstOrNull { it.id == alarm.deviceId }
@@ -601,6 +664,29 @@ fun ParentHomeScreen(
                     onShowQr = { scope.launch { qrFor = member.name to childSetupPayload(repository, config, trackUrl, member.uniqueId) } },
                     onRename = { renaming = member },
                     onShowHistory = { historyFocus = member.id; historyOpen = true },
+                    onRing = {
+                        scope.launch {
+                            val instant = withContext(Dispatchers.IO) { runCatching { api.ring(config.token, member.id) } }
+                            android.widget.Toast.makeText(
+                                trackingContext,
+                                instant.fold(
+                                    { if (it) "Le téléphone de ${member.name} va sonner dans quelques secondes." else "Il sonnera à son prochain envoi de position (10 min maximum)." },
+                                    { it.message ?: "Impossible de faire sonner" },
+                                ),
+                                android.widget.Toast.LENGTH_LONG,
+                            ).show()
+                        }
+                    },
+                    onLocate = {
+                        scope.launch {
+                            val ok = withContext(Dispatchers.IO) { api.locateNow(config.token, member.id) }
+                            android.widget.Toast.makeText(
+                                trackingContext,
+                                if (ok) "Position demandée à ${member.name}…" else "Téléphone pas encore joignable à distance (mets à jour son appli).",
+                                android.widget.Toast.LENGTH_LONG,
+                            ).show()
+                        }
+                    },
                     isMe = member.id == ownDeviceId,
                     photo = photos[member.id],
                     onChangePhoto = { changePhoto(member) },
@@ -703,6 +789,8 @@ private fun MemberCard(
     onDelete: () -> Unit,
     photo: android.graphics.Bitmap? = null,
     onShowHistory: () -> Unit = {},
+    onRing: () -> Unit = {},
+    onLocate: () -> Unit = {},
     isMe: Boolean = false,
     onChangePhoto: () -> Unit = {},
     onRemovePhoto: (() -> Unit)? = null,
@@ -748,6 +836,16 @@ private fun MemberCard(
                             onClick = { menuOpen = false; onShowMap() },
                         )
                     }
+                    DropdownMenuItem(
+                        text = { Text("Faire sonner") },
+                        leadingIcon = { Icon(Icons.Default.NotificationsActive, contentDescription = null) },
+                        onClick = { menuOpen = false; onRing() },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Localiser maintenant") },
+                        leadingIcon = { Icon(Icons.Default.MyLocation, contentDescription = null) },
+                        onClick = { menuOpen = false; onLocate() },
+                    )
                     DropdownMenuItem(
                         text = { Text("Historique") },
                         leadingIcon = { Icon(Icons.Default.History, contentDescription = null) },

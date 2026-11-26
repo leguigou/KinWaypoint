@@ -34,6 +34,12 @@ class PushService : FirebaseMessagingService() {
     }
 
     override fun onMessageReceived(message: RemoteMessage) {
+        // Commande Traccar (pas une alerte à afficher) : un parent demande une
+        // position tout de suite, et éventuellement de faire sonner ce téléphone.
+        if (message.data["command"] != null) {
+            fr.kinwaypoint.app.service.TrackingService.ping(applicationContext)
+            return
+        }
         val title = message.notification?.title
             ?: message.data["title"]
             ?: getString(R.string.app_name)
