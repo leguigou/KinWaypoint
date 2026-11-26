@@ -71,6 +71,9 @@ class SettingsRepository(private val context: Context) {
 
         val ACK_ALARM = longPreferencesKey("parent_ack_alarm_id")
 
+        val BIOMETRIC = booleanPreferencesKey("parent_biometric")
+        val BIOMETRIC_OFFER_DISMISSED = booleanPreferencesKey("parent_biometric_offer_dismissed")
+
         /** Jeton FCM du téléphone, enregistré sur le compte Traccar. */
         val PUSH_TOKEN = stringPreferencesKey("push_token")
     }
@@ -119,6 +122,18 @@ class SettingsRepository(private val context: Context) {
     suspend fun acknowledgeAlarm(id: Long) {
         context.dataStore.edit { prefs ->
             if (id > (prefs[Keys.ACK_ALARM] ?: 0L)) prefs[Keys.ACK_ALARM] = id
+        }
+    }
+
+    /** Déverrouillage de l'espace parent par empreinte (mode parent uniquement). */
+    val biometricEnabled: Flow<Boolean> = context.dataStore.data.map { prefs -> prefs[Keys.BIOMETRIC] ?: false }
+    val biometricOfferDismissed: Flow<Boolean> =
+        context.dataStore.data.map { prefs -> prefs[Keys.BIOMETRIC_OFFER_DISMISSED] ?: false }
+
+    suspend fun setBiometric(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.BIOMETRIC] = enabled
+            prefs[Keys.BIOMETRIC_OFFER_DISMISSED] = true
         }
     }
 
@@ -172,6 +187,7 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.MODE] = AppMode.UNSET.name
             prefs[Keys.ENABLED] = false
             prefs.remove(Keys.TOKEN)
+            prefs[Keys.BIOMETRIC] = false
         }
     }
 }

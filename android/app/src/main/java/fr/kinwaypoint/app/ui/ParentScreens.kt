@@ -1,6 +1,18 @@
 package fr.kinwaypoint.app.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.QrCode
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,6 +35,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -165,6 +178,7 @@ fun ParentHomeScreen(
     repository: SettingsRepository,
     config: ParentConfig,
     acknowledgedAlarmId: Long,
+    permissions: PermissionSnapshot,
     actions: PlatformActions,
     onLock: () -> Unit,
     onChangePin: () -> Unit,
@@ -181,9 +195,30 @@ fun ParentHomeScreen(
     var refreshedAt by remember { mutableLongStateOf(0L) }
     var refreshTick by remember { mutableIntStateOf(0) }
     var showMenu by remember { mutableStateOf(false) }
+    val biometricEnabled by repository.biometricEnabled.collectAsState(initial = false)
+    val biometricOfferDismissed by repository.biometricOfferDismissed.collectAsState(initial = true)
+    val canUseBiometric = remember { actions.biometricAvailable() }
     var showAddChild by remember { mutableStateOf(false) }
     var qrFor by remember { mutableStateOf<Pair<String, SetupPayload>?>(null) }
     val trackUrl = config.trackUrl.ifBlank { guessTrackUrl(config.apiUrl) }
+    var mapOpen by remember { mutableStateOf(false) }
+    var mapFocus by remember { mutableStateOf<Long?>(null) }
+    var renaming by remember { mutableStateOf<Member?>(null) }
+    var deleting by remember { mutableStateOf<Member?>(null) }
+
+    fun openMap(focus: Long?) {
+        mapFocus = focus
+        mapOpen = true
+    }
+
+    /** Opération serveur sur un membre, puis actualisation de la liste. */
+    fun memberOperation(block: suspend () -> Unit) {
+        scope.launch {
+            runCatching { withContext(Dispatchers.IO) { block() } }
+                .onSuccess { refreshTick++ }
+                .onFailure { error = it.message ?: "Opération impossible" }
+        }
+    }
 
     suspend fun refresh() {
         val result = withContext(Dispatchers.IO) {
@@ -220,7 +255,15 @@ fun ParentHomeScreen(
     val names = members.associate { it.id to it.name }
     val newAlarms = alarms.filter { it.id > acknowledgedAlarmId }
 
-    Scaffold { padding ->
+    if (mapOpen) {
+        FamilyMapScreen(
+            members = members,
+            focusId = mapFocus,
+            permissions = permissions,
+            actions = actions,
+            onBack = { mapOpen = false },
+        )
+    } else Scaffold { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -238,8 +281,9 @@ fun ParentHomeScreen(
                             color = Muted,
                         )
                     }
-                    TextButton(onClick = { refreshTick++ }) { Text("Actualiser") }
-                    TextButton(onClick = { showMenu = true }) { Text("⋮", fontSize = 20.sp) }
+                    IconButton(onClick = { openMap(null) }) { Icon(Icons.Default.Map, contentDescription = "Carte", tint = Green) }
+                    IconButton(onClick = { refreshTick++ }) { Icon(Icons.Default.Refresh, contentDescription = "Actualiser", tint = Green) }
+                    IconButton(onClick = { showMenu = true }) { Icon(Icons.Default.MoreVert, contentDescription = "Menu", tint = Green) }
                 }
             }
 
@@ -261,7 +305,7 @@ fun ParentHomeScreen(
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 member?.position?.let { p ->
                                     Button(
-                                        onClick = { actions.openMap(p.latitude, p.longitude, member.name) },
+                                        onClick = { openMap(member.id) },
                                         colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Danger),
                                     ) { Text("Voir sur la carte") }
                                 }
@@ -269,6 +313,24 @@ fun ParentHomeScreen(
                                     onClick = { scope.launch { repository.acknowledgeAlarm(alarm.id) } },
                                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
                                 ) { Text("J'ai vu") }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (canUseBiometric && !biometricEnabled && !biometricOfferDismissed) {
+                item {
+                    Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = SoftGreen)) {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("Ouvrir l'espace parent avec ton empreinte ?", fontWeight = FontWeight.SemiBold)
+                            Text("Le code PIN reste valable et toujours demandé pour changer de mode ou de code.", fontSize = 13.sp, color = Muted)
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(onClick = {
+                                    // Une empreinte reconnue confirme que le doigt est bien enregistré avant d'activer.
+                                    actions.authenticate { scope.launch { repository.setBiometric(true) } }
+                                }) { Text("Activer") }
+                                TextButton(onClick = { scope.launch { repository.setBiometric(false) } }) { Text("Non merci") }
                             }
                         }
                     }
@@ -285,7 +347,7 @@ fun ParentHomeScreen(
                 item {
                     InfoCard(
                         title = "Aucun appareil",
-                        detail = "Crée un appareil par enfant dans l'interface web du serveur, puis configure son téléphone en mode enfant.",
+                        detail = "Utilise « Ajouter un enfant » ci-dessous, puis scanne le QR code avec son téléphone en mode enfant.",
                         container = SoftGreen,
                     )
                 }
@@ -294,8 +356,10 @@ fun ParentHomeScreen(
             items(members, key = { it.id }) { member ->
                 MemberCard(
                     member = member,
-                    actions = actions,
+                    onShowMap = { openMap(member.id) },
                     onShowQr = { qrFor = member.name to SetupPayload(trackUrl, member.uniqueId) },
+                    onRename = { renaming = member },
+                    onDelete = { deleting = member },
                 )
             }
 
@@ -307,8 +371,8 @@ fun ParentHomeScreen(
 
             item {
                 Text(
-                    "Les alertes n'arrivent que lorsque cette application est ouverte : " +
-                        "les notifications en arrière-plan (zones, SOS) seront ajoutées avec Firebase.",
+                    "Les alertes SOS ne s'affichent que lorsque cette application est ouverte : " +
+                        "les notifications en arrière-plan ne sont pas encore disponibles.",
                     fontSize = 12.sp,
                     color = Muted,
                     modifier = Modifier.padding(vertical = 16.dp),
@@ -332,6 +396,55 @@ fun ParentHomeScreen(
 
     qrFor?.let { (name, payload) -> SetupQrDialog(name, payload, onDismiss = { qrFor = null }) }
 
+    renaming?.let { member ->
+        var name by remember(member.id) { mutableStateOf(member.name) }
+        AlertDialog(
+            onDismissRequest = { renaming = null },
+            title = { Text("Renommer") },
+            text = {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it.take(60) },
+                    label = { Text("Prénom affiché") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = name.isNotBlank() && name.trim() != member.name,
+                    onClick = {
+                        renaming = null
+                        val newName = name.trim()
+                        memberOperation { api.renameDevice(config.token, member.id, newName) }
+                    },
+                ) { Text("Enregistrer") }
+            },
+            dismissButton = { TextButton(onClick = { renaming = null }) { Text("Annuler") } },
+        )
+    }
+
+    deleting?.let { member ->
+        AlertDialog(
+            onDismissRequest = { deleting = null },
+            title = { Text("Supprimer ${member.name} ?") },
+            text = {
+                Text(
+                    "L'appareil et tout son historique de positions seront effacés du serveur. " +
+                        "Son téléphone ne pourra plus envoyer de position tant qu'il n'est pas reconfiguré " +
+                        "avec un nouveau QR code. Cette action est définitive.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    deleting = null
+                    memberOperation { api.deleteDevice(config.token, member.id) }
+                }) { Text("Supprimer", color = Danger) }
+            },
+            dismissButton = { TextButton(onClick = { deleting = null }) { Text("Annuler") } },
+        )
+    }
+
     if (showMenu) {
         AlertDialog(
             onDismissRequest = { showMenu = false },
@@ -344,6 +457,26 @@ fun ParentHomeScreen(
                     }
                     OutlinedButton(onClick = { showMenu = false; onChangePin() }, modifier = Modifier.fillMaxWidth()) {
                         Text("Changer le code PIN")
+                    }
+                    OutlinedButton(
+                        enabled = canUseBiometric || biometricEnabled,
+                        onClick = {
+                            showMenu = false
+                            if (biometricEnabled) {
+                                scope.launch { repository.setBiometric(false) }
+                            } else {
+                                actions.authenticate { scope.launch { repository.setBiometric(true) } }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            when {
+                                biometricEnabled -> "Désactiver l'empreinte"
+                                canUseBiometric -> "Déverrouiller avec l'empreinte"
+                                else -> "Empreinte : aucune enregistrée sur ce téléphone"
+                            },
+                        )
                     }
                     OutlinedButton(
                         onClick = {
@@ -363,7 +496,14 @@ fun ParentHomeScreen(
 }
 
 @Composable
-private fun MemberCard(member: Member, actions: PlatformActions, onShowQr: () -> Unit) {
+private fun MemberCard(
+    member: Member,
+    onShowMap: () -> Unit,
+    onShowQr: () -> Unit,
+    onRename: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    var menuOpen by remember { mutableStateOf(false) }
     val position = member.position
     val battery = position?.battery
     val charging = position?.charging == true
@@ -384,6 +524,35 @@ private fun MemberCard(member: Member, actions: PlatformActions, onShowQr: () ->
                         fontWeight = if (lowBattery) FontWeight.Bold else FontWeight.Normal,
                     )
                 }
+                Box {
+                    IconButton(onClick = { menuOpen = true }) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "Actions pour ${member.name}")
+                    }
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        if (position != null) {
+                            DropdownMenuItem(
+                                text = { Text("Voir sur la carte") },
+                                leadingIcon = { Icon(Icons.Default.Map, contentDescription = null) },
+                                onClick = { menuOpen = false; onShowMap() },
+                            )
+                        }
+                        DropdownMenuItem(
+                            text = { Text("Renommer") },
+                            leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
+                            onClick = { menuOpen = false; onRename() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("QR code de configuration") },
+                            leadingIcon = { Icon(Icons.Default.QrCode, contentDescription = null) },
+                            onClick = { menuOpen = false; onShowQr() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Supprimer", color = Danger) },
+                            leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = Danger) },
+                            onClick = { menuOpen = false; onDelete() },
+                        )
+                    }
+                }
             }
             if (position == null) {
                 Text("Aucune position reçue pour l'instant", fontSize = 13.sp, color = Muted)
@@ -392,11 +561,8 @@ private fun MemberCard(member: Member, actions: PlatformActions, onShowQr: () ->
                 if (position.accuracy > 0) {
                     Text("Précision : ${position.accuracy.toInt()} m", fontSize = 13.sp, color = Muted)
                 }
-                OutlinedButton(onClick = { actions.openMap(position.latitude, position.longitude, member.name) }) {
-                    Text("Voir sur la carte")
-                }
+                OutlinedButton(onClick = onShowMap) { Text("Voir sur la carte") }
             }
-            TextButton(onClick = onShowQr) { Text("QR code de configuration") }
             member.lastUpdate?.let {
                 Text("Dernière connexion : ${relative(it)}", fontSize = 12.sp, color = Muted)
             }

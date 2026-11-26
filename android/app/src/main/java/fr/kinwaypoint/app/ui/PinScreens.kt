@@ -12,7 +12,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -46,6 +51,7 @@ fun PinPad(
     enabled: Boolean,
     onSubmit: (String) -> Unit,
     onCancel: (() -> Unit)?,
+    onBiometric: (() -> Unit)? = null,
 ) {
     var pin by remember { mutableStateOf("") }
 
@@ -96,6 +102,15 @@ fun PinPad(
                         ) { Text(key, fontSize = if (key.length > 1) 16.sp else 24.sp) }
                     }
                 }
+            }
+        }
+
+        if (onBiometric != null) {
+            Spacer(Modifier.height(16.dp))
+            OutlinedButton(onClick = onBiometric) {
+                Icon(Icons.Default.Fingerprint, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("Utiliser l'empreinte")
             }
         }
 
@@ -159,6 +174,8 @@ fun PinCheckScreen(
     subtitle: String,
     onSuccess: () -> Unit,
     onCancel: (() -> Unit)?,
+    /** Non nul quand l'empreinte est autorisée pour cette vérification. */
+    onBiometric: ((onOk: () -> Unit) -> Unit)? = null,
 ) {
     val scope = rememberCoroutineScope()
     var error by remember { mutableStateOf<String?>(null) }
@@ -166,8 +183,18 @@ fun PinCheckScreen(
     var lockedUntil by remember { mutableLongStateOf(0L) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
+    fun biometricSuccess() {
+        scope.launch {
+            // L'empreinte reconnue vaut un PIN correct : le compteur d'erreurs repart à zéro.
+            repository.recordPinResult(0, 0L)
+            onSuccess()
+        }
+    }
+
     LaunchedEffect(Unit) {
         lockedUntil = repository.pin.first().lockedUntil
+        // Demande d'empreinte proposée d'emblée ; « Utiliser le code PIN » la ferme.
+        onBiometric?.invoke { biometricSuccess() }
     }
     LaunchedEffect(lockedUntil) {
         while (lockedUntil > System.currentTimeMillis()) {
@@ -195,5 +222,6 @@ fun PinCheckScreen(
             }
         },
         onCancel = onCancel,
+        onBiometric = onBiometric?.let { ask -> { ask { biometricSuccess() } } },
     )
 }

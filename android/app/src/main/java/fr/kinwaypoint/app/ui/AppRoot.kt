@@ -70,6 +70,7 @@ fun AppRoot(
     val config by repository.config.collectAsState(initial = null)
     val parent by repository.parent.collectAsState(initial = null)
     val acknowledged by repository.acknowledgedAlarm.collectAsState(initial = 0L)
+    val biometric by repository.biometricEnabled.collectAsState(initial = false)
     val status by TrackingStatus.state.collectAsState()
 
     var screen by remember { mutableStateOf<Screen?>(null) }
@@ -165,6 +166,7 @@ fun AppRoot(
                 repository = repository,
                 config = parentCfg,
                 acknowledgedAlarmId = acknowledged,
+                permissions = permissions,
                 actions = actions,
                 onLock = { screen = home(AppMode.PARENT) },
                 onChangePin = { screen = Screen.PinCheck(AfterPin.NewPin(Screen.Parent), back = Screen.Parent) },
@@ -185,6 +187,17 @@ fun AppRoot(
             },
             onSuccess = { afterPin(current.then) },
             onCancel = current.back?.let { back -> { screen = back } },
+            // Empreinte : uniquement pour ouvrir l'espace parent, sur un téléphone en mode parent.
+            // Jamais côté enfant (son propre doigt peut être enregistré sur son téléphone),
+            // ni pour changer de PIN ou de mode.
+            onBiometric = if (
+                biometric && mode == AppMode.PARENT &&
+                current.then == AfterPin.Go(Screen.Parent) && actions.biometricAvailable()
+            ) {
+                actions.authenticate
+            } else {
+                null
+            },
         )
 
         is Screen.PinSetup -> PinSetupScreen(
