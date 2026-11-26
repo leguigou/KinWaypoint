@@ -59,6 +59,10 @@ produit une notification. Tant que ce n'est pas vrai, on n'écrit pas de Kotlin.
 - Bouton SOS avec appui long 3 s, `alarm=SOS`, acquittement visuel
 - Écran minimal : « suivi actif », état du dernier envoi, batterie
 
+État au 26/11/2026 (v0.3) : P1 livré (dont fréquence adaptative et QR code) ;
+P2 démarré (liste des membres, batterie, SOS 24 h, PIN parent, ajout d'enfant
+par QR) sans carte intégrée ni historique. Notifications push : en attente. Détail dans `android/README.md`.
+
 ### P2 — App parent
 
 - MapLibre, marqueurs famille, dernière position + horodatage

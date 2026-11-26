@@ -12,4 +12,10 @@ data class LocationFix(
     val battery: Int,
     val charging: Boolean,
     val alarm: String? = null,
+    /**
+     * Âge réel de la mesure GPS, en secondes, quand il diffère de `time`.
+     * Cas du SOS : l'alerte part tout de suite avec la dernière position connue,
+     * horodatée « maintenant » pour que le serveur la traite comme la plus récente.
+     */
+    val fixAgeSeconds: Long? = null,
 )

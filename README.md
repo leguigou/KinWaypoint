@@ -44,7 +44,7 @@ On n'écrit que ce qui manque : les applis Android et une fine couche métier.
 |---|---|
 | `docker-compose.yml` | Traccar 6.17 + TimescaleDB 2.32 (PG 17), volumes nommés fixes |
 | `ops/retention.sql` | Politique de rétention Timescale (positions 30 j, événements 90 j) |
-| `android/` | APK Kotlin/Compose — mode enfant opérationnel (voir `android/README.md`) |
+| `android/` | APK Kotlin/Compose unique — modes Enfant et Parent, PIN parent (voir `android/README.md`) |
 | `family-api/` (phase 3) | Seuil batterie, partage temporaire, provisioning QR, fan-out SOS |
 
 ## Démarrage local
@@ -97,7 +97,7 @@ Ne pas mettre de labels Traefik dans le YAML : Dokploy les injecte.
 ## Provisionner un appareil enfant
 
 1. Créer le device dans Traccar (nom = prénom, identifiant **long et aléatoire**).
-2. Dans l'app enfant, coller l'identifiant ou scanner le QR code généré.
+2. Dans l'app (mode Enfant → Réglages parent), coller l'identifiant.
 3. Vérifier la réception : `SELECT * FROM tc_positions ORDER BY fixtime DESC LIMIT 1;`
 
 L'identifiant de device **est** le secret d'authentification : le protocole

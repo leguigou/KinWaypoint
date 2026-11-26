@@ -1,6 +1,7 @@
 package fr.kinwaypoint.app.service
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -11,34 +12,57 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.hardware.Sensor
+import android.hardware.SensorManager
+import android.hardware.TriggerEvent
+import android.hardware.TriggerEventListener
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
+import android.net.ConnectivityManager
+import android.net.Network
 import android.os.BatteryManager
 import android.os.Build
 import android.os.IBinder
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import fr.kinwaypoint.app.MainActivity
 import fr.kinwaypoint.app.R
+import fr.kinwaypoint.app.data.FixQueue
 import fr.kinwaypoint.app.data.SettingsRepository
 import fr.kinwaypoint.app.data.TrackingConfig
 import fr.kinwaypoint.app.net.LocationFix
 import fr.kinwaypoint.app.net.TrackerClient
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
 
 /**
  * Service de premier plan qui lit la position et la pousse sur le serveur.
  * Le type `location` est obligatoire depuis Android 10 : sans lui, le système
  * coupe le service dès que l'écran s'éteint.
+ *
+ * Principes :
+ * - GPS et réseau sont écoutés tous les deux, mais **une seule** position part
+ *   par intervalle : la meilleure des deux (plus de doublons ni de « sauts »).
+ * - Toute position passe par une file persistante : sans réseau, rien n'est
+ *   perdu, l'historique repart au retour de la connexion.
+ * - Le SOS part immédiatement avec la dernière position connue, puis la
+ *   prochaine mesure fraîche est envoyée sans attendre l'intervalle.
+ * - Fréquence adaptative : immobile depuis 5 min → GPS coupé, une position
+ *   toutes les 10 min via Wi-Fi / réseau mobile. Le mouvement est détecté par
+ *   le capteur « mouvement significatif » (quasi gratuit en batterie) ou par un
+ *   déplacement vu sur le réseau : le GPS repart aussitôt. Sans Play Services.
  */
 class TrackingService : Service(), LocationListener {
 
@@ -48,6 +72,19 @@ class TrackingService : Service(), LocationListener {
         private const val CHANNEL_ID = "tracking"
         private const val NOTIFICATION_ID = 42
         private const val TAG = "KinWaypoint"
+        private const val TWO_MINUTES = 2 * 60 * 1000L
+        private const val MAX_RETRY_DELAY_MS = 5 * 60 * 1000L
+
+        /** Durée sans déplacement avant de passer en mode « à l'arrêt ». */
+        private const val STILL_AFTER_MS = 5 * 60 * 1000L
+        /** Cadence d'envoi à l'arrêt (sert aussi de signe de vie pour les parents). */
+        private const val STILL_INTERVAL_MS = 10 * 60 * 1000L
+
+        /** Rayon dans lequel on considère l'appareil immobile (m), selon la précision. */
+        internal fun stillRadius(accuracy: Float) = 75f + accuracy.coerceIn(0f, 150f)
+
+        /** Distance à partir de laquelle on sort du mode « à l'arrêt » (m). */
+        internal fun moveRadius(accuracy: Float) = 200f + accuracy.coerceIn(0f, 300f)
 
         fun start(context: Context) {
             val intent = Intent(context, TrackingService::class.java).setAction(ACTION_START)
@@ -62,27 +99,91 @@ class TrackingService : Service(), LocationListener {
         fun stop(context: Context) {
             context.stopService(Intent(context, TrackingService::class.java))
         }
+
+        /**
+         * Choix entre deux mesures (algorithme recommandé par la doc Android) :
+         * une mesure nettement plus récente gagne, sinon la plus précise.
+         */
+        internal fun isBetter(candidate: Location, current: Location?): Boolean {
+            if (current == null) return true
+            val timeDelta = candidate.time - current.time
+            if (timeDelta > TWO_MINUTES) return true
+            if (timeDelta < -TWO_MINUTES) return false
+            val isNewer = timeDelta > 0
+
+            val accuracyDelta = candidate.accuracy - current.accuracy
+            val moreAccurate = accuracyDelta < 0
+            val lessAccurate = accuracyDelta > 0
+            val muchLessAccurate = accuracyDelta > 200
+            val sameProvider = candidate.provider == current.provider
+
+            return when {
+                moreAccurate -> true
+                isNewer && !lessAccurate -> true
+                isNewer && !muchLessAccurate && sameProvider -> true
+                else -> false
+            }
+        }
     }
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    // Une erreur imprévue dans un envoi est journalisée, elle ne doit jamais tuer le suivi.
+    private val errors = CoroutineExceptionHandler { _, e -> Log.e(TAG, "erreur dans le suivi", e) }
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO + errors)
     private val client = TrackerClient()
+    private lateinit var queue: FixQueue
     private lateinit var locationManager: LocationManager
-    private var config: TrackingConfig? = null
-    private var pendingAlarm: String? = null
-    private var lastLocation: Location? = null
+    private var connectivity: ConnectivityManager? = null
+
+    @Volatile private var config: TrackingConfig? = null
+    @Volatile private var intervalMs: Long = 60_000L
+    @Volatile private var started = false
+
+    // Sélection des positions (thread principal uniquement).
+    private var best: Location? = null
+    private var lastQueuedElapsed = 0L
+    private var lastQueuedFixTime = 0L
+    private var sendNextImmediately = false
+    @Volatile private var sosWaitingForFix = false
+
+    // Fréquence adaptative (thread principal uniquement).
+    private var still = false
+    private var anchor: Location? = null
+    private var anchorSinceElapsed = 0L
+    private var sensorManager: SensorManager? = null
+    private var motionSensor: Sensor? = null
+    private val motionListener = object : TriggerEventListener() {
+        override fun onTrigger(event: TriggerEvent?) {
+            Log.i(TAG, "mouvement détecté par le capteur")
+            if (still) enterMoving()
+        }
+    }
+
+    /** Intervalle effectif : celui réglé en mouvement, 10 min (au moins) à l'arrêt. */
+    private val currentIntervalMs: Long
+        get() = if (still) maxOf(intervalMs, STILL_INTERVAL_MS) else intervalMs
+
+    // Envoi : une seule boucle à la fois, relancée si besoin.
+    private val flushLock = Mutex()
+    @Volatile private var flushRequested = false
+    private var retryJob: Job? = null
+    private var retryDelayMs = 30_000L
+
+    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            flush()
+        }
+    }
 
     override fun onCreate() {
         super.onCreate()
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        queue = FixQueue.get(this)
+        sensorManager = getSystemService(SensorManager::class.java)
+        motionSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_SIGNIFICANT_MOTION)
         createChannel()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_SOS) {
-            pendingAlarm = "SOS"
-            TrackingStatus.update { it.copy(sosPending = true) }
-        }
-
         if (!hasFineLocation()) {
             Log.w(TAG, "permission de localisation absente, arrêt du service")
             stopSelf()
@@ -103,7 +204,15 @@ class TrackingService : Service(), LocationListener {
         }
 
         TrackingStatus.update { it.copy(running = true) }
-        startTracking()
+
+        if (!started) {
+            started = true
+            startTracking()
+        }
+
+        if (intent?.action == ACTION_SOS) {
+            triggerSos()
+        }
         return START_STICKY
     }
 
@@ -111,45 +220,158 @@ class TrackingService : Service(), LocationListener {
         scope.launch {
             val cfg = SettingsRepository(applicationContext).snapshot()
             config = cfg
-            val intervalMs = cfg.intervalSeconds.coerceIn(15, 3600) * 1000L
-            withContext(Dispatchers.Main) { register(intervalMs) }
+            intervalMs = cfg.intervalSeconds.coerceIn(15, 3600) * 1000L
+            refreshQueueStatus()
+            withContext(Dispatchers.Main) {
+                registerLocation()
+                registerNetwork()
+            }
+            flush()
         }
     }
 
-    private fun register(intervalMs: Long) {
+    /**
+     * En mouvement : GPS + réseau à l'intervalle réglé.
+     * À l'arrêt : réseau seul toutes les 10 min (GPS seulement s'il n'y a pas
+     * de localisation réseau), plus le capteur de mouvement significatif.
+     */
+    @SuppressLint("MissingPermission") // vérifiée dans onStartCommand, SecurityException rattrapée
+    private fun registerLocation() {
         try {
-            val providers = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
+            runCatching { locationManager.removeUpdates(this) }
+
+            val enabled = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
                 .filter { runCatching { locationManager.isProviderEnabled(it) }.getOrDefault(false) }
+
+            val providers = when {
+                !still -> enabled
+                LocationManager.NETWORK_PROVIDER in enabled -> listOf(LocationManager.NETWORK_PROVIDER)
+                else -> enabled
+            }
 
             if (providers.isEmpty()) {
                 Log.w(TAG, "aucun fournisseur de position actif")
             }
 
             providers.forEach { provider ->
-                locationManager.requestLocationUpdates(provider, intervalMs, 0f, this, Looper.getMainLooper())
+                locationManager.requestLocationUpdates(provider, currentIntervalMs, 0f, this, Looper.getMainLooper())
             }
 
             // Une dernière position connue permet d'afficher quelque chose tout de suite.
-            providers.asSequence()
-                .mapNotNull { runCatching { locationManager.getLastKnownLocation(it) }.getOrNull() }
-                .maxByOrNull { it.time }
-                ?.let { onLocationChanged(it) }
+            if (best == null) lastKnownLocation()?.let { onLocationChanged(it) }
         } catch (e: SecurityException) {
             Log.e(TAG, "permission refusée pendant l'enregistrement", e)
             stopSelf()
         }
     }
 
-    override fun onLocationChanged(location: Location) {
-        lastLocation = location
-        send(location)
+    private fun registerNetwork() {
+        val manager = getSystemService(ConnectivityManager::class.java) ?: return
+        runCatching { manager.registerDefaultNetworkCallback(networkCallback) }
+            .onSuccess { connectivity = manager }
+            .onFailure { Log.w(TAG, "suivi du réseau indisponible", it) }
     }
 
-    private fun send(location: Location) {
-        val cfg = config ?: return
-        val alarm = pendingAlarm
-        val (battery, charging) = readBattery()
+    @SuppressLint("MissingPermission")
+    private fun lastKnownLocation(): Location? =
+        listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
+            .mapNotNull { runCatching { locationManager.getLastKnownLocation(it) }.getOrNull() }
+            .maxByOrNull { it.time }
 
+    // --- Sélection : une seule position par intervalle -----------------------
+
+    override fun onLocationChanged(location: Location) {
+        if (isBetter(location, best)) best = location
+        val candidate = best ?: return
+
+        TrackingStatus.update { it.copy(accuracy = candidate.accuracy) }
+
+        updateMotion(location)
+
+        if (sosWaitingForFix) {
+            sosWaitingForFix = false
+            sendNextImmediately = false
+            enqueue(candidate, alarm = "SOS")
+            return
+        }
+
+        val now = SystemClock.elapsedRealtime()
+        val interval = currentIntervalMs
+        val tolerance = maxOf(5_000L, interval / 10)
+        val due = sendNextImmediately || lastQueuedElapsed == 0L || now - lastQueuedElapsed >= interval - tolerance
+        if (!due) return
+        if (candidate.time <= lastQueuedFixTime) return // déjà envoyée, rien de neuf
+
+        sendNextImmediately = false
+        enqueue(candidate, alarm = null)
+    }
+
+    // --- Fréquence adaptative ------------------------------------------------
+
+    /** Met à jour l'état mouvement / arrêt à partir de chaque mesure reçue. */
+    private fun updateMotion(location: Location) {
+        // Inutile si l'intervalle réglé est déjà aussi long que celui « à l'arrêt ».
+        if (intervalMs >= STILL_INTERVAL_MS) return
+        val now = SystemClock.elapsedRealtime()
+        val ref = anchor
+
+        if (still) {
+            if (ref != null && location.distanceTo(ref) > moveRadius(location.accuracy)) {
+                Log.i(TAG, "déplacement détecté par le réseau")
+                enterMoving()
+            }
+            return
+        }
+
+        if (ref == null || location.distanceTo(ref) > stillRadius(location.accuracy)) {
+            anchor = location
+            anchorSinceElapsed = now
+        } else if (now - anchorSinceElapsed >= STILL_AFTER_MS) {
+            enterStill()
+        }
+    }
+
+    private fun enterStill() {
+        if (still) return
+        still = true
+        Log.i(TAG, "immobile : passage en mode économie")
+        TrackingStatus.update { it.copy(still = true) }
+        registerLocation()
+        motionSensor?.let { sensor ->
+            runCatching { sensorManager?.requestTriggerSensor(motionListener, sensor) }
+        }
+    }
+
+    private fun enterMoving() {
+        val wasStill = still
+        still = false
+        anchor = null
+        anchorSinceElapsed = SystemClock.elapsedRealtime()
+        motionSensor?.let { sensor -> runCatching { sensorManager?.cancelTriggerSensor(motionListener, sensor) } }
+        TrackingStatus.update { it.copy(still = false) }
+        if (wasStill) {
+            Log.i(TAG, "en mouvement : retour au GPS")
+            sendNextImmediately = true
+            registerLocation()
+        }
+    }
+
+    // Jusqu'à Android 10, ces méthodes sont abstraites dans LocationListener :
+    // sans implémentation explicite, l'appli plante quand le GPS est (dés)activé.
+    override fun onProviderEnabled(provider: String) = Unit
+
+    override fun onProviderDisabled(provider: String) = Unit
+
+    @Deprecated("Requis jusqu'à Android 10")
+    @Suppress("DEPRECATION")
+    override fun onStatusChanged(provider: String?, status: Int, extras: android.os.Bundle?) = Unit
+
+    private fun enqueue(location: Location, alarm: String?, sosNow: Long? = null) {
+        lastQueuedElapsed = SystemClock.elapsedRealtime()
+        if (sosNow == null) lastQueuedFixTime = location.time
+
+        val (battery, charging) = readBattery()
+        val fixTime = if (location.time > 0L) location.time else System.currentTimeMillis()
         val fix = LocationFix(
             latitude = location.latitude,
             longitude = location.longitude,
@@ -157,44 +379,130 @@ class TrackingService : Service(), LocationListener {
             altitude = location.altitude,
             speed = location.speed,
             bearing = location.bearing,
-            time = if (location.time > 0L) location.time else System.currentTimeMillis(),
+            // Le SOS est horodaté « maintenant » : le serveur le traite comme la
+            // position la plus récente, et l'âge réel de la mesure part à côté.
+            time = sosNow ?: fixTime,
             battery = battery,
             charging = charging,
             alarm = alarm,
+            fixAgeSeconds = sosNow?.let { ((it - fixTime) / 1000L).coerceAtLeast(0L) },
         )
 
+        TrackingStatus.update { it.copy(battery = battery) }
         scope.launch {
-            var success = false
-            for (attempt in 1..3) {
-                if (client.send(cfg, fix).isSuccess) {
-                    success = true
-                    break
-                }
-                if (attempt < 3) delay(10_000L)
-            }
-
-            if (success && alarm != null) {
-                pendingAlarm = null
-            }
-
-            TrackingStatus.update {
-                it.copy(
-                    lastSentAt = System.currentTimeMillis(),
-                    lastOk = success,
-                    battery = battery,
-                    accuracy = location.accuracy,
-                    sosPending = pendingAlarm != null,
-                )
-            }
-
-            val text = when {
-                !success -> "Hors ligne — nouvelle tentative à la prochaine position"
-                alarm != null -> "Alerte SOS envoyée"
-                else -> "Position envoyée · ${battery}%"
-            }
-            notify(text)
+            queue.add(fix)
+            refreshQueueStatus()
+            flush()
         }
     }
+
+    // --- SOS ------------------------------------------------------------------
+
+    private fun triggerSos() {
+        val now = System.currentTimeMillis()
+        TrackingStatus.update { it.copy(sosPending = true, sosDeliveredAt = null) }
+
+        // Un SOS rallume le GPS pour obtenir au plus vite une position fraîche.
+        enterMoving()
+        val known = best ?: lastKnownLocation()
+        if (known != null) {
+            enqueue(known, alarm = "SOS", sosNow = now)
+            // Puis la prochaine mesure fraîche part sans attendre l'intervalle.
+            sendNextImmediately = true
+        } else {
+            // Aucune position du tout : l'alerte partira avec la première mesure.
+            sosWaitingForFix = true
+        }
+        notify("Alerte SOS en cours d'envoi…")
+    }
+
+    // --- Envoi ----------------------------------------------------------------
+
+    private fun flush() {
+        scope.launch {
+            if (!flushLock.tryLock()) {
+                flushRequested = true
+                return@launch
+            }
+            try {
+                do {
+                    flushRequested = false
+                    drain()
+                } while (flushRequested)
+            } finally {
+                flushLock.unlock()
+            }
+        }
+    }
+
+    private suspend fun drain() {
+        val cfg = config ?: return
+        while (true) {
+            val batch = queue.peek(50)
+            if (batch.isEmpty()) break
+
+            for (entry in batch) {
+                val result = client.send(cfg.serverUrl, cfg.deviceId, entry.fix)
+                if (result.isFailure) {
+                    onSendFailure(result.exceptionOrNull())
+                    return
+                }
+                queue.remove(entry.id)
+                onSendSuccess(entry.fix)
+            }
+        }
+        retryJob?.cancel()
+        retryDelayMs = 30_000L
+    }
+
+    private fun onSendSuccess(fix: LocationFix) {
+        val now = System.currentTimeMillis()
+        val pending = queue.hasPendingAlarm() || sosWaitingForFix
+        TrackingStatus.update {
+            it.copy(
+                lastSentAt = now,
+                lastOk = true,
+                lastError = null,
+                queued = queue.size(),
+                sosPending = pending,
+                sosDeliveredAt = if (fix.alarm != null) now else it.sosDeliveredAt,
+            )
+        }
+        notify(
+            when {
+                fix.alarm != null -> "Alerte SOS reçue par le serveur"
+                else -> "Position envoyée · ${fix.battery}%"
+            },
+        )
+    }
+
+    private fun onSendFailure(error: Throwable?) {
+        val message = error?.message ?: error?.javaClass?.simpleName ?: "erreur inconnue"
+        Log.w(TAG, "envoi impossible : $message")
+        val waiting = queue.size()
+        TrackingStatus.update { it.copy(lastOk = false, lastError = message, queued = waiting) }
+        notify("Hors ligne — $waiting position(s) en attente")
+        scheduleRetry()
+    }
+
+    /** Nouvel essai après 30 s, 1 min, 2 min… plafonné à 5 min (et dès le retour du réseau). */
+    private fun scheduleRetry() {
+        if (retryJob?.isActive == true) return
+        val wait = retryDelayMs
+        retryDelayMs = (retryDelayMs * 2).coerceAtMost(MAX_RETRY_DELAY_MS)
+        retryJob = scope.launch {
+            delay(wait)
+            flush()
+        }
+    }
+
+    private fun refreshQueueStatus() {
+        val waiting = queue.size()
+        val pending = queue.hasPendingAlarm()
+        TrackingStatus.update { it.copy(queued = waiting, sosPending = pending || it.sosPending && sosWaitingForFix) }
+    }
+
+    // --- Divers ---------------------------------------------------------------
 
     @Suppress("DEPRECATION")
     private fun readBattery(): Pair<Int, Boolean> {
@@ -256,8 +564,10 @@ class TrackingService : Service(), LocationListener {
 
     override fun onDestroy() {
         runCatching { locationManager.removeUpdates(this) }
+        motionSensor?.let { sensor -> runCatching { sensorManager?.cancelTriggerSensor(motionListener, sensor) } }
+        connectivity?.let { manager -> runCatching { manager.unregisterNetworkCallback(networkCallback) } }
         scope.cancel()
-        TrackingStatus.update { it.copy(running = false) }
+        TrackingStatus.update { it.copy(running = false, still = false) }
         super.onDestroy()
     }
 
