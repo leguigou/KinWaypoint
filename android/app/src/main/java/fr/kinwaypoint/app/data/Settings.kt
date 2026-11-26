@@ -73,6 +73,9 @@ class SettingsRepository(private val context: Context) {
 
         val BIOMETRIC = booleanPreferencesKey("parent_biometric")
         val BIOMETRIC_OFFER_DISMISSED = booleanPreferencesKey("parent_biometric_offer_dismissed")
+
+        /** Jeton FCM du téléphone, enregistré sur le compte Traccar. */
+        val PUSH_TOKEN = stringPreferencesKey("push_token")
     }
 
     val mode: Flow<AppMode> = context.dataStore.data.map { prefs ->
@@ -108,6 +111,13 @@ class SettingsRepository(private val context: Context) {
 
     /** Identifiant de la dernière alerte SOS marquée « vue » par le parent. */
     val acknowledgedAlarm: Flow<Long> = context.dataStore.data.map { prefs -> prefs[Keys.ACK_ALARM] ?: 0L }
+
+    /** Jeton FCM courant (null tant que Firebase n'a pas répondu). */
+    val pushToken: Flow<String?> = context.dataStore.data.map { prefs -> prefs[Keys.PUSH_TOKEN] }
+
+    suspend fun savePushToken(token: String) {
+        context.dataStore.edit { prefs -> prefs[Keys.PUSH_TOKEN] = token }
+    }
 
     suspend fun acknowledgeAlarm(id: Long) {
         context.dataStore.edit { prefs ->
