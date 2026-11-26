@@ -127,3 +127,7 @@ des « positions qui n'arrivent plus ».
 - carte intégrée (MapLibre), historique, gestion des géofences
 - mesurer la consommation batterie réelle sur plusieurs modèles
 - tests sur téléphones réels (chaque fabricant gère l'arrière-plan différemment)
+
+## Notifications
+
+Les alertes de zone et le SOS arrivent par Firebase quand l'app est fermée, et par Telegram côté serveur en secours.
