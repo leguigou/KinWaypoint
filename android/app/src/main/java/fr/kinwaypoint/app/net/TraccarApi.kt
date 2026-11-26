@@ -202,7 +202,9 @@ class TraccarApi(baseUrl: String) {
      * modifier l'attribut, puis le renvoyer tel quel (vérifié en prod).
      */
     fun registerPushToken(token: String, fcmToken: String) {
-        val me = getObject(token, url("api/session"))
+        // /api/session n'accepte pas le Bearer : l'identité passe par ?token=
+        val sessionUrl = url("api/session").newBuilder().addQueryParameter("token", token).build()
+        val me = getObject(token, sessionUrl)
         val userId = me.getLong("id")
         val user = getObject(token, url("api/users/$userId"))
         val attributes = user.optJSONObject("attributes") ?: JSONObject()
