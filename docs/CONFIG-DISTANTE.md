@@ -122,3 +122,28 @@ echo "https://config.exemple.fr/$TOKEN/config.json"
 Pour la production, une petite route dans la future `family-api` (phase 3)
 pourra générer le jeton, créer l'appareil Traccar et invalider le lien au
 premier usage.
+
+## Implémentation du serveur (déployée)
+
+Le serveur décrit ci-dessus est implémenté dans `server/config-api/` et tourne
+sur `https://config.deloffre.fr` (image `kinwaypoint-config:1.0`, volume
+`kwconfig_data` pour la persistance, 128 Mo de RAM max).
+
+| Route | Rôle |
+|---|---|
+| `GET /kw/<token>` | renvoie la configuration, puis marque le jeton utilisé (`410` au 2ᵉ appel) |
+| `POST /api/codes` | création d'un code, protégée par l'en-tête `X-Admin-Token` |
+| `GET /health` | sonde |
+
+Créer un code :
+
+```bash
+curl -s -X POST https://config.deloffre.fr/api/codes \
+  -H "X-Admin-Token: $KW_ADMIN_TOKEN" -H 'content-type: application/json' \
+  -d '{"mode":"child","label":"Téléphone de Léa",
+       "child":{"serverUrl":"https://ingest.deloffre.fr",
+                "deviceId":"<identifiant Traccar>","intervalSeconds":60}}'
+```
+
+Le jeton fait 256 bits (`secrets.token_urlsafe(32)`), la durée de vie est de
+48 h par défaut (`KW_TTL_HOURS`) et chaque code est à usage unique.
