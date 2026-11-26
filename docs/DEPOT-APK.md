@@ -18,6 +18,37 @@ curl "https://famille.deloffre.fr/apk/index.json?code=azerty"
 `GET /apk/index.json` renvoie la liste en JSON. `GET /apk/<fichier>` sert le
 fichier avec le bon type MIME.
 
+## Mise à jour depuis l'application (routes publiques)
+
+`GET /apk/latest.json` renvoie la version la plus haute (`versionCode`), avec sa
+taille et son SHA-256 ; `GET /apk/latest.apk` sert ce fichier. Les deux sont
+**publics** : l'appli les interroge sans code. Seuls le dernier APK et ses
+métadonnées sortent — la liste complète et les anciennes versions restent
+derrière le code.
+
+**Le serveur retient toujours le plus grand numéro de version.** Penser à
+incrémenter `versionCode` à chaque livraison, quelle que soit la branche qui
+compile.
+
+## Connexion simplifiée (route publique)
+
+`GET /apk/server.json` donne à l'appli les adresses du serveur Traccar, pour que
+l'écran de connexion parent ne demande qu'un **e-mail** et un **mot de passe** :
+
+```json
+{"version": 1, "apiUrl": "https://api.exemple.fr", "trackUrl": "https://track.exemple.fr"}
+```
+
+À configurer sur le conteneur `config-api` :
+
+| Variable | Valeur |
+|---|---|
+| `KW_TRACCAR_API_URL` | adresse de l'interface / API Traccar (port 8082) |
+| `KW_TRACCAR_TRACK_URL` | adresse d'envoi des positions (port 5055) |
+
+Sans `KW_TRACCAR_API_URL`, la route répond `404` et l'appli propose de saisir
+l'adresse dans « Réglages avancés ».
+
 ## Dépôt automatique
 
 À chaque build, le workflow envoie l'APK au dépôt (étape « Déposer l'APK dans

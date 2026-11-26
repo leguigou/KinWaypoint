@@ -44,6 +44,10 @@ APK_DIR = os.path.join(DATA_DIR, "apk")
 APK_INDEX = os.path.join(DATA_DIR, "apk.json")
 APK_BASE_URL = os.environ.get("KW_APK_BASE_URL", "https://famille.deloffre.fr").rstrip("/")
 APK_CODE = os.environ.get("KW_APK_CODE", "azerty")
+# Adresses du serveur Traccar, données à l'appli pour qu'on n'ait plus qu'un
+# e-mail et un mot de passe à saisir (route publique /apk/server.json).
+TRACCAR_API_URL = os.environ.get("KW_TRACCAR_API_URL", "").rstrip("/")
+TRACCAR_TRACK_URL = os.environ.get("KW_TRACCAR_TRACK_URL", "").rstrip("/")
 COOKIE_NAME = "kwapk"
 COOKIE_DAYS = 30
 # Une consommation n'est pas instantanément fatale : on tolère quelques
@@ -379,6 +383,16 @@ class Handler(BaseHTTPRequestHandler):
             })
             return
 
+        # --- Découverte : adresses du serveur Traccar (PUBLIC, aucune donnée
+        # sensible). Sans KW_TRACCAR_API_URL, on répond 404 : l'appli affiche
+        # « Serveur familial introuvable » et ouvre les réglages avancés.
+        if path == "/apk/server.json":
+            if not TRACCAR_API_URL:
+                self.reply(404, {"error": "KW_TRACCAR_API_URL non configuree"})
+                return
+            self.reply(200, {"version": 1, "apiUrl": TRACCAR_API_URL, "trackUrl": TRACCAR_TRACK_URL})
+            return
+
         # --- Mise à jour depuis l'appli : PUBLIC (sans code), et uniquement la
         # dernière version. La liste complète et les anciens APK restent protégés.
         if path == "/apk/latest.json":
@@ -511,6 +525,13 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/apk/latest.json":
             self.send_response(200 if latest_apk() else 404)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+
+        if path == "/apk/server.json":
+            self.send_response(200 if TRACCAR_API_URL else 404)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", "0")
             self.end_headers()
