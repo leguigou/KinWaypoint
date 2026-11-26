@@ -44,6 +44,10 @@ APK_DIR = os.path.join(DATA_DIR, "apk")
 APK_INDEX = os.path.join(DATA_DIR, "apk.json")
 APK_BASE_URL = os.environ.get("KW_APK_BASE_URL", "https://famille.deloffre.fr").rstrip("/")
 APK_CODE = os.environ.get("KW_APK_CODE", "azerty")
+# Adresses du serveur Traccar, données à l'appli pour qu'on n'ait plus qu'un
+# e-mail et un mot de passe à saisir (route publique /apk/server.json).
+TRACCAR_API_URL = os.environ.get("KW_TRACCAR_API_URL", "").rstrip("/")
+TRACCAR_TRACK_URL = os.environ.get("KW_TRACCAR_TRACK_URL", "").rstrip("/")
 COOKIE_NAME = "kwapk"
 COOKIE_DAYS = 30
 MAX_APK_BYTES = 200 * 1024 * 1024
@@ -350,6 +354,14 @@ class Handler(BaseHTTPRequestHandler):
                 "Location": "/apk/",
                 "Set-Cookie": f"{COOKIE_NAME}=; Path=/apk; Max-Age=0; HttpOnly; Secure; SameSite=Lax",
             })
+            return
+
+        # --- Découverte : adresses du serveur Traccar (PUBLIC, aucune donnée sensible).
+        if path == "/apk/server.json":
+            if not TRACCAR_API_URL:
+                self.reply(404, {"error": "KW_TRACCAR_API_URL non configurée"})
+                return
+            self.reply(200, {"version": 1, "apiUrl": TRACCAR_API_URL, "trackUrl": TRACCAR_TRACK_URL})
             return
 
         # --- Mise à jour depuis l'appli : PUBLIC (sans code), et uniquement la

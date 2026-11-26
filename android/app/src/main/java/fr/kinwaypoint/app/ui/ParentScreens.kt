@@ -11,6 +11,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.filled.AddAPhoto
 import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.HideImage
+import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Notifications
@@ -111,105 +115,138 @@ fun ParentLoginScreen(
     val scope = rememberCoroutineScope()
     var apiUrl by remember(current.apiUrl) { mutableStateOf(current.apiUrl) }
     var trackUrl by remember(current.trackUrl) { mutableStateOf(current.trackUrl) }
+    // Les adresses déjà connues (reconnexion) restent dans « Réglages avancés ».
     var email by remember(current.email) { mutableStateOf(current.email) }
     var showConfigCode by remember { mutableStateOf(false) }
     var password by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
+    var advanced by remember { mutableStateOf(false) }
+
+    /** Connexion : adresses du serveur trouvées automatiquement, sauf si saisies à la main. */
+    fun signIn() {
+        busy = true
+        error = null
+        scope.launch {
+            val server = if (apiUrl.isNotBlank()) {
+                ServerInfo(apiUrl.trim(), trackUrl.trim().ifBlank { guessTrackUrl(apiUrl.trim()) })
+            } else {
+                discoverServer()
+            }
+            if (server == null) {
+                error = "Serveur familial introuvable. Vérifie la connexion, ou renseigne l'adresse dans « Réglages avancés »."
+                advanced = true
+                busy = false
+                return@launch
+            }
+            val result = withContext(Dispatchers.IO) { runCatching { TraccarApi(server.apiUrl).login(email, password) } }
+            result.onSuccess { token ->
+                password = ""
+                val normalized = TraccarApi.normalize(server.apiUrl).toString()
+                repository.saveParent(
+                    current.copy(apiUrl = normalized, trackUrl = server.trackUrl.ifBlank { guessTrackUrl(normalized) }, email = email.trim(), token = token),
+                )
+            }.onFailure { error = it.message ?: "Connexion impossible" }
+            busy = false
+        }
+    }
+
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp),
+            modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            BrandMark(size = 56.dp)
+            Spacer(Modifier.height(24.dp))
+            BrandMark(size = 72.dp)
             Text("Espace parent", style = MaterialTheme.typography.headlineMedium)
-            FilledTonalButton(onClick = { showConfigCode = true }, shape = CircleShape) {
-                Icon(Icons.Default.Link, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.size(8.dp))
-                Text("J'ai un code de configuration")
-            }
             Text(
-                "Connecte-toi avec ton compte du serveur familial. Le mot de passe n'est pas conservé : " +
+                "Connecte-toi avec ton compte familial. Le mot de passe n'est pas conservé : " +
                     "le téléphone garde seulement un jeton d'accès valable un an.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = Muted,
             )
             OutlinedTextField(
-                value = apiUrl,
-                onValueChange = { apiUrl = it },
-                label = { Text("Adresse du serveur (interface)") },
-                placeholder = { Text("https://api.exemple.fr") },
-                singleLine = true,
-                shape = MaterialTheme.shapes.small,
-                modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-            )
-            OutlinedTextField(
-                value = trackUrl,
-                onValueChange = { trackUrl = it },
-                label = { Text("Adresse d'envoi des positions (facultatif)") },
-                placeholder = { Text(guessTrackUrl(apiUrl).ifBlank { "https://track.exemple.fr" }) },
-                supportingText = { Text("Utilisée dans les QR codes de configuration des enfants") },
-                singleLine = true,
-                shape = MaterialTheme.shapes.small,
-                modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-            )
-            OutlinedTextField(
                 value = email,
                 onValueChange = { email = it },
                 label = { Text("E-mail") },
+                leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
                 singleLine = true,
                 shape = MaterialTheme.shapes.small,
                 modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = androidx.compose.ui.text.input.ImeAction.Next),
             )
+            var showPassword by remember { mutableStateOf(false) }
             OutlinedTextField(
                 value = password,
                 onValueChange = { password = it },
                 label = { Text("Mot de passe") },
-                singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
-                shape = MaterialTheme.shapes.small,
-                modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-            )
-            error?.let { Text(it, color = Danger, fontSize = 14.sp) }
-
-            Button(
-                onClick = {
-                    busy = true
-                    error = null
-                    scope.launch {
-                        val result = withContext(Dispatchers.IO) {
-                            runCatching {
-                                val api = TraccarApi(apiUrl)
-                                api.login(email, password)
-                            }
-                        }
-                        result.onSuccess { token ->
-                            password = ""
-                            val normalized = TraccarApi.normalize(apiUrl).toString()
-                            repository.saveParent(
-                                current.copy(
-                                    apiUrl = normalized,
-                                    trackUrl = trackUrl.trim().ifBlank { guessTrackUrl(normalized) },
-                                    email = email,
-                                    token = token,
-                                ),
-                            )
-                        }.onFailure {
-                            error = it.message ?: "Connexion impossible"
-                        }
-                        busy = false
+                leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
+                trailingIcon = {
+                    IconButton(onClick = { showPassword = !showPassword }) {
+                        Icon(
+                            if (showPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                            contentDescription = if (showPassword) "Masquer" else "Afficher",
+                        )
                     }
                 },
-                enabled = !busy && apiUrl.isNotBlank() && email.isNotBlank() && password.isNotBlank(),
+                singleLine = true,
+                visualTransformation = if (showPassword) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(),
+                shape = MaterialTheme.shapes.small,
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = androidx.compose.ui.text.input.ImeAction.Done),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = {
+                    if (!busy && email.isNotBlank() && password.isNotBlank()) signIn()
+                }),
+            )
+            error?.let { Text(it, color = Danger, style = MaterialTheme.typography.bodyMedium) }
+
+            Button(
+                onClick = { signIn() },
+                enabled = !busy && email.isNotBlank() && password.isNotBlank(),
                 modifier = Modifier.fillMaxWidth().height(56.dp),
                 shape = CircleShape,
             ) {
-                if (busy) CircularProgressIndicator(Modifier.height(20.dp), color = Color.White) else Text("Se connecter")
+                if (busy) CircularProgressIndicator(Modifier.size(22.dp), color = Color.White, strokeWidth = 2.dp) else Text("Se connecter")
+            }
+
+            // Réglages avancés : autre serveur, ou serveur familial injoignable.
+            TextButton(onClick = { advanced = !advanced }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+                Text(if (advanced) "Masquer les réglages avancés" else "Réglages avancés")
+            }
+            if (advanced) {
+                SectionCard {
+                    Text(
+                        "Laisse vide pour utiliser le serveur familial ($FAMILY_HUB).",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Muted,
+                    )
+                    OutlinedTextField(
+                        value = apiUrl,
+                        onValueChange = { apiUrl = it },
+                        label = { Text("Adresse du serveur (interface)") },
+                        placeholder = { Text("https://api.exemple.fr") },
+                        singleLine = true,
+                        shape = MaterialTheme.shapes.small,
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                    )
+                    OutlinedTextField(
+                        value = trackUrl,
+                        onValueChange = { trackUrl = it },
+                        label = { Text("Adresse d'envoi des positions") },
+                        placeholder = { Text(guessTrackUrl(apiUrl).ifBlank { "https://track.exemple.fr" }) },
+                        singleLine = true,
+                        shape = MaterialTheme.shapes.small,
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                    )
+                    TextButton(onClick = { showConfigCode = true }) {
+                        Icon(Icons.Default.Link, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.size(8.dp))
+                        Text("J'ai un code de configuration")
+                    }
+                }
             }
             TextButton(onClick = onCancel, modifier = Modifier.align(Alignment.CenterHorizontally)) {
                 Text("Verrouiller")

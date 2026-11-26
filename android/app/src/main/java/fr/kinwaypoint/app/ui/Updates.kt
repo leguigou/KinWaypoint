@@ -53,7 +53,7 @@ import java.util.concurrent.TimeUnit
  * Format : {"versionCode": 15, "versionName": "0.14.1", "apkUrl": "…", "sha256": "…"}
  */
 private val UPDATE_SOURCES = listOf(
-    "https://famille.deloffre.fr/apk/latest.json",
+    "$FAMILY_HUB/apk/latest.json",
     "https://github.com/leguigou/KinWaypoint/releases/download/test-latest/version.json",
 )
 

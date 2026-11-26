@@ -34,6 +34,26 @@ Android (confirmation obligatoire). GitHub (`test-latest/version.json`) sert de
 secours si le dépôt ne répond pas. La liste complète et les anciennes versions
 restent derrière le code.
 
+## Connexion simplifiée (route publique)
+
+`GET /apk/server.json` donne à l'appli les adresses du serveur Traccar, pour
+que l'écran de connexion parent ne demande qu'un **e-mail** et un **mot de
+passe** :
+
+```json
+{"version": 1, "apiUrl": "https://api.exemple.fr", "trackUrl": "https://track.exemple.fr"}
+```
+
+À configurer sur le conteneur `config-api` :
+
+| Variable | Valeur |
+|---|---|
+| `KW_TRACCAR_API_URL` | adresse de l'interface / API Traccar (port 8082) |
+| `KW_TRACCAR_TRACK_URL` | adresse d'envoi des positions (port 5055) |
+
+Sans `KW_TRACCAR_API_URL`, la route répond `404` et l'appli propose de saisir
+l'adresse dans « Réglages avancés ».
+
 ## Dépôt automatique
 
 À chaque build, le workflow envoie l'APK au dépôt (étape « Déposer l'APK dans
