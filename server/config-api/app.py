@@ -42,6 +42,7 @@ STORE = os.path.join(DATA_DIR, "codes.json")
 
 APK_DIR = os.path.join(DATA_DIR, "apk")
 APK_INDEX = os.path.join(DATA_DIR, "apk.json")
+APK_BASE_URL = os.environ.get("KW_APK_BASE_URL", "https://famille.deloffre.fr").rstrip("/")
 APK_CODE = os.environ.get("KW_APK_CODE", "azerty")
 COOKIE_NAME = "kwapk"
 COOKIE_DAYS = 30
@@ -497,6 +498,17 @@ class Handler(BaseHTTPRequestHandler):
                           f"Max-Age={COOKIE_DAYS * 86400}; HttpOnly; Secure; SameSite=Lax",
         })
 
+    def header_utf8(self, name, default=""):
+        """Les en-têtes HTTP sont décodés en latin-1 : on récupère l'UTF-8 réel.
+
+        Sans ça, un « · » envoyé par curl arrive sous forme de « Â· ».
+        """
+        raw = self.headers.get(name, default) or default
+        try:
+            return raw.encode("latin-1").decode("utf-8")
+        except (UnicodeDecodeError, UnicodeEncodeError):
+            return raw
+
     def upload_apk(self):
         name = safe_name(self.headers.get("X-Filename", ""))
         if not name or not name.lower().endswith(".apk"):
@@ -531,12 +543,12 @@ class Handler(BaseHTTPRequestHandler):
 
         entry = {
             "file": name,
-            "project": self.headers.get("X-Project", "KinWaypoint")[:40],
-            "version": self.headers.get("X-Version", "")[:40],
+            "project": self.header_utf8("X-Project", "KinWaypoint")[:40],
+            "version": self.header_utf8("X-Version")[:40],
             "size": length,
             "uploadedAt": iso(now()),
             "sha256": digest.hexdigest(),
-            "note": self.headers.get("X-Note", "")[:200],
+            "note": self.header_utf8("X-Note")[:200],
         }
         with LOCK:
             try:
@@ -548,7 +560,7 @@ class Handler(BaseHTTPRequestHandler):
             save_json(APK_INDEX, meta)
 
         self.log_message(f"apk depose: {name} ({length} o)")
-        self.reply(201, {"ok": True, "file": name, "url": f"{BASE_URL}/apk/{name}", "sha256": entry["sha256"]})
+        self.reply(201, {"ok": True, "file": name, "url": f"{APK_BASE_URL}/apk/{name}", "sha256": entry["sha256"]})
 
 
 if __name__ == "__main__":
