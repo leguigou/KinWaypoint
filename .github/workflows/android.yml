@@ -12,6 +12,12 @@ on:
 permissions:
   contents: write
 
+# Une seule compilation à la fois : deux publications simultanées de l'APK de
+# test se marchaient dessus (fichier absent → 404 au téléchargement).
+concurrency:
+  group: android-apk
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -88,24 +94,39 @@ jobs:
           retention-days: 30
 
       # Version de test : l'APK seul (non zippé), sous un lien fixe ouvrable
-      # directement depuis le téléphone, remplacé à chaque build.
-      - name: APK de test téléchargeable
-        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
-        run: cp app/build/outputs/apk/release/kinwaypoint-*.apk app/build/outputs/apk/release/kinwaypoint-test.apk
-
+      # directement depuis le téléphone. Remplacement « sans trou » : le nouvel
+      # APK est envoyé sous un nom temporaire, puis l'ancien est supprimé et le
+      # nouveau renommé (≈ 1 s d'indisponibilité au lieu de la durée d'envoi).
       - name: Publier la version de test
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: test-latest
-          name: "Version de test (dernier build)"
-          body: |
-            APK de test construit automatiquement depuis `${{ github.ref_name }}` (commit ${{ github.sha }}).
-            Lien direct : https://github.com/${{ github.repository }}/releases/download/test-latest/kinwaypoint-test.apk
-            Non destiné aux téléphones des enfants tant qu'il n'est pas validé.
-          prerelease: true
-          make_latest: false
-          files: android/app/build/outputs/apk/release/kinwaypoint-test.apk
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          TAG=test-latest
+          FINAL=kinwaypoint-test.apk
+          TEMP="kinwaypoint-test-${GITHUB_SHA::7}.apk"
+          cp "$(ls app/build/outputs/apk/release/kinwaypoint-*.apk | head -1)" "$RUNNER_TEMP/$TEMP"
+          NOTES="APK de test construit automatiquement depuis \`${GITHUB_REF_NAME}\` (commit ${GITHUB_SHA}).
+          Lien direct : https://github.com/${REPO}/releases/download/${TAG}/${FINAL}
+          Non destiné aux téléphones des enfants tant qu'il n'est pas validé."
+
+          if ! gh release view "$TAG" -R "$REPO" >/dev/null 2>&1; then
+            gh release create "$TAG" -R "$REPO" --prerelease --title "Version de test (dernier build)" --notes "$NOTES"
+          fi
+
+          gh release upload "$TAG" "$RUNNER_TEMP/$TEMP" -R "$REPO" --clobber
+
+          ASSETS=$(gh api "repos/$REPO/releases/tags/$TAG" --jq '.assets[] | "\(.id) \(.name)"')
+          NEW_ID=$(echo "$ASSETS" | awk -v n="$TEMP" '$2==n {print $1}')
+          # Supprime l'ancien APK et d'éventuels restes temporaires d'un build interrompu.
+          echo "$ASSETS" | awk -v n="$TEMP" '$2!=n && $2 ~ /^kinwaypoint-test/ {print $1}' | while read -r id; do
+            gh api -X DELETE "repos/$REPO/releases/assets/$id"
+          done
+          gh api -X PATCH "repos/$REPO/releases/assets/$NEW_ID" -f name="$FINAL" >/dev/null
+          gh release edit "$TAG" -R "$REPO" --notes "$NOTES"
+          echo "Publié : https://github.com/${REPO}/releases/download/${TAG}/${FINAL}"
 
       - name: Publier la release
         if: startsWith(github.ref, 'refs/tags/v')
