@@ -70,7 +70,7 @@ fun ConfigCodeDialog(
                     SetupPayload.decode(value)?.let { qr ->
                         RemoteConfig(
                             mode = AppMode.CHILD,
-                            child = RemoteConfig.Child(qr.serverUrl, qr.deviceId, qr.intervalSeconds),
+                            child = RemoteConfig.Child(qr.serverUrl, qr.deviceId, qr.intervalSeconds, qr.apiUrl, qr.viewerToken),
                             parent = null,
                             label = null,
                         )

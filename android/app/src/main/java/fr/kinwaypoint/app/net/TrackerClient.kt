@@ -28,13 +28,19 @@ class TrackerClient {
             .add("lon", String.format(Locale.US, "%.6f", fix.longitude))
             .add("accuracy", String.format(Locale.US, "%.1f", fix.accuracy))
             .add("altitude", String.format(Locale.US, "%.1f", fix.altitude))
-            .add("speed", String.format(Locale.US, "%.2f", fix.speed))
+            // OsmAnd / Traccar attendent la vitesse en nœuds (Android la donne en m/s).
+            .add("speed", String.format(Locale.US, "%.2f", fix.speed * 1.943844))
             .add("bearing", String.format(Locale.US, "%.1f", fix.bearing))
             .add("batt", fix.battery.toString())
             .add("charge", fix.charging.toString())
             .apply {
                 fix.alarm?.let { add("alarm", it) }
                 fix.fixAgeSeconds?.let { add("fixAge", it.toString()) }
+                fix.ringer?.let { add("ringer", it) }
+                fix.wifi?.let { add("wifi", it) }
+                fix.steps?.let { add("steps", it.toString()) }
+                fix.activity?.let { add("activity", it) }
+                fix.kmh?.let { add("kmh", String.format(Locale.US, "%.1f", it)) }
             }
             .build()
 

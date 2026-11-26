@@ -18,13 +18,22 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 /** Rôle de l'appareil, choisi au premier lancement. */
 enum class AppMode { UNSET, CHILD, PARENT }
 
-/** Réglages du mode enfant : où et à quelle cadence envoyer la position. */
+/**
+ * Réglages du suivi de CE téléphone : où et à quelle cadence envoyer la position.
+ * Sert au mode enfant, et au mode parent quand « Partager ma position » est activé.
+ */
 data class TrackingConfig(
     val serverUrl: String = "",
     val deviceId: String = "",
     val intervalSeconds: Int = 60,
     val enabled: Boolean = false,
+    /** Mode enfant : adresse de l'API, pour voir les parents (« Voir mes parents »). */
+    val apiUrl: String = "",
+    /** Mode enfant : jeton du compte « Enfants (lecture seule) » ; vide = pas d'accès. */
+    val viewerToken: String = "",
 ) {
+    val canSeeParents: Boolean get() = apiUrl.isNotBlank() && viewerToken.isNotBlank()
+
     val isValid: Boolean get() = deviceId.isNotBlank() && serverUrl.isNotBlank()
 }
 
@@ -74,6 +83,15 @@ class SettingsRepository(private val context: Context) {
         val BIOMETRIC = booleanPreferencesKey("parent_biometric")
         val BIOMETRIC_OFFER_DISMISSED = booleanPreferencesKey("parent_biometric_offer_dismissed")
 
+        val VIEW_API = stringPreferencesKey("viewer_api_url")
+        val VIEW_TOKEN = stringPreferencesKey("viewer_token")
+
+        /** Mode parent : appareil Traccar de CE téléphone (« Partager ma position »). */
+        val OWN_DEVICE_ID = longPreferencesKey("parent_own_device_id")
+        /** Mode parent : jeton du compte lecteur des enfants, mis en cache pour les QR codes. */
+        val CHILD_VIEWER_TOKEN = stringPreferencesKey("parent_child_viewer_token")
+        val CHILD_VIEWER_EXPIRES = longPreferencesKey("parent_child_viewer_expires")
+
         /** Jeton FCM du téléphone, enregistré sur le compte Traccar. */
         val PUSH_TOKEN = stringPreferencesKey("push_token")
     }
@@ -88,7 +106,31 @@ class SettingsRepository(private val context: Context) {
             deviceId = prefs[Keys.DEVICE].orEmpty(),
             intervalSeconds = prefs[Keys.INTERVAL]?.toIntOrNull() ?: 60,
             enabled = prefs[Keys.ENABLED] ?: false,
+            apiUrl = prefs[Keys.VIEW_API].orEmpty(),
+            viewerToken = prefs[Keys.VIEW_TOKEN].orEmpty(),
         )
+    }
+
+    /** Mode parent : id Traccar de l'appareil de ce téléphone (0 = pas encore créé). */
+    val ownDeviceId: Flow<Long> = context.dataStore.data.map { prefs -> prefs[Keys.OWN_DEVICE_ID] ?: 0L }
+
+    suspend fun setOwnDeviceId(id: Long) {
+        context.dataStore.edit { prefs -> prefs[Keys.OWN_DEVICE_ID] = id }
+    }
+
+    /** Jeton lecteur en cache s'il est encore valable au moins 30 jours. */
+    suspend fun cachedChildViewerToken(): String? {
+        val prefs = context.dataStore.data.first()
+        val token = prefs[Keys.CHILD_VIEWER_TOKEN] ?: return null
+        val expires = prefs[Keys.CHILD_VIEWER_EXPIRES] ?: 0L
+        return token.takeIf { expires - System.currentTimeMillis() > 30L * 24 * 3600 * 1000 }
+    }
+
+    suspend fun cacheChildViewerToken(token: String, expires: Long) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.CHILD_VIEWER_TOKEN] = token
+            prefs[Keys.CHILD_VIEWER_EXPIRES] = expires
+        }
     }
 
     val parent: Flow<ParentConfig> = context.dataStore.data.map { prefs ->
@@ -145,6 +187,8 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.DEVICE] = config.deviceId.trim()
             prefs[Keys.INTERVAL] = config.intervalSeconds.toString()
             prefs[Keys.ENABLED] = config.enabled
+            prefs[Keys.VIEW_API] = config.apiUrl.trim()
+            prefs[Keys.VIEW_TOKEN] = config.viewerToken
         }
     }
 
@@ -188,6 +232,12 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.ENABLED] = false
             prefs.remove(Keys.TOKEN)
             prefs[Keys.BIOMETRIC] = false
+            // La configuration de suivi appartient à l'ancien mode : on repart de zéro.
+            prefs.remove(Keys.SERVER)
+            prefs.remove(Keys.DEVICE)
+            prefs.remove(Keys.VIEW_API)
+            prefs.remove(Keys.VIEW_TOKEN)
+            prefs.remove(Keys.OWN_DEVICE_ID)
         }
     }
 }

@@ -29,6 +29,27 @@ data class Member(
     val photo: String? = null,
     /** Change à chaque nouvelle photo : sert de clé de cache. */
     val photoVersion: Long = 0L,
+    /** Couleur du tracé choisie par les parents (« #RRGGBB »), ou null = couleur par défaut. */
+    val color: String? = null,
+    /** Appareil d'un parent (« Partager ma position ») et non d'un enfant. */
+    val isParent: Boolean = false,
+    /** Objectif de pas quotidien (8 000 par défaut). */
+    val stepGoal: Int = DEFAULT_STEP_GOAL,
+)
+
+/** Objectif de pas quotidien proposé par défaut. */
+const val DEFAULT_STEP_GOAL = 8000
+
+/** Un point d'historique. */
+data class TracePoint(
+    val latitude: Double,
+    val longitude: Double,
+    val time: Long,
+    val speedKmh: Double,
+    val accuracy: Double,
+    val battery: Int?,
+    val steps: Int? = null,
+    val activity: String? = null,
 )
 
 data class MemberPosition(
@@ -38,6 +59,40 @@ data class MemberPosition(
     val accuracy: Double,
     val battery: Int?,
     val charging: Boolean?,
+    /** "normal", "vibrate", "silent" (envoyé par l'appli), ou null. */
+    val ringer: String? = null,
+    /** Nom du Wi-Fi connecté, ou null. */
+    val wifi: String? = null,
+    /** Pas du jour (podomètre du téléphone), ou null. */
+    val steps: Int? = null,
+    /** Activité estimée par le téléphone : still, walking, bike, vehicle. */
+    val activity: String? = null,
+    /** Vitesse en km/h (lissée par le téléphone si disponible, sinon GPS). */
+    val kmh: Double? = null,
+)
+
+/** Un lieu de la famille (zone circulaire Traccar) : maison, école… */
+data class Place(
+    val id: Long,
+    val name: String,
+    val latitude: Double,
+    val longitude: Double,
+    val radius: Double,
+    /** Type d'icône : home, school, work, sport… (voir PlaceTypes). */
+    val icon: String,
+    /** Couleur choisie (« #RRGGBB »). */
+    val color: String = "#5B5BD6",
+    /** Alertes d'arrivée / départ ; false = simple point d'intérêt sur la carte. */
+    val alerts: Boolean = true,
+)
+
+/** Un événement à afficher dans la cloche : arrivée, départ, SOS. */
+data class FamilyEvent(
+    val id: Long,
+    val deviceId: Long,
+    val type: String,
+    val time: Long,
+    val placeId: Long,
 )
 
 data class Alarm(
@@ -66,6 +121,16 @@ class TraccarApi(baseUrl: String) {
         .build()
 
     companion object {
+        /** Positions sans activité envoyée (ancienne version de l'appli) : déduite de la vitesse. */
+        fun activityFromSpeed(kmh: Double): String? = when {
+            kmh > 15 -> "vehicle"
+            kmh >= 7 -> "bike"
+            else -> null
+        }
+
+        /** Adresse (fictive) du compte lecteur des enfants, créé par l'appli parent. */
+        const val CHILD_VIEWER_EMAIL = "kw-enfants@kinwaypoint.local"
+
         fun normalize(url: String): HttpUrl {
             var text = url.trim().trimEnd('/')
             if (!text.startsWith("http://") && !text.startsWith("https://")) text = "https://$text"
@@ -84,7 +149,11 @@ class TraccarApi(baseUrl: String) {
     }
 
     /** Connexion par e-mail / mot de passe, renvoie un jeton d'accès longue durée. */
-    fun login(email: String, password: String): String {
+    fun login(
+        email: String,
+        password: String,
+        expiresAt: Long = System.currentTimeMillis() + 365L * 24 * 3600 * 1000,
+    ): String {
         // Cookie de session éphémère, le temps d'obtenir le jeton.
         val jar = mutableListOf<Cookie>()
         val session = http.newBuilder()
@@ -110,7 +179,7 @@ class TraccarApi(baseUrl: String) {
             }
         }
 
-        val expiration = iso(System.currentTimeMillis() + 365L * 24 * 3600 * 1000)
+        val expiration = iso(expiresAt)
         val tokenRequest = Request.Builder()
             .url(url("api/session/token"))
             .post(FormBody.Builder().add("expiration", expiration).build())
@@ -137,6 +206,12 @@ class TraccarApi(baseUrl: String) {
                 accuracy = p.optDouble("accuracy", 0.0),
                 battery = attrs?.takeIf { it.has("batteryLevel") }?.optDouble("batteryLevel")?.toInt(),
                 charging = attrs?.takeIf { it.has("charge") }?.optBoolean("charge"),
+                ringer = attrs?.optString("ringer")?.takeIf { it.isNotBlank() },
+                wifi = attrs?.optString("wifi")?.takeIf { it.isNotBlank() },
+                steps = attrs?.takeIf { it.has("steps") }?.optDouble("steps")?.toInt(),
+                activity = attrs?.optString("activity")?.takeIf { it.isNotBlank() }
+                    ?: activityFromSpeed(p.optDouble("speed", 0.0) * 1.852),
+                kmh = attrs?.takeIf { it.has("kmh") }?.optDouble("kmh") ?: p.optDouble("speed", 0.0) * 1.852,
             )
         }
 
@@ -152,6 +227,9 @@ class TraccarApi(baseUrl: String) {
                 position = byDevice[id],
                 photo = d.optJSONObject("attributes")?.optString("deviceImage")?.takeIf { it.isNotBlank() },
                 photoVersion = d.optJSONObject("attributes")?.optLong("kwPhotoVersion") ?: 0L,
+                color = d.optJSONObject("attributes")?.optString("kwColor")?.takeIf { it.matches(Regex("#[0-9A-Fa-f]{6}")) },
+                isParent = d.optJSONObject("attributes")?.optString("kwRole") == "parent",
+                stepGoal = d.optJSONObject("attributes")?.optInt("kwStepGoal", DEFAULT_STEP_GOAL)?.takeIf { it > 0 } ?: DEFAULT_STEP_GOAL,
             )
         }.sortedBy { it.name.lowercase() }
     }
@@ -267,6 +345,229 @@ class TraccarApi(baseUrl: String) {
             attrs.put("deviceImage", fileName)
             attrs.put("kwPhotoVersion", System.currentTimeMillis())
         }
+    }
+
+    /** Marque l'appareil comme celui d'un parent (jamais rendu visible automatiquement). */
+    fun markAsParent(token: String, id: Long) {
+        updateAttributes(token, id) { attrs -> attrs.put("kwRole", "parent") }
+    }
+
+    /**
+     * Les enfants se voient entre eux : chaque appareil d'enfant est lié au compte
+     * lecteur. Les appareils des parents ne sont pas touchés (mode fantôme respecté).
+     */
+    fun shareChildrenWithEachOther(token: String, members: List<Member>) {
+        members.filter { !it.isParent }.forEach { setVisibleToChildren(token, it.id, visible = true) }
+    }
+
+    // --- Lieux (zones Traccar) --------------------------------------------------------
+
+    /** Lieux circulaires de la famille. Les zones polygonales (créées sur le web) sont ignorées. */
+    fun places(token: String): List<Place> {
+        val array = getArray(token, url("api/geofences"))
+        val circle = Regex("""CIRCLE\s*\(\s*(-?[0-9.]+)\s+(-?[0-9.]+)\s*,\s*([0-9.]+)\s*\)""")
+        return (0 until array.length()).mapNotNull { i ->
+            val g = array.getJSONObject(i)
+            val m = circle.find(g.optString("area")) ?: return@mapNotNull null
+            Place(
+                id = g.getLong("id"),
+                name = g.optString("name"),
+                latitude = m.groupValues[1].toDouble(),
+                longitude = m.groupValues[2].toDouble(),
+                radius = m.groupValues[3].toDouble(),
+                icon = g.optJSONObject("attributes")?.optString("kwIcon")?.takeIf { it.isNotBlank() } ?: "other",
+                color = g.optJSONObject("attributes")?.optString("kwColor")?.takeIf { it.matches(Regex("#[0-9A-Fa-f]{6}")) } ?: "#5B5BD6",
+                alerts = g.optJSONObject("attributes")?.let { if (it.has("kwAlerts")) it.optBoolean("kwAlerts") else true } ?: true,
+            )
+        }.sortedBy { it.name.lowercase() }
+    }
+
+    /** Crée un lieu et l'applique à tous les appareils (alertes d'entrée / sortie). */
+    /**
+     * Crée (id = 0) ou modifie un lieu. Avec alertes, il est rattaché à tous les
+     * appareils (le serveur génère arrivées / départs) ; sans alertes, il n'est
+     * rattaché à aucun : c'est un simple point d'intérêt sur la carte.
+     */
+    fun savePlace(token: String, place: Place, deviceIds: List<Long>): Long {
+        val area = String.format(java.util.Locale.US, "CIRCLE (%.6f %.6f, %d)", place.latitude, place.longitude, place.radius.toInt())
+        val id = if (place.id <= 0) {
+            val body = JSONObject().put("name", place.name.trim()).put("area", area)
+                .put("attributes", JSONObject().put("kwIcon", place.icon).put("kwColor", place.color).put("kwAlerts", place.alerts))
+            val create = Request.Builder().url(url("api/geofences"))
+                .post(body.toString().toRequestBody("application/json".toMediaType()))
+            authorized(token, create).use { response ->
+                check(response)
+                JSONObject(response.body?.string().orEmpty()).getLong("id")
+            }
+        } else {
+            // Objet complet relu puis renvoyé (Traccar refuse un PUT partiel).
+            val g = authorized(token, Request.Builder().url(url("api/geofences/${place.id}")).get()).use { response ->
+                check(response)
+                JSONObject(response.body?.string().orEmpty())
+            }
+            val attrs = g.optJSONObject("attributes") ?: JSONObject()
+            attrs.put("kwIcon", place.icon).put("kwColor", place.color).put("kwAlerts", place.alerts)
+            g.put("name", place.name.trim()).put("area", area).put("attributes", attrs)
+            val put = Request.Builder().url(url("api/geofences/${place.id}"))
+                .put(g.toString().toRequestBody("application/json".toMediaType()))
+            authorized(token, put).use { check(it) }
+            place.id
+        }
+        if (place.alerts) linkPlace(token, id, deviceIds) else unlinkPlace(token, id, deviceIds)
+        return id
+    }
+
+    /** Détache un lieu des appareils : plus d'alertes d'arrivée / départ. */
+    fun unlinkPlace(token: String, placeId: Long, deviceIds: List<Long>) {
+        deviceIds.forEach { deviceId ->
+            val body = JSONObject().put("deviceId", deviceId).put("geofenceId", placeId).toString()
+                .toRequestBody("application/json".toMediaType())
+            runCatching { authorized(token, Request.Builder().url(url("api/permissions")).delete(body)).close() }
+        }
+    }
+
+    fun deletePlace(token: String, id: Long) {
+        authorized(token, Request.Builder().url(url("api/geofences/$id")).delete()).use { check(it) }
+    }
+
+    /** Rattache un lieu à des appareils (déjà rattaché : ignoré). */
+    fun linkPlace(token: String, placeId: Long, deviceIds: List<Long>) {
+        deviceIds.forEach { deviceId ->
+            val body = JSONObject().put("deviceId", deviceId).put("geofenceId", placeId).toString()
+                .toRequestBody("application/json".toMediaType())
+            runCatching { authorized(token, Request.Builder().url(url("api/permissions")).post(body)).close() }
+        }
+    }
+
+    /** Arrivées, départs et SOS des appareils donnés, du plus récent au plus ancien. */
+    fun events(token: String, deviceIds: List<Long>, from: Long, to: Long): List<FamilyEvent> {
+        if (deviceIds.isEmpty()) return emptyList()
+        val builder = url("api/reports/events").newBuilder()
+            .addQueryParameter("from", iso(from))
+            .addQueryParameter("to", iso(to))
+        listOf("geofenceEnter", "geofenceExit", "alarm").forEach { builder.addQueryParameter("type", it) }
+        deviceIds.forEach { builder.addQueryParameter("deviceId", it.toString()) }
+        val array = getArray(token, builder.build())
+        return (0 until array.length()).map { i ->
+            val e = array.getJSONObject(i)
+            FamilyEvent(
+                id = e.getLong("id"),
+                deviceId = e.getLong("deviceId"),
+                type = e.optString("type"),
+                time = parseTime(e.optString("eventTime")) ?: 0L,
+                placeId = e.optLong("geofenceId", 0L),
+            )
+        }.sortedByDescending { it.time }
+    }
+
+    /** Objectif de pas quotidien d'un membre, partagé par tous les parents. */
+    fun setStepGoal(token: String, id: Long, goal: Int) {
+        updateAttributes(token, id) { attrs -> attrs.put("kwStepGoal", goal) }
+    }
+
+    /** Couleur du tracé d'un membre, partagée par tous les parents (attribut serveur). */
+    fun setColor(token: String, id: Long, color: String) {
+        updateAttributes(token, id) { attrs -> attrs.put("kwColor", color) }
+    }
+
+    /** Positions d'un appareil entre deux instants, dans l'ordre chronologique. */
+    fun positions(token: String, deviceId: Long, from: Long, to: Long): List<TracePoint> {
+        val url = url("api/positions").newBuilder()
+            .addQueryParameter("deviceId", deviceId.toString())
+            .addQueryParameter("from", iso(from))
+            .addQueryParameter("to", iso(to))
+            .build()
+        val array = getArray(token, url)
+        return (0 until array.length()).map { i ->
+            val p = array.getJSONObject(i)
+            val attrs = p.optJSONObject("attributes")
+            TracePoint(
+                latitude = p.getDouble("latitude"),
+                longitude = p.getDouble("longitude"),
+                time = parseTime(p.optString("fixTime")) ?: 0L,
+                speedKmh = p.optDouble("speed", 0.0) * 1.852, // Traccar : nœuds
+                accuracy = p.optDouble("accuracy", 0.0),
+                battery = attrs?.takeIf { it.has("batteryLevel") }?.optDouble("batteryLevel")?.toInt(),
+                steps = attrs?.takeIf { it.has("steps") }?.optDouble("steps")?.toInt(),
+                activity = attrs?.optString("activity")?.takeIf { it.isNotBlank() },
+            )
+        }.filter { it.time > 0 }.sortedBy { it.time }
+    }
+
+    // --- Compte « Enfants (lecture seule) » -----------------------------------------
+    //
+    // Les téléphones des enfants lisent la position des parents avec ce compte :
+    // il ne voit QUE les appareils qui lui sont liés (ceux des parents qui
+    // partagent leur position). Mode fantôme = lien retiré, appliqué par le serveur.
+
+    /** Id du compte lecteur, créé s'il n'existe pas encore. */
+    fun ensureChildViewer(token: String): Long {
+        findChildViewer(token)?.let { return it.getLong("id") }
+        val body = JSONObject()
+            .put("name", "Enfants (lecture seule)")
+            .put("email", CHILD_VIEWER_EMAIL)
+            .put("password", randomSecret())
+            .put("readonly", true)
+            .put("deviceReadonly", true)
+            .put("attributes", JSONObject().put("kwRole", "children-viewer"))
+        val create = Request.Builder().url(url("api/users"))
+            .post(body.toString().toRequestBody("application/json".toMediaType()))
+        return authorized(token, create).use { response ->
+            check(response)
+            JSONObject(response.body?.string().orEmpty()).getLong("id")
+        }
+    }
+
+    /**
+     * Jeton du compte lecteur (valable un an), à mettre dans les QR codes enfants.
+     * Le mot de passe du compte est remplacé par un secret aléatoire jamais conservé,
+     * puis utilisé une seule fois pour ouvrir une session et obtenir le jeton.
+     */
+    fun childViewerToken(token: String): Pair<String, Long> {
+        val viewerId = ensureChildViewer(token)
+        val password = randomSecret()
+        val user = authorized(token, Request.Builder().url(url("api/users/$viewerId")).get()).use { response ->
+            check(response)
+            JSONObject(response.body?.string().orEmpty())
+        }
+        user.put("password", password)
+        val put = Request.Builder().url(url("api/users/$viewerId"))
+            .put(user.toString().toRequestBody("application/json".toMediaType()))
+        authorized(token, put).use { check(it) }
+        val expires = System.currentTimeMillis() + 365L * 24 * 3600 * 1000
+        return login(user.getString("email"), password, expires) to expires
+    }
+
+    /** L'appareil est-il visible des enfants ? (= lié au compte lecteur) */
+    fun isVisibleToChildren(token: String, deviceId: Long): Boolean {
+        val viewer = findChildViewer(token) ?: return false
+        val url = url("api/devices").newBuilder().addQueryParameter("userId", viewer.getLong("id").toString()).build()
+        val devices = getArray(token, url)
+        return (0 until devices.length()).any { devices.getJSONObject(it).getLong("id") == deviceId }
+    }
+
+    /** Rend l'appareil visible (true) ou invisible (false, mode fantôme) pour les enfants. */
+    fun setVisibleToChildren(token: String, deviceId: Long, visible: Boolean) {
+        val viewerId = ensureChildViewer(token)
+        val body = JSONObject().put("userId", viewerId).put("deviceId", deviceId).toString()
+            .toRequestBody("application/json".toMediaType())
+        val request = Request.Builder().url(url("api/permissions"))
+            .let { if (visible) it.post(body) else it.delete(body) }
+        authorized(token, request).use { response ->
+            // Lien déjà présent / déjà absent : l'état voulu est atteint.
+            if (!response.isSuccessful && response.code != 400) check(response)
+        }
+    }
+
+    private fun findChildViewer(token: String): JSONObject? {
+        val users = getArray(token, url("api/users"))
+        return (0 until users.length()).map { users.getJSONObject(it) }
+            .firstOrNull { it.optString("email") == CHILD_VIEWER_EMAIL }
+    }
+
+    private fun randomSecret(): String {
+        val bytes = ByteArray(24).also { java.security.SecureRandom().nextBytes(it) }
+        return android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP or android.util.Base64.URL_SAFE)
     }
 
     /** Retire la photo d'un membre (l'initiale réapparaît). */

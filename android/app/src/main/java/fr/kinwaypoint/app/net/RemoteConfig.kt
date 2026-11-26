@@ -30,6 +30,9 @@ data class RemoteConfig(
         val serverUrl: String,
         val deviceId: String,
         val intervalSeconds: Int?,
+        /** Facultatif : accès en lecture pour « Voir mes parents ». */
+        val apiUrl: String? = null,
+        val viewerToken: String? = null,
     )
 
     data class Parent(
@@ -108,6 +111,8 @@ data class RemoteConfig(
                     serverUrl = httpsUrl(c.optString("serverUrl"), "child.serverUrl"),
                     deviceId = deviceId,
                     intervalSeconds = c.optInt("intervalSeconds", 0).takeIf { it > 0 }?.coerceIn(15, 3600),
+                    apiUrl = c.optString("apiUrl").takeIf { it.isNotBlank() }?.let { httpsUrl(it, "child.apiUrl") },
+                    viewerToken = c.optString("viewerToken").trim().takeIf { it.isNotBlank() },
                 )
             }
 
@@ -143,6 +148,8 @@ data class RemoteConfig(
                     deviceId = c.deviceId,
                     intervalSeconds = c.intervalSeconds ?: current.intervalSeconds,
                     enabled = current.enabled,
+                    apiUrl = c.apiUrl ?: current.apiUrl,
+                    viewerToken = c.viewerToken ?: current.viewerToken,
                 ),
             )
         }

@@ -32,10 +32,14 @@ import androidx.compose.material.icons.filled.BatteryFull
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.GpsFixed
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.NotificationsOff
+import androidx.compose.material.icons.filled.People
+import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.PauseCircle
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Schedule
@@ -97,6 +101,25 @@ fun ChildHomeScreen(
     onOpenSettings: () -> Unit,
 ) {
     val context = LocalContext.current
+    var parentsOpen by remember { mutableStateOf(false) }
+
+    // Objectif de pas choisi par les parents (lu sur le serveur via l'accès lecteur), 8 000 sinon.
+    var stepGoal by remember { mutableStateOf(fr.kinwaypoint.app.net.DEFAULT_STEP_GOAL) }
+    LaunchedEffect(config.apiUrl, config.viewerToken, config.deviceId) {
+        if (!config.canSeeParents) return@LaunchedEffect
+        val api = fr.kinwaypoint.app.net.TraccarApi(config.apiUrl)
+        while (true) {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                runCatching { api.members(config.viewerToken).firstOrNull { it.uniqueId == config.deviceId }?.stepGoal }.getOrNull()
+            }?.let { stepGoal = it }
+            kotlinx.coroutines.delay(30 * 60_000L)
+        }
+    }
+
+    if (parentsOpen && config.canSeeParents) {
+        ChildParentsMap(config, permissions, actions, onBack = { parentsOpen = false })
+        return
+    }
 
     // Le suivi doit tourner dès qu'il est activé : si Android l'a arrêté, on le relance.
     LaunchedEffect(config, permissions.fineLocation, status.running) {
@@ -132,7 +155,39 @@ fun ChildHomeScreen(
                 StatusCard(status = status, permissions = permissions)
             }
 
+            status.steps?.let { steps ->
+                SectionCard {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                        StepGoalRing(steps, stepGoal, MaterialTheme.colorScheme.primary, size = 110.dp)
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Mes pas aujourd'hui", style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                if (steps >= stepGoal) {
+                                    "Bravo, objectif atteint ! 🎉"
+                                } else {
+                                    "Encore ${formatSteps(stepGoal - steps)} pas pour atteindre ${formatSteps(stepGoal)}."
+                                },
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Muted,
+                            )
+                        }
+                    }
+                }
+            }
+
             PermissionWarnings(permissions, actions)
+
+            if (config.canSeeParents) {
+                FilledTonalButton(
+                    onClick = { parentsOpen = true },
+                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                    shape = CircleShape,
+                ) {
+                    Icon(Icons.Default.Map, contentDescription = null)
+                    Spacer(Modifier.size(10.dp))
+                    Text("Ouvrir la carte")
+                }
+            }
 
             if (config.isValid) {
                 Spacer(Modifier.height(4.dp))
@@ -177,6 +232,9 @@ fun ChildSettingsScreen(
     var serverUrl by remember(config) { mutableStateOf(config.serverUrl) }
     var deviceId by remember(config) { mutableStateOf(config.deviceId) }
     var interval by remember(config) { mutableStateOf(config.intervalSeconds.toString()) }
+    // Accès « Voir mes parents » (rempli par QR ou code, jamais saisi à la main).
+    var viewerApi by remember(config) { mutableStateOf(config.apiUrl) }
+    var viewerToken by remember(config) { mutableStateOf(config.viewerToken) }
     var confirmModeChange by remember { mutableStateOf(false) }
     var showConfigCode by remember { mutableStateOf(false) }
     var scannedLink by remember { mutableStateOf<String?>(null) }
@@ -191,6 +249,8 @@ fun ChildSettingsScreen(
                     deviceId = deviceId,
                     intervalSeconds = (interval.toIntOrNull() ?: 60).coerceIn(15, 3600),
                     enabled = enabled,
+                    apiUrl = viewerApi,
+                    viewerToken = viewerToken,
                 ),
             )
             then()
@@ -228,6 +288,10 @@ fun ChildSettingsScreen(
                                 serverUrl = payload.serverUrl
                                 deviceId = payload.deviceId
                                 payload.intervalSeconds?.let { interval = it.toString() }
+                                if (payload.apiUrl != null && payload.viewerToken != null) {
+                                    viewerApi = payload.apiUrl
+                                    viewerToken = payload.viewerToken
+                                }
                                 Toast.makeText(context, "Configuration lue — vérifie puis enregistre", Toast.LENGTH_LONG).show()
                             }
                         }
@@ -345,6 +409,10 @@ fun ChildSettingsScreen(
                     serverUrl = c.serverUrl
                     deviceId = c.deviceId
                     c.intervalSeconds?.let { interval = it.toString() }
+                    if (c.apiUrl != null && c.viewerToken != null) {
+                        viewerApi = c.apiUrl
+                        viewerToken = c.viewerToken
+                    }
                 }
                 Toast.makeText(
                     context,
@@ -489,6 +557,7 @@ private fun SosFeedback(status: TrackingStatusState) {
 }
 
 /** Bandeau d'état du suivi, en dégradé, avec des pastilles d'information. */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun StatusCard(status: TrackingStatusState, permissions: PermissionSnapshot) {
     val (icon, title) = when {
@@ -525,10 +594,16 @@ fun StatusCard(status: TrackingStatusState, permissions: PermissionSnapshot) {
                 }
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        androidx.compose.foundation.layout.FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
             status.battery?.let { HeroChip(Icons.Default.BatteryFull, "$it %") }
+            status.steps?.let { HeroChip(Icons.AutoMirrored.Filled.DirectionsWalk, "${formatSteps(it)} pas") }
+            activityLabel(status.activity, status.kmh)?.let { HeroChip(Icons.Default.Speed, it) }
             status.accuracy?.let { HeroChip(Icons.Default.GpsFixed, "± ${it.toInt()} m") }
             if (status.running && status.still) HeroChip(Icons.Default.Schedule, "toutes les 10 min")
+            if (status.running && status.boosting) HeroChip(Icons.Default.MyLocation, "suivi rapproché")
         }
         if (status.queued > 0) {
             Text("${status.queued} position(s) gardée(s) en attendant le réseau", color = Color.White, style = MaterialTheme.typography.bodySmall)
@@ -567,6 +642,14 @@ fun PermissionWarnings(permissions: PermissionSnapshot, actions: PlatformActions
             "Choisir « Toujours autoriser » dans les réglages de l'app.",
             "Ouvrir",
             actions.openAppSettings,
+        )
+    }
+    if (permissions.fineLocation && !permissions.activityRecognition) {
+        PermissionRow(
+            "Activité physique (podomètre)",
+            "Compte les pas du jour et détecte la marche pour un suivi plus précis.",
+            "Autoriser",
+            actions.requestLocation,
         )
     }
     if (permissions.batteryOptimized) {
@@ -608,6 +691,58 @@ fun InfoCard(
                 Text(title, style = MaterialTheme.typography.titleSmall)
                 Text(detail, style = MaterialTheme.typography.bodySmall, color = Muted)
             }
+        }
+    }
+}
+
+/**
+ * Carte de la famille vue depuis le téléphone d'un enfant (compte en lecture seule) :
+ * les autres enfants, et les parents qui partagent leur position hors mode fantôme.
+ * C'est le serveur qui filtre, pas l'appli.
+ */
+@Composable
+private fun ChildParentsMap(
+    config: TrackingConfig,
+    permissions: PermissionSnapshot,
+    actions: PlatformActions,
+    onBack: () -> Unit,
+) {
+    val api = remember(config.apiUrl) { fr.kinwaypoint.app.net.TraccarApi(config.apiUrl) }
+    var parents by remember { mutableStateOf<List<fr.kinwaypoint.app.net.Member>>(emptyList()) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(api) {
+        while (true) {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                runCatching { api.members(config.viewerToken) }
+            }.onSuccess { parents = it; error = null }
+                .onFailure { error = it.message ?: "Serveur injoignable" }
+            kotlinx.coroutines.delay(30_000)
+        }
+    }
+    val photos = rememberMemberPhotos(api, config.viewerToken, parents)
+
+    androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
+        FamilyMapScreen(
+            members = parents,
+            photos = photos,
+            focusId = null,
+            permissions = permissions,
+            actions = actions,
+            onBack = onBack,
+            title = "Ma famille",
+            // Son propre appareil apparaît comme « Moi ».
+            ownDeviceId = parents.firstOrNull { it.uniqueId == config.deviceId }?.id ?: 0L,
+        )
+        val message = error ?: if (parents.none { it.position != null && it.uniqueId != config.deviceId }) {
+            "Personne d'autre ne partage sa position pour le moment."
+        } else {
+            null
+        }
+        message?.let {
+            androidx.compose.foundation.layout.Box(
+                Modifier.align(Alignment.Center).padding(32.dp),
+            ) { InfoCard(title = "Ma famille", detail = it, container = CardSurface, icon = Icons.Default.People) }
         }
     }
 }

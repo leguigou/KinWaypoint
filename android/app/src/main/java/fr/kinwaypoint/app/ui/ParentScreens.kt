@@ -11,6 +11,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.filled.AddAPhoto
 import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.HideImage
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material.icons.filled.BatteryFull
@@ -245,6 +248,8 @@ fun ParentHomeScreen(
     onLock: () -> Unit,
     onChangePin: () -> Unit,
     onChangeMode: () -> Unit,
+    tracking: fr.kinwaypoint.app.data.TrackingConfig = fr.kinwaypoint.app.data.TrackingConfig(),
+    status: fr.kinwaypoint.app.service.TrackingStatusState = fr.kinwaypoint.app.service.TrackingStatusState(),
 ) {
     val scope = rememberCoroutineScope()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -256,7 +261,22 @@ fun ParentHomeScreen(
     var loading by remember { mutableStateOf(true) }
     var refreshedAt by remember { mutableLongStateOf(0L) }
     var refreshTick by remember { mutableIntStateOf(0) }
-    var showMenu by remember { mutableStateOf(false) }
+    var settingsOpen by remember { mutableStateOf(false) }
+    var placesOpen by remember { mutableStateOf(false) }
+    var eventsOpen by remember { mutableStateOf(false) }
+    var places by remember { mutableStateOf<List<fr.kinwaypoint.app.net.Place>>(emptyList()) }
+    var historyOpen by remember { mutableStateOf(false) }
+    var historyFocus by remember { mutableStateOf<Long?>(null) }
+    var todayTraces by remember { mutableStateOf<Map<Long, List<fr.kinwaypoint.app.net.TracePoint>>>(emptyMap()) }
+    val ownDeviceId by repository.ownDeviceId.collectAsState(initial = 0L)
+    val trackingContext = LocalContext.current
+
+    // « Partager ma position » : si Android a arrêté le suivi, on le relance.
+    LaunchedEffect(tracking, permissions.fineLocation, status.running) {
+        if (tracking.enabled && tracking.isValid && permissions.fineLocation && !status.running) {
+            fr.kinwaypoint.app.service.TrackingService.start(trackingContext)
+        }
+    }
     val biometricEnabled by repository.biometricEnabled.collectAsState(initial = false)
     val biometricOfferDismissed by repository.biometricOfferDismissed.collectAsState(initial = true)
     val canUseBiometric = remember { actions.biometricAvailable() }
@@ -289,6 +309,7 @@ fun ParentHomeScreen(
                 list to api.recentAlarms(config.token, list.map { it.id })
             }
         }
+        withContext(Dispatchers.IO) { runCatching { api.places(config.token) } }.onSuccess { places = it }
         result.onSuccess { (list, recent) ->
             members = list
             alarms = recent
@@ -326,11 +347,92 @@ fun ParentHomeScreen(
         }
     }
 
+    // Les enfants se voient entre eux : appareils d'enfants liés au compte lecteur
+    // (une fois par ouverture, sans effet si c'est déjà fait).
+    LaunchedEffect(members.filter { !it.isParent }.map { it.id }, places.map { it.id }) {
+        if (members.isEmpty()) return@LaunchedEffect
+        withContext(Dispatchers.IO) {
+            runCatching { api.shareChildrenWithEachOther(config.token, members) }
+            // Chaque lieu s'applique à tous les appareils (y compris un enfant ajouté après le lieu).
+            places.filter { it.alerts }.forEach { place -> runCatching { api.linkPlace(config.token, place.id, members.map { it.id }) } }
+        }
+    }
+
+    // Tracés du jour, rechargés chaque minute tant que la carte est ouverte.
+    LaunchedEffect(mapOpen, members.map { it.id }) {
+        if (!mapOpen) return@LaunchedEffect
+        while (true) {
+            val zone = java.time.ZoneId.systemDefault()
+            val from = java.time.LocalDate.now(zone).atStartOfDay(zone).toInstant().toEpochMilli()
+            val now = System.currentTimeMillis()
+            withContext(Dispatchers.IO) {
+                runCatching { members.associate { m -> m.id to api.positions(config.token, m.id, from, now) } }
+            }.onSuccess { todayTraces = it }
+            delay(60_000)
+        }
+    }
+
     val names = members.associate { it.id to it.name }
     val newAlarms = alarms.filter { it.id > acknowledgedAlarmId }
 
-    if (mapOpen) {
+    val sosIds = alarms.filter { it.id > acknowledgedAlarmId }.map { it.deviceId }.toSet()
+
+    if (placesOpen) {
+        PlacesScreen(
+            api = api,
+            token = config.token,
+            places = places,
+            members = members,
+            permissions = permissions,
+            onChanged = { refreshTick++ },
+            onBack = { placesOpen = false },
+        )
+    } else if (eventsOpen) {
+        EventsScreen(
+            api = api,
+            token = config.token,
+            members = members,
+            photos = photos,
+            places = places,
+            onOpenMember = { id -> eventsOpen = false; openMap(id) },
+            onBack = { eventsOpen = false },
+        )
+    } else if (settingsOpen) {
+        ParentSettingsScreen(
+            onOpenPlaces = { placesOpen = true },
+            repository = repository,
+            config = config,
+            api = api,
+            members = members,
+            photos = photos,
+            tracking = tracking,
+            status = status,
+            permissions = permissions,
+            actions = actions,
+            onBack = { settingsOpen = false },
+            onMembersChanged = { refreshTick++ },
+            onLock = onLock,
+            onChangePin = onChangePin,
+            onChangeMode = onChangeMode,
+        )
+    } else if (historyOpen) {
+        HistoryScreen(
+            places = places,
+            api = api,
+            token = config.token,
+            members = members,
+            photos = photos,
+            ownDeviceId = ownDeviceId,
+            initialFocus = historyFocus,
+            onBack = { historyOpen = false },
+        )
+    } else if (mapOpen) {
         FamilyMapScreen(
+            places = places,
+            sosIds = sosIds,
+            traces = todayTraces,
+            ownDeviceId = ownDeviceId,
+            onOpenHistory = { historyFocus = null; historyOpen = true },
             members = members,
             photos = photos,
             focusId = mapFocus,
@@ -355,8 +457,14 @@ fun ParentHomeScreen(
                     FilledTonalIconButton(onClick = { refreshTick++ }) {
                         Icon(Icons.Default.Refresh, contentDescription = "Actualiser")
                     }
-                    FilledTonalIconButton(onClick = { showMenu = true }) {
-                        Icon(Icons.Default.MoreVert, contentDescription = "Menu")
+                    FilledTonalIconButton(onClick = { eventsOpen = true }) {
+                        Icon(Icons.Default.Notifications, contentDescription = "Notifications")
+                    }
+                    FilledTonalIconButton(onClick = { historyFocus = null; historyOpen = true }) {
+                        Icon(Icons.Default.History, contentDescription = "Historique")
+                    }
+                    FilledTonalIconButton(onClick = { settingsOpen = true }) {
+                        Icon(Icons.Default.Settings, contentDescription = "Paramètres")
                     }
                 }
             }
@@ -489,8 +597,11 @@ fun ParentHomeScreen(
                 MemberCard(
                     member = member,
                     onShowMap = { openMap(member.id) },
-                    onShowQr = { qrFor = member.name to SetupPayload(trackUrl, member.uniqueId) },
+                    // QR complet : envoi des positions + accès « Voir mes parents ».
+                    onShowQr = { scope.launch { qrFor = member.name to childSetupPayload(repository, config, trackUrl, member.uniqueId) } },
                     onRename = { renaming = member },
+                    onShowHistory = { historyFocus = member.id; historyOpen = true },
+                    isMe = member.id == ownDeviceId,
                     photo = photos[member.id],
                     onChangePhoto = { changePhoto(member) },
                     onRemovePhoto = if (member.photo != null) {
@@ -581,54 +692,6 @@ fun ParentHomeScreen(
         )
     }
 
-    if (showMenu) {
-        AlertDialog(
-            onDismissRequest = { showMenu = false },
-            title = { Text("Espace parent") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Connecté : ${config.email}", fontSize = 13.sp, color = Muted)
-                    OutlinedButton(onClick = { showMenu = false; onLock() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Verrouiller")
-                    }
-                    OutlinedButton(onClick = { showMenu = false; onChangePin() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Changer le code PIN")
-                    }
-                    OutlinedButton(
-                        enabled = canUseBiometric || biometricEnabled,
-                        onClick = {
-                            showMenu = false
-                            if (biometricEnabled) {
-                                scope.launch { repository.setBiometric(false) }
-                            } else {
-                                actions.authenticate { scope.launch { repository.setBiometric(true) } }
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text(
-                            when {
-                                biometricEnabled -> "Désactiver l'empreinte"
-                                canUseBiometric -> "Déverrouiller avec l'empreinte"
-                                else -> "Empreinte : aucune enregistrée sur ce téléphone"
-                            },
-                        )
-                    }
-                    OutlinedButton(
-                        onClick = {
-                            showMenu = false
-                            scope.launch { repository.saveParent(config.copy(token = "")) }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text("Se déconnecter du serveur") }
-                    OutlinedButton(onClick = { showMenu = false; onChangeMode() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Changer le mode de l'appareil")
-                    }
-                }
-            },
-            confirmButton = { TextButton(onClick = { showMenu = false }) { Text("Fermer") } },
-        )
-    }
 }
 
 @Composable
@@ -639,6 +702,8 @@ private fun MemberCard(
     onRename: () -> Unit,
     onDelete: () -> Unit,
     photo: android.graphics.Bitmap? = null,
+    onShowHistory: () -> Unit = {},
+    isMe: Boolean = false,
     onChangePhoto: () -> Unit = {},
     onRemovePhoto: (() -> Unit)? = null,
 ) {
@@ -652,7 +717,7 @@ private fun MemberCard(
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             Box {
                 Box(Modifier.clip(CircleShape).clickable(onClick = onChangePhoto)) {
-                    Avatar(member.name, size = 52.dp, photo = photo)
+                    Avatar(member.name, size = 52.dp, photo = photo, colorHex = member.color)
                 }
                 // Pastille en ligne / hors ligne sur l'avatar
                 Box(
@@ -661,7 +726,7 @@ private fun MemberCard(
                 )
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(member.name, style = MaterialTheme.typography.titleMedium)
+                Text(if (isMe) "${member.name} (moi)" else member.name, style = MaterialTheme.typography.titleMedium)
                 Text(
                     when {
                         position != null -> "Vu ${relative(position.fixTime)}"
@@ -683,6 +748,11 @@ private fun MemberCard(
                             onClick = { menuOpen = false; onShowMap() },
                         )
                     }
+                    DropdownMenuItem(
+                        text = { Text("Historique") },
+                        leadingIcon = { Icon(Icons.Default.History, contentDescription = null) },
+                        onClick = { menuOpen = false; onShowHistory() },
+                    )
                     DropdownMenuItem(
                         text = { Text("Renommer") },
                         leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
@@ -731,6 +801,7 @@ private fun MemberCard(
                 StatusPill("± ${it.accuracy.toInt()} m", Muted, icon = Icons.Default.GpsFixed)
             }
         }
+        position?.steps?.let { StepGoalBar(it, member.stepGoal, profileColor(member.name, member.color)) }
 
         if (position != null) {
             FilledTonalButton(onClick = onShowMap, modifier = Modifier.fillMaxWidth(), shape = CircleShape) {

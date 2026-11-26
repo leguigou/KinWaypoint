@@ -14,7 +14,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
-/** Relance le suivi après un redémarrage du téléphone, si l'appareil est en mode enfant et le suivi activé. */
+/** Relance le suivi après un redémarrage du téléphone, si le suivi de ce téléphone est activé (enfant ou parent). */
 class BootReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -32,7 +32,8 @@ class BootReceiver : BroadcastReceiver() {
                     Manifest.permission.ACCESS_FINE_LOCATION,
                 ) == PackageManager.PERMISSION_GRANTED
 
-                if (mode == AppMode.CHILD && config.enabled && config.isValid && hasLocation) {
+                // Enfant, ou parent ayant activé « Partager ma position ».
+                if (mode != AppMode.UNSET && config.enabled && config.isValid && hasLocation) {
                     TrackingService.start(context)
                 }
             } catch (e: Exception) {

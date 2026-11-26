@@ -18,4 +18,14 @@ data class LocationFix(
      * horodatée « maintenant » pour que le serveur la traite comme la plus récente.
      */
     val fixAgeSeconds: Long? = null,
+    /** Sonnerie du téléphone : "normal", "vibrate" ou "silent". */
+    val ringer: String? = null,
+    /** Nom du Wi-Fi connecté, si connu. */
+    val wifi: String? = null,
+    /** Pas du jour (podomètre), si disponibles. */
+    val steps: Int? = null,
+    /** Activité estimée : still, walking, bike, vehicle. */
+    val activity: String? = null,
+    /** Vitesse lissée sur les 2 dernières minutes, en km/h. */
+    val kmh: Double? = null,
 )
