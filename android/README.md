@@ -140,3 +140,4 @@ des « positions qui n'arrivent plus ».
 Les alertes de zone et le SOS arrivent par Firebase quand l'app est fermée, et par Telegram côté serveur en secours.
 
 Test de la chaine webhook : ce commit doit declencher un build et une verification automatique.
+Test final du rapport automatique.
