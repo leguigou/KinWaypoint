@@ -8,7 +8,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.filled.AddAPhoto
 import androidx.compose.material.icons.filled.BatteryChargingFull
+import androidx.compose.material.icons.filled.HideImage
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material.icons.filled.BatteryFull
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Fingerprint
@@ -279,12 +282,25 @@ fun ParentHomeScreen(
         }
     }
 
+    val photos = rememberMemberPhotos(api, config.token, members)
+    val context = LocalContext.current
+
+    /** Choix d'une photo dans la galerie, puis envoi au serveur (visible par tous les parents). */
+    fun changePhoto(member: Member) {
+        actions.pickImage { uri ->
+            if (uri != null) {
+                memberOperation { api.uploadPhoto(config.token, member.id, prepareAvatarJpeg(context, uri)) }
+            }
+        }
+    }
+
     val names = members.associate { it.id to it.name }
     val newAlarms = alarms.filter { it.id > acknowledgedAlarmId }
 
     if (mapOpen) {
         FamilyMapScreen(
             members = members,
+            photos = photos,
             focusId = mapFocus,
             permissions = permissions,
             actions = actions,
@@ -443,6 +459,13 @@ fun ParentHomeScreen(
                     onShowMap = { openMap(member.id) },
                     onShowQr = { qrFor = member.name to SetupPayload(trackUrl, member.uniqueId) },
                     onRename = { renaming = member },
+                    photo = photos[member.id],
+                    onChangePhoto = { changePhoto(member) },
+                    onRemovePhoto = if (member.photo != null) {
+                        { memberOperation { api.removePhoto(config.token, member.id) } }
+                    } else {
+                        null
+                    },
                     onDelete = { deleting = member },
                 )
             }
@@ -583,6 +606,9 @@ private fun MemberCard(
     onShowQr: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit,
+    photo: android.graphics.Bitmap? = null,
+    onChangePhoto: () -> Unit = {},
+    onRemovePhoto: (() -> Unit)? = null,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     val position = member.position
@@ -593,7 +619,9 @@ private fun MemberCard(
     SectionCard {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             Box {
-                Avatar(member.name, size = 52.dp)
+                Box(Modifier.clip(CircleShape).clickable(onClick = onChangePhoto)) {
+                    Avatar(member.name, size = 52.dp, photo = photo)
+                }
                 // Pastille en ligne / hors ligne sur l'avatar
                 Box(
                     Modifier.align(Alignment.BottomEnd).size(16.dp).clip(CircleShape).background(CardSurface).padding(3.dp)
@@ -628,6 +656,18 @@ private fun MemberCard(
                         leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
                         onClick = { menuOpen = false; onRename() },
                     )
+                    DropdownMenuItem(
+                        text = { Text(if (photo != null || onRemovePhoto != null) "Changer la photo" else "Ajouter une photo") },
+                        leadingIcon = { Icon(Icons.Default.AddAPhoto, contentDescription = null) },
+                        onClick = { menuOpen = false; onChangePhoto() },
+                    )
+                    if (onRemovePhoto != null) {
+                        DropdownMenuItem(
+                            text = { Text("Retirer la photo") },
+                            leadingIcon = { Icon(Icons.Default.HideImage, contentDescription = null) },
+                            onClick = { menuOpen = false; onRemovePhoto() },
+                        )
+                    }
                     DropdownMenuItem(
                         text = { Text("QR code de configuration") },
                         leadingIcon = { Icon(Icons.Default.QrCode, contentDescription = null) },

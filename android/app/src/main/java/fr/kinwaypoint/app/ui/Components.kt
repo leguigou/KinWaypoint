@@ -1,6 +1,10 @@
 package fr.kinwaypoint.app.ui
 
+import android.graphics.Bitmap
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -96,19 +100,28 @@ private val AvatarPalette = listOf(
 fun avatarColors(name: String): List<Color> =
     AvatarPalette[(name.lowercase().hashCode() and Int.MAX_VALUE) % AvatarPalette.size]
 
-/** Avatar rond en dégradé avec l'initiale du prénom. */
+/** Avatar rond : la photo si elle existe, sinon l'initiale sur un dégradé. */
 @Composable
-fun Avatar(name: String, size: Dp = 48.dp) {
+fun Avatar(name: String, size: Dp = 48.dp, photo: Bitmap? = null) {
     Box(
         modifier = Modifier.size(size).clip(CircleShape).background(Brush.linearGradient(avatarColors(name))),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            name.trim().firstOrNull()?.uppercase() ?: "?",
-            color = Color.White,
-            fontWeight = FontWeight.Bold,
-            fontSize = (size.value * 0.42f).sp,
-        )
+        if (photo != null) {
+            Image(
+                bitmap = photo.asImageBitmap(),
+                contentDescription = "Photo de $name",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.matchParentSize(),
+            )
+        } else {
+            Text(
+                name.trim().firstOrNull()?.uppercase() ?: "?",
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = (size.value * 0.42f).sp,
+            )
+        }
     }
 }
 
