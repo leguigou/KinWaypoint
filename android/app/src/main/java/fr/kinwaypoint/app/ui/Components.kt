@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -149,5 +150,58 @@ fun IconBadge(icon: ImageVector, tint: Color, size: Dp = 44.dp) {
         contentAlignment = Alignment.Center,
     ) {
         Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(size * 0.5f))
+    }
+}
+
+
+/**
+ * Anneau de progression vers l'objectif de pas : se remplit dans la couleur
+ * donnée, devient vert et affiche 🎉 quand l'objectif est atteint.
+ */
+@Composable
+fun StepGoalRing(steps: Int, goal: Int, color: Color, size: Dp = 120.dp, stroke: Dp = 12.dp) {
+    val progress = if (goal > 0) (steps.toFloat() / goal).coerceIn(0f, 1f) else 0f
+    val reached = steps >= goal
+    val fill = if (reached) AppTheme.colors.success else color
+    val track = color.copy(alpha = 0.15f)
+    Box(Modifier.size(size), contentAlignment = Alignment.Center) {
+        androidx.compose.foundation.Canvas(Modifier.size(size)) {
+            val w = stroke.toPx()
+            val arc = androidx.compose.ui.geometry.Size(this.size.width - w, this.size.height - w)
+            val topLeft = androidx.compose.ui.geometry.Offset(w / 2, w / 2)
+            drawArc(track, -90f, 360f, false, topLeft, arc, style = androidx.compose.ui.graphics.drawscope.Stroke(w))
+            drawArc(
+                fill, -90f, 360f * progress, false, topLeft, arc,
+                style = androidx.compose.ui.graphics.drawscope.Stroke(w, cap = androidx.compose.ui.graphics.StrokeCap.Round),
+            )
+        }
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(if (reached) "🎉" else "👟", fontSize = (size.value * 0.16f).sp)
+            Text(formatSteps(steps), fontWeight = FontWeight.Bold, fontSize = (size.value * 0.15f).sp)
+            Text("/ ${formatSteps(goal)}", fontSize = (size.value * 0.09f).sp, color = Muted)
+        }
+    }
+}
+
+/** Barre fine de progression vers l'objectif de pas (fiches, listes). */
+@Composable
+fun StepGoalBar(steps: Int, goal: Int, color: Color, modifier: Modifier = Modifier) {
+    val progress = if (goal > 0) (steps.toFloat() / goal).coerceIn(0f, 1f) else 0f
+    val reached = steps >= goal
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                (if (reached) "🎉 " else "👟 ") + "${formatSteps(steps)} / ${formatSteps(goal)} pas",
+                style = MaterialTheme.typography.labelMedium,
+                modifier = Modifier.weight(1f),
+            )
+            Text("${(progress * 100).toInt()} %", style = MaterialTheme.typography.labelMedium, color = Muted)
+        }
+        androidx.compose.material3.LinearProgressIndicator(
+            progress = { progress },
+            modifier = Modifier.fillMaxWidth().height(6.dp).clip(CircleShape),
+            color = if (reached) AppTheme.colors.success else color,
+            trackColor = color.copy(alpha = 0.15f),
+        )
     }
 }

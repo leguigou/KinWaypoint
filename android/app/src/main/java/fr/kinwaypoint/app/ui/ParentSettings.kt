@@ -128,6 +128,7 @@ fun ParentSettingsScreen(
     var ghost by remember { mutableStateOf<Boolean?>(null) } // null = inconnu (chargement)
     var busy by remember { mutableStateOf(false) }
     var colorFor by remember { mutableStateOf<Member?>(null) }
+    var goalFor by remember { mutableStateOf<Member?>(null) }
     val sharing = tracking.enabled && ownDeviceId != 0L
 
     BackHandler(onBack = onBack)
@@ -219,6 +220,26 @@ fun ParentSettingsScreen(
                 OutlinedButton(onClick = onOpenPlaces, modifier = Modifier.fillMaxWidth(), shape = CircleShape) { Text("Gérer les lieux") }
             }
 
+            // --- Objectif de pas -----------------------------------------------------
+            SectionCard {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("👟", style = MaterialTheme.typography.titleMedium)
+                    Text("Objectif de pas quotidien", style = MaterialTheme.typography.titleMedium)
+                }
+                Text("Affiché en jauge sur la carte, dans la liste et sur le téléphone de l'enfant.", style = MaterialTheme.typography.bodySmall, color = Muted)
+                members.forEach { m ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small).clickable { goalFor = m }.padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Avatar(m.name, size = 36.dp, photo = photos[m.id], colorHex = m.color)
+                        Text(if (m.id == ownDeviceId) "${m.name} (moi)" else m.name, modifier = Modifier.weight(1f))
+                        Text("${formatSteps(m.stepGoal)} pas", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                    }
+                }
+            }
+
             // --- Couleurs -----------------------------------------------------------
             SectionCard {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -275,6 +296,43 @@ fun ParentSettingsScreen(
                 }
             }
         }
+    }
+
+    goalFor?.let { member ->
+        var goal by remember(member.id) { mutableStateOf(member.stepGoal.toFloat()) }
+        AlertDialog(
+            onDismissRequest = { goalFor = null },
+            title = { Text("Objectif de ${member.name}") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("${formatSteps(goal.toInt())} pas par jour", style = MaterialTheme.typography.headlineSmall)
+                    androidx.compose.material3.Slider(
+                        value = goal,
+                        onValueChange = { goal = (Math.round(it / 500f) * 500f) },
+                        valueRange = 2000f..20000f,
+                    )
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(4000, 6000, 8000, 10000, 12000).forEach { preset ->
+                            androidx.compose.material3.FilterChip(
+                                selected = goal.toInt() == preset,
+                                onClick = { goal = preset.toFloat() },
+                                label = { Text(formatSteps(preset)) },
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    goalFor = null
+                    launchOp {
+                        withContext(Dispatchers.IO) { api.setStepGoal(config.token, member.id, goal.toInt()) }
+                        onMembersChanged()
+                    }
+                }) { Text("Enregistrer") }
+            },
+            dismissButton = { TextButton(onClick = { goalFor = null }) { Text("Annuler") } },
+        )
     }
 
     colorFor?.let { member ->

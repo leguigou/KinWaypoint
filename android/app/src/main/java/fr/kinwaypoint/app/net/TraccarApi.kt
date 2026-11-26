@@ -33,7 +33,12 @@ data class Member(
     val color: String? = null,
     /** Appareil d'un parent (« Partager ma position ») et non d'un enfant. */
     val isParent: Boolean = false,
+    /** Objectif de pas quotidien (8 000 par défaut). */
+    val stepGoal: Int = DEFAULT_STEP_GOAL,
 )
+
+/** Objectif de pas quotidien proposé par défaut. */
+const val DEFAULT_STEP_GOAL = 8000
 
 /** Un point d'historique. */
 data class TracePoint(
@@ -73,8 +78,12 @@ data class Place(
     val latitude: Double,
     val longitude: Double,
     val radius: Double,
-    /** home, school, work, sport, shop, other */
+    /** Type d'icône : home, school, work, sport… (voir PlaceTypes). */
     val icon: String,
+    /** Couleur choisie (« #RRGGBB »). */
+    val color: String = "#5B5BD6",
+    /** Alertes d'arrivée / départ ; false = simple point d'intérêt sur la carte. */
+    val alerts: Boolean = true,
 )
 
 /** Un événement à afficher dans la cloche : arrivée, départ, SOS. */
@@ -220,6 +229,7 @@ class TraccarApi(baseUrl: String) {
                 photoVersion = d.optJSONObject("attributes")?.optLong("kwPhotoVersion") ?: 0L,
                 color = d.optJSONObject("attributes")?.optString("kwColor")?.takeIf { it.matches(Regex("#[0-9A-Fa-f]{6}")) },
                 isParent = d.optJSONObject("attributes")?.optString("kwRole") == "parent",
+                stepGoal = d.optJSONObject("attributes")?.optInt("kwStepGoal", DEFAULT_STEP_GOAL)?.takeIf { it > 0 } ?: DEFAULT_STEP_GOAL,
             )
         }.sortedBy { it.name.lowercase() }
     }
@@ -366,24 +376,54 @@ class TraccarApi(baseUrl: String) {
                 longitude = m.groupValues[2].toDouble(),
                 radius = m.groupValues[3].toDouble(),
                 icon = g.optJSONObject("attributes")?.optString("kwIcon")?.takeIf { it.isNotBlank() } ?: "other",
+                color = g.optJSONObject("attributes")?.optString("kwColor")?.takeIf { it.matches(Regex("#[0-9A-Fa-f]{6}")) } ?: "#5B5BD6",
+                alerts = g.optJSONObject("attributes")?.let { if (it.has("kwAlerts")) it.optBoolean("kwAlerts") else true } ?: true,
             )
         }.sortedBy { it.name.lowercase() }
     }
 
     /** Crée un lieu et l'applique à tous les appareils (alertes d'entrée / sortie). */
-    fun createPlace(token: String, name: String, icon: String, lat: Double, lon: Double, radius: Int, deviceIds: List<Long>): Long {
-        val body = JSONObject()
-            .put("name", name.trim())
-            .put("area", String.format(java.util.Locale.US, "CIRCLE (%.6f %.6f, %d)", lat, lon, radius))
-            .put("attributes", JSONObject().put("kwIcon", icon))
-        val create = Request.Builder().url(url("api/geofences"))
-            .post(body.toString().toRequestBody("application/json".toMediaType()))
-        val id = authorized(token, create).use { response ->
-            check(response)
-            JSONObject(response.body?.string().orEmpty()).getLong("id")
+    /**
+     * Crée (id = 0) ou modifie un lieu. Avec alertes, il est rattaché à tous les
+     * appareils (le serveur génère arrivées / départs) ; sans alertes, il n'est
+     * rattaché à aucun : c'est un simple point d'intérêt sur la carte.
+     */
+    fun savePlace(token: String, place: Place, deviceIds: List<Long>): Long {
+        val area = String.format(java.util.Locale.US, "CIRCLE (%.6f %.6f, %d)", place.latitude, place.longitude, place.radius.toInt())
+        val id = if (place.id <= 0) {
+            val body = JSONObject().put("name", place.name.trim()).put("area", area)
+                .put("attributes", JSONObject().put("kwIcon", place.icon).put("kwColor", place.color).put("kwAlerts", place.alerts))
+            val create = Request.Builder().url(url("api/geofences"))
+                .post(body.toString().toRequestBody("application/json".toMediaType()))
+            authorized(token, create).use { response ->
+                check(response)
+                JSONObject(response.body?.string().orEmpty()).getLong("id")
+            }
+        } else {
+            // Objet complet relu puis renvoyé (Traccar refuse un PUT partiel).
+            val g = authorized(token, Request.Builder().url(url("api/geofences/${place.id}")).get()).use { response ->
+                check(response)
+                JSONObject(response.body?.string().orEmpty())
+            }
+            val attrs = g.optJSONObject("attributes") ?: JSONObject()
+            attrs.put("kwIcon", place.icon).put("kwColor", place.color).put("kwAlerts", place.alerts)
+            g.put("name", place.name.trim()).put("area", area).put("attributes", attrs)
+            val put = Request.Builder().url(url("api/geofences/${place.id}"))
+                .put(g.toString().toRequestBody("application/json".toMediaType()))
+            authorized(token, put).use { check(it) }
+            place.id
         }
-        linkPlace(token, id, deviceIds)
+        if (place.alerts) linkPlace(token, id, deviceIds) else unlinkPlace(token, id, deviceIds)
         return id
+    }
+
+    /** Détache un lieu des appareils : plus d'alertes d'arrivée / départ. */
+    fun unlinkPlace(token: String, placeId: Long, deviceIds: List<Long>) {
+        deviceIds.forEach { deviceId ->
+            val body = JSONObject().put("deviceId", deviceId).put("geofenceId", placeId).toString()
+                .toRequestBody("application/json".toMediaType())
+            runCatching { authorized(token, Request.Builder().url(url("api/permissions")).delete(body)).close() }
+        }
     }
 
     fun deletePlace(token: String, id: Long) {
@@ -418,6 +458,11 @@ class TraccarApi(baseUrl: String) {
                 placeId = e.optLong("geofenceId", 0L),
             )
         }.sortedByDescending { it.time }
+    }
+
+    /** Objectif de pas quotidien d'un membre, partagé par tous les parents. */
+    fun setStepGoal(token: String, id: Long, goal: Int) {
+        updateAttributes(token, id) { attrs -> attrs.put("kwStepGoal", goal) }
     }
 
     /** Couleur du tracé d'un membre, partagée par tous les parents (attribut serveur). */

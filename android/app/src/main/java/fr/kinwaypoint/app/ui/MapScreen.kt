@@ -393,7 +393,6 @@ private fun EntryCard(
                     me?.let { StatusPill("± ${it.accuracy.toInt()} m", Muted, icon = Icons.Default.GpsFixed) }
                 }
                 // Pas du jour et déplacement en cours.
-                member?.position?.steps?.let { StatusPill("${formatSteps(it)} pas", MaterialTheme.colorScheme.primary, icon = Icons.AutoMirrored.Filled.DirectionsWalk) }
                 activityLabel(member?.position?.activity, member?.position?.kmh)?.let { StatusPill(it, Warning) }
                 // État du téléphone : sonnerie coupée, Wi-Fi.
                 when (member?.position?.ringer) {
@@ -405,6 +404,8 @@ private fun EntryCard(
                     StatusPill(formatDistance(traceLength(trace)) + " aujourd'hui", color, icon = Icons.Default.Route)
                 }
             }
+            // Objectif de pas du jour.
+            entry.member?.let { m -> m.position?.steps?.let { StepGoalBar(it, m.stepGoal, color) } }
             if (!entry.isMe) {
                 FilledTonalButton(
                     onClick = { actions.openMap(entry.latitude, entry.longitude, entry.name) },

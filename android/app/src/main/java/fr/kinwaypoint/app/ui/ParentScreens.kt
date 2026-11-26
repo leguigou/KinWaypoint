@@ -354,7 +354,7 @@ fun ParentHomeScreen(
         withContext(Dispatchers.IO) {
             runCatching { api.shareChildrenWithEachOther(config.token, members) }
             // Chaque lieu s'applique à tous les appareils (y compris un enfant ajouté après le lieu).
-            places.forEach { place -> runCatching { api.linkPlace(config.token, place.id, members.map { it.id }) } }
+            places.filter { it.alerts }.forEach { place -> runCatching { api.linkPlace(config.token, place.id, members.map { it.id }) } }
         }
     }
 
@@ -801,6 +801,7 @@ private fun MemberCard(
                 StatusPill("± ${it.accuracy.toInt()} m", Muted, icon = Icons.Default.GpsFixed)
             }
         }
+        position?.steps?.let { StepGoalBar(it, member.stepGoal, profileColor(member.name, member.color)) }
 
         if (position != null) {
             FilledTonalButton(onClick = onShowMap, modifier = Modifier.fillMaxWidth(), shape = CircleShape) {

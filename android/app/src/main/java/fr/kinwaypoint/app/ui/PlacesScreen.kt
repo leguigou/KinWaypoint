@@ -2,7 +2,12 @@ package fr.kinwaypoint.app.ui
 
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Switch
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -84,6 +89,21 @@ fun PlacesScreen(
     var center by remember { mutableStateOf<LatLng?>(null) }
     var busy by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf<Place?>(null) }
+    var editingId by remember { mutableStateOf(0L) } // 0 = nouveau lieu
+    var color by remember { mutableStateOf("#5B5BD6") }
+    var alerts by remember { mutableStateOf(true) }
+
+    fun startAdd() {
+        editingId = 0L; name = ""; icon = "home"; color = "#5B5BD6"; alerts = true; radius = 150f
+        adding = true
+    }
+
+    fun startEdit(p: Place) {
+        editingId = p.id; name = p.name; icon = p.icon; color = p.color; alerts = p.alerts
+        radius = p.radius.toFloat().coerceIn(30f, 500f)
+        adding = true
+        state.map?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(p.latitude, p.longitude), 16.0))
+    }
 
     BackHandler { if (adding) adding = false else onBack() }
 
@@ -95,10 +115,13 @@ fun PlacesScreen(
     }
 
     // Lieux existants + aperçu du lieu en cours de création.
-    LaunchedEffect(state.style, places, adding, center, radius, icon) {
+    LaunchedEffect(state.style, places, adding, center, radius, icon, color, name, alerts) {
         val st = state.style ?: return@LaunchedEffect
-        val preview = center?.takeIf { adding }?.let { Place(-1, name.ifBlank { "Nouveau lieu" }, it.latitude, it.longitude, radius.toDouble(), icon) }
-        st.setPlaces(context, places + listOfNotNull(preview))
+        val preview = center?.takeIf { adding }?.let {
+            Place(-1, name.ifBlank { "Nouveau lieu" }, it.latitude, it.longitude, radius.toDouble(), icon, color, alerts)
+        }
+        // En modification, l'ancienne version du lieu est masquée au profit de l'aperçu.
+        st.setPlaces(context, places.filter { !adding || it.id != editingId } + listOfNotNull(preview))
     }
 
     // Cadrage : sur les lieux existants, sinon sur ce téléphone, sinon sur un membre.
@@ -121,7 +144,15 @@ fun PlacesScreen(
                 IconButton(onClick = { if (adding) adding = false else onBack() }) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Retour")
                 }
-                Text(if (adding) "Nouveau lieu" else "Lieux", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+                Text(
+                    when {
+                        !adding -> "Lieux et points d'intérêt"
+                        editingId == 0L -> "Nouveau lieu"
+                        else -> "Modifier le lieu"
+                    },
+                    style = MaterialTheme.typography.headlineSmall,
+                    modifier = Modifier.weight(1f),
+                )
             }
 
             Box(Modifier.fillMaxWidth().weight(1f).padding(horizontal = 16.dp).clip(MaterialTheme.shapes.large)) {
@@ -146,32 +177,59 @@ fun PlacesScreen(
             Box(Modifier.fillMaxWidth().weight(1f)) {
                 if (adding) {
                     Column(
-                        Modifier.fillMaxSize().padding(16.dp),
+                        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         Text("Déplace la carte pour placer le lieu sous la cible.", style = MaterialTheme.typography.bodySmall, color = Muted)
                         OutlinedTextField(
                             value = name,
                             onValueChange = { name = it.take(40) },
-                            label = { Text("Nom (ex. Maison, École Jules Ferry)") },
+                            label = { Text("Libellé (ex. Maison, École Jules Ferry, Piscine)") },
                             singleLine = true,
                             shape = MaterialTheme.shapes.small,
                             modifier = Modifier.fillMaxWidth(),
                         )
+                        Text("Icône", style = MaterialTheme.typography.labelLarge)
                         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            PlaceTypes.forEach { (key, label) ->
+                            PlaceIcons.forEach { t ->
                                 FilterChip(
-                                    selected = icon == key,
+                                    selected = icon == t.key,
                                     onClick = {
-                                        if (name.isBlank() || PlaceTypes.any { it.second == name }) name = label
-                                        icon = key
+                                        // Libellé proposé tant que l'utilisateur n'a pas tapé le sien.
+                                        if (name.isBlank() || PlaceIcons.any { it.label == name }) name = t.label
+                                        icon = t.key
                                     },
-                                    label = { Text("${placeEmoji(key)} $label") },
+                                    label = { Text("${t.emoji} ${t.label}") },
                                 )
                             }
                         }
+                        Text("Couleur", style = MaterialTheme.typography.labelLarge)
+                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            ProfilePalette.forEach { hex ->
+                                val c = parseHex(hex)!!
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .background(c)
+                                        .border(3.dp, if (color == hex) MaterialTheme.colorScheme.onSurface else androidx.compose.ui.graphics.Color.Transparent, CircleShape)
+                                        .clickable { color = hex },
+                                )
+                            }
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Alertes d'arrivée et de départ", style = MaterialTheme.typography.titleSmall)
+                                Text(
+                                    if (alerts) "Tu es prévenu quand quelqu'un arrive ou part." else "Simple point d'intérêt affiché sur la carte.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Muted,
+                                )
+                            }
+                            Switch(checked = alerts, onCheckedChange = { alerts = it })
+                        }
                         Text("Rayon : ${radius.toInt()} m", style = MaterialTheme.typography.labelLarge)
-                        Slider(value = radius, onValueChange = { radius = it }, valueRange = 50f..500f, steps = 8)
+                        Slider(value = radius, onValueChange = { radius = it }, valueRange = 30f..500f)
                         Button(
                             onClick = {
                                 val c = center ?: return@Button
@@ -179,7 +237,13 @@ fun PlacesScreen(
                                 scope.launch {
                                     val ids = members.map { it.id }
                                     withContext(Dispatchers.IO) {
-                                        runCatching { api.createPlace(token, name.ifBlank { "Lieu" }, icon, c.latitude, c.longitude, radius.toInt(), ids) }
+                                        runCatching {
+                                            api.savePlace(
+                                                token,
+                                                Place(editingId, name.ifBlank { "Lieu" }, c.latitude, c.longitude, radius.toDouble(), icon, color, alerts),
+                                                ids,
+                                            )
+                                        }
                                     }.onSuccess {
                                         adding = false
                                         name = ""
@@ -191,7 +255,7 @@ fun PlacesScreen(
                             enabled = !busy && center != null && name.isNotBlank(),
                             shape = CircleShape,
                             modifier = Modifier.fillMaxWidth().height(52.dp),
-                        ) { Text("Enregistrer le lieu") }
+                        ) { Text(if (editingId == 0L) "Enregistrer le lieu" else "Enregistrer les modifications") }
                     }
                 } else {
                     LazyColumn(contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -206,12 +270,19 @@ fun PlacesScreen(
                             }
                         }
                         items(places, key = { it.id }) { p ->
-                            SectionCard {
+                            SectionCard(modifier = Modifier.clickable { startEdit(p) }) {
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                    Text(placeEmoji(p.icon), style = MaterialTheme.typography.headlineSmall)
+                                    Box(
+                                        Modifier.size(40.dp).clip(MaterialTheme.shapes.small).background(parseHex(p.color) ?: MaterialTheme.colorScheme.primary),
+                                        contentAlignment = Alignment.Center,
+                                    ) { Text(placeEmoji(p.icon), style = MaterialTheme.typography.titleMedium) }
                                     Column(Modifier.weight(1f)) {
                                         Text(p.name, style = MaterialTheme.typography.titleMedium)
-                                        Text("Rayon ${p.radius.toInt()} m", style = MaterialTheme.typography.bodySmall, color = Muted)
+                                        Text(
+                                            "Rayon ${p.radius.toInt()} m · " + if (p.alerts) "alertes activées" else "point d'intérêt",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = Muted,
+                                        )
                                     }
                                     IconButton(onClick = {
                                         state.map?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(p.latitude, p.longitude), 16.0))
@@ -221,10 +292,10 @@ fun PlacesScreen(
                             }
                         }
                         item {
-                            Button(onClick = { adding = true }, shape = CircleShape, modifier = Modifier.fillMaxWidth().padding(top = 4.dp).height(52.dp)) {
+                            Button(onClick = { startAdd() }, shape = CircleShape, modifier = Modifier.fillMaxWidth().padding(top = 4.dp).height(52.dp)) {
                                 Icon(Icons.Default.Add, contentDescription = null)
                                 Spacer(Modifier.size(8.dp))
-                                Text("Ajouter un lieu")
+                                Text("Ajouter un lieu ou un point d'intérêt")
                             }
                         }
                     }

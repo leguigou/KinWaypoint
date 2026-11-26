@@ -255,7 +255,7 @@ fun HistoryScreen(
                                 listOfNotNull(
                                     nameOf(m),
                                     length.takeIf { it > 0 }?.let { formatDistance(it) },
-                                    steps?.let { "${formatSteps(it)} pas" },
+                                    steps?.let { "${formatSteps(it)}/${formatSteps(m.stepGoal)} pas" + if (it >= m.stepGoal) " 🎉" else "" },
                                 ).joinToString(" · "),
                             )
                         },

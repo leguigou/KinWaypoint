@@ -103,6 +103,19 @@ fun ChildHomeScreen(
     val context = LocalContext.current
     var parentsOpen by remember { mutableStateOf(false) }
 
+    // Objectif de pas choisi par les parents (lu sur le serveur via l'accès lecteur), 8 000 sinon.
+    var stepGoal by remember { mutableStateOf(fr.kinwaypoint.app.net.DEFAULT_STEP_GOAL) }
+    LaunchedEffect(config.apiUrl, config.viewerToken, config.deviceId) {
+        if (!config.canSeeParents) return@LaunchedEffect
+        val api = fr.kinwaypoint.app.net.TraccarApi(config.apiUrl)
+        while (true) {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                runCatching { api.members(config.viewerToken).firstOrNull { it.uniqueId == config.deviceId }?.stepGoal }.getOrNull()
+            }?.let { stepGoal = it }
+            kotlinx.coroutines.delay(30 * 60_000L)
+        }
+    }
+
     if (parentsOpen && config.canSeeParents) {
         ChildParentsMap(config, permissions, actions, onBack = { parentsOpen = false })
         return
@@ -140,6 +153,26 @@ fun ChildHomeScreen(
                 )
             } else {
                 StatusCard(status = status, permissions = permissions)
+            }
+
+            status.steps?.let { steps ->
+                SectionCard {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                        StepGoalRing(steps, stepGoal, MaterialTheme.colorScheme.primary, size = 110.dp)
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Mes pas aujourd'hui", style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                if (steps >= stepGoal) {
+                                    "Bravo, objectif atteint ! 🎉"
+                                } else {
+                                    "Encore ${formatSteps(stepGoal - steps)} pas pour atteindre ${formatSteps(stepGoal)}."
+                                },
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Muted,
+                            )
+                        }
+                    }
+                }
             }
 
             PermissionWarnings(permissions, actions)

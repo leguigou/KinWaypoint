@@ -138,13 +138,13 @@ private fun prepareLayers(style: Style): Style {
     style.addSource(GeoJsonSource(PLACE_AREA_SOURCE))
     style.addLayer(
         FillLayer("places-fill", PLACE_AREA_SOURCE).withProperties(
-            PropertyFactory.fillColor("#5B5BD6"),
-            PropertyFactory.fillOpacity(0.10f),
+            PropertyFactory.fillColor(Expression.toColor(Expression.get("color"))),
+            PropertyFactory.fillOpacity(0.12f),
         ),
     )
     style.addLayer(
         LineLayer("places-outline", PLACE_AREA_SOURCE).withProperties(
-            PropertyFactory.lineColor("#5B5BD6"),
+            PropertyFactory.lineColor(Expression.toColor(Expression.get("color"))),
             PropertyFactory.lineWidth(1.5f),
             PropertyFactory.lineOpacity(0.6f),
             PropertyFactory.lineDasharray(arrayOf(2f, 2f)),
@@ -161,7 +161,7 @@ private fun prepareLayers(style: Style): Style {
             PropertyFactory.textSize(12f),
             PropertyFactory.textAnchor("top"),
             PropertyFactory.textOffset(arrayOf(0f, 1.5f)),
-            PropertyFactory.textColor("#3F3FB0"),
+            PropertyFactory.textColor(Expression.toColor(Expression.get("color"))),
             PropertyFactory.textHaloColor("#FFFFFF"),
             PropertyFactory.textHaloWidth(2f),
             PropertyFactory.textOptional(true),
@@ -386,25 +386,32 @@ internal fun markerBitmap(
 // --- Lieux ------------------------------------------------------------------------
 
 /** Emoji d'un type de lieu (dessiné sur la carte) et libellé. */
-internal fun placeEmoji(icon: String) = when (icon) {
-    "home" -> "🏠"
-    "school" -> "🏫"
-    "work" -> "💼"
-    "sport" -> "⚽"
-    "shop" -> "🛒"
-    "friends" -> "👫"
-    else -> "📍"
-}
+internal fun placeEmoji(icon: String) = PlaceIcons.firstOrNull { it.key == icon }?.emoji ?: "📍"
 
-internal val PlaceTypes = listOf(
-    "home" to "Maison",
-    "school" to "École",
-    "work" to "Travail",
-    "sport" to "Sport",
-    "friends" to "Amis / famille",
-    "shop" to "Commerces",
-    "other" to "Autre",
+/** Types de lieux : clé enregistrée sur le serveur, emoji affiché, libellé proposé. */
+internal data class PlaceIcon(val key: String, val emoji: String, val label: String)
+
+internal val PlaceIcons = listOf(
+    PlaceIcon("home", "🏠", "Maison"),
+    PlaceIcon("school", "🏫", "École"),
+    PlaceIcon("college", "🎓", "Collège / lycée"),
+    PlaceIcon("work", "💼", "Travail"),
+    PlaceIcon("sport", "⚽", "Sport"),
+    PlaceIcon("music", "🎵", "Musique"),
+    PlaceIcon("friends", "👫", "Amis"),
+    PlaceIcon("family", "👵", "Famille"),
+    PlaceIcon("doctor", "🏥", "Santé"),
+    PlaceIcon("park", "🌳", "Parc"),
+    PlaceIcon("library", "📚", "Bibliothèque"),
+    PlaceIcon("shop", "🛒", "Courses"),
+    PlaceIcon("food", "🍽️", "Restaurant"),
+    PlaceIcon("station", "🚉", "Gare / arrêt"),
+    PlaceIcon("star", "⭐", "Favori"),
+    PlaceIcon("other", "📍", "Autre"),
 )
+
+/** Compatibilité avec l'ancien écran (couples clé / libellé). */
+internal val PlaceTypes = PlaceIcons.map { it.key to it.label }
 
 private fun circlePolygon(lat: Double, lon: Double, radius: Double): Polygon {
     val points = (0..64).map { i ->
@@ -417,14 +424,14 @@ private fun circlePolygon(lat: Double, lon: Double, radius: Double): Polygon {
 }
 
 /** Pastille ronde blanche avec l'emoji du lieu. */
-private fun placeBitmap(context: Context, icon: String): Bitmap {
+private fun placeBitmap(context: Context, icon: String, colorHex: String): Bitmap {
     val d = context.resources.displayMetrics.density
     val size = (34 * d).toInt()
     val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
     bitmap.density = context.resources.displayMetrics.densityDpi
     val canvas = Canvas(bitmap)
     val bg = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xFF5B5BD6.toInt()
+        color = runCatching { android.graphics.Color.parseColor(colorHex) }.getOrDefault(0xFF5B5BD6.toInt())
         setShadowLayer(2 * d, 0f, 1 * d, 0x44000000)
     }
     canvas.drawRoundRect(RectF(2 * d, 2 * d, size - 2 * d, size - 2 * d), 10 * d, 10 * d, bg)
@@ -435,9 +442,13 @@ private fun placeBitmap(context: Context, icon: String): Bitmap {
 
 /** Affiche les lieux sur la carte. */
 internal fun Style.setPlaces(context: Context, places: List<Place>) {
-    places.forEach { addImage("place-${it.id}", placeBitmap(context, it.icon)) }
+    places.forEach { addImage("place-${it.id}", placeBitmap(context, it.icon, it.color)) }
     getSourceAs<GeoJsonSource>(PLACE_AREA_SOURCE)?.setGeoJson(
-        FeatureCollection.fromFeatures(places.map { Feature.fromGeometry(circlePolygon(it.latitude, it.longitude, it.radius)) }),
+        FeatureCollection.fromFeatures(
+            places.map {
+                Feature.fromGeometry(circlePolygon(it.latitude, it.longitude, it.radius)).apply { addStringProperty("color", it.color) }
+            },
+        ),
     )
     getSourceAs<GeoJsonSource>(PLACE_PIN_SOURCE)?.setGeoJson(
         FeatureCollection.fromFeatures(
@@ -445,6 +456,7 @@ internal fun Style.setPlaces(context: Context, places: List<Place>) {
                 Feature.fromGeometry(Point.fromLngLat(p.longitude, p.latitude)).apply {
                     addStringProperty("icon", "place-${p.id}")
                     addStringProperty("name", p.name)
+                    addStringProperty("color", p.color)
                 }
             },
         ),
