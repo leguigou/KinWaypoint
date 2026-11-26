@@ -5,9 +5,14 @@ COPY app.py .
 
 ENV KW_DATA_DIR=/data \
     KW_PORT=8080 \
+    TZ=Europe/Paris \
     PYTHONUNBUFFERED=1
 
-RUN mkdir -p /data && adduser -D -u 10001 kw && chown -R kw /data /app
+# tzdata : sans lui, TZ=Europe/Paris est ignoré et les dates restent en UTC.
+RUN apk add --no-cache tzdata \
+    && mkdir -p /data \
+    && adduser -D -u 10001 kw \
+    && chown -R kw /data /app
 USER kw
 
 VOLUME /data

@@ -153,8 +153,8 @@ jobs:
           NOTE=$(git log -1 --pretty=%s | cut -c1-160)
           curl -sS --fail-with-body -m 300 -X POST --data-binary @"$APK" \
             -H "X-Admin-Token: ${KW_HUB_TOKEN}" \
-            -H "X-Filename: kinwaypoint-${GITHUB_SHA::7}-v${VERSION}.apk" \
+            -H "X-Filename: kinwaypoint-${VERSION}.apk" \
             -H "X-Version: ${VERSION} (${CODE})" \
-            -H "X-Note: ${NOTE}" \
-            "https://famille.deloffre.fr/config/apk/upload"
+            -H "X-Note: ${GITHUB_SHA::7} · ${NOTE}" \
+            "https://famille.deloffre.fr/apk/upload"
           echo

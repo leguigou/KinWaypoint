@@ -28,9 +28,10 @@ import re
 import secrets
 import shutil
 import threading
+import time
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import unquote
+from urllib.parse import parse_qs, unquote
 
 DATA_DIR = os.environ.get("KW_DATA_DIR", "/data")
 PORT = int(os.environ.get("KW_PORT", "8080"))
@@ -41,8 +42,9 @@ STORE = os.path.join(DATA_DIR, "codes.json")
 
 APK_DIR = os.path.join(DATA_DIR, "apk")
 APK_INDEX = os.path.join(DATA_DIR, "apk.json")
-APK_USER = os.environ.get("KW_APK_USER", "")
-APK_PASS = os.environ.get("KW_APK_PASS", "")
+APK_CODE = os.environ.get("KW_APK_CODE", "azerty")
+COOKIE_NAME = "kwapk"
+COOKIE_DAYS = 30
 MAX_APK_BYTES = 200 * 1024 * 1024
 
 LOCK = threading.Lock()
@@ -135,56 +137,120 @@ def human(size):
     value = float(size)
     for unit in ("o", "Ko", "Mo"):
         if value < 1024:
-            return f"{value:.0f} {unit}" if unit == "o" else f"{value:.1f} {unit}"
+            text = f"{value:.0f} {unit}" if unit == "o" else f"{value:.1f} {unit}"
+            return text.replace(".", ",")
         value /= 1024.0
-    return f"{value:.1f} Go"
+    return f"{value:.1f} Go".replace(".", ",")
+
+
+MONTHS = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."]
+
+STYLE = """
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;padding:20px;display:flex;align-items:center;justify-content:center;
+     background:radial-gradient(1200px 600px at 50% -10%,#182034 0%,#0b0d12 55%);color:#e8ebf2;
+     font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+.card{width:100%;max-width:560px;background:rgba(20,24,33,.92);border:1px solid #222836;
+      border-radius:24px;padding:28px 24px;box-shadow:0 24px 70px rgba(0,0,0,.5)}
+.brand{display:inline-flex;align-items:center;gap:8px;font-size:11px;letter-spacing:.1em;
+       text-transform:uppercase;color:#8b93a6;margin-bottom:14px}
+.dot{width:8px;height:8px;border-radius:50%;background:linear-gradient(135deg,#6d8bff,#9d6bff)}
+h1{margin:0 0 6px;font-size:22px;letter-spacing:-.01em}
+.sub{margin:0 0 22px;color:#8b93a6;font-size:14px}
+input{width:100%;padding:15px 18px;border-radius:16px;border:1px solid #2a3143;background:#0e1219;
+      color:#fff;font-size:16px;outline:none;transition:border-color .15s,box-shadow .15s}
+input:focus{border-color:#5b7cff;box-shadow:0 0 0 3px rgba(91,124,255,.16)}
+.pill{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:0;cursor:pointer;
+      border-radius:999px;padding:14px 24px;font-size:15px;font-weight:600;color:#fff;text-decoration:none;
+      background:linear-gradient(135deg,#5b7cff,#8a5cff);transition:transform .12s,filter .12s;
+      font-family:inherit;white-space:nowrap}
+.pill:hover{filter:brightness(1.09)} .pill:active{transform:scale(.98)}
+.pill.full{width:100%;margin-top:12px}
+.list{margin:0;padding:0;list-style:none}
+.item{display:flex;align-items:center;gap:16px;padding:18px 0;border-top:1px solid #1f2532}
+.item:first-child{border-top:0;padding-top:4px}
+.ver{font-size:21px;font-weight:700;letter-spacing:-.02em;line-height:1.2}
+.ver span{font-size:12px;font-weight:500;color:#7c8598;margin-left:8px;letter-spacing:0}
+.file{font-size:13px;color:#9aa3b5;word-break:break-all;margin-top:3px}
+.meta{font-size:12px;color:#6f7889;margin-top:3px}
+.note{font-size:12px;color:#5f6779;margin-top:7px;font-style:italic}
+.err{margin:14px 0 0;color:#ff7b8a;font-size:13px;min-height:18px}
+.foot{margin-top:22px;padding-top:16px;border-top:1px solid #1f2532;display:flex;justify-content:space-between;
+      font-size:12px;color:#5f6779}
+.foot a{color:#6f7889;text-decoration:none} .foot a:hover{color:#9aa3b5}
+.empty{text-align:center;color:#7c8598;padding:26px 0}
+@media(max-width:520px){
+  .card{padding:22px 18px;border-radius:20px}
+  .item{flex-direction:column;align-items:stretch;gap:12px}
+  .dl .pill{width:100%}
+}
+"""
+
+
+def page(body, title="Dépôt d'APK"):
+    return f"""<!doctype html>
+<html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b0d12">
+<title>{html.escape(title)}</title>
+<style>{STYLE}</style></head>
+<body><div class="card">{body}</div></body></html>"""
+
+
+def fr_when(iso_str):
+    try:
+        moment = datetime.strptime(iso_str, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        local = moment.astimezone()
+        return f"{local.day} {MONTHS[local.month - 1]} {local.year} à {local:%H:%M}"
+    except (TypeError, ValueError):
+        return iso_str or ""
+
+
+def split_version(raw):
+    match = re.match(r"\s*([\w.\-+]+)\s*\((\d+)\)", raw or "")
+    if match:
+        return match.group(1), match.group(2)
+    return (raw or "").strip(), ""
+
+
+def render_login(error=""):
+    return page(f"""<div class="brand"><span class="dot"></span>KinWaypoint</div>
+<h1>Dépôt d'APK</h1>
+<p class="sub">Entre le code d'accès pour voir les versions disponibles.</p>
+<form method="post" action="/apk/login">
+  <input name="code" type="password" inputmode="text" placeholder="Code d'accès"
+         autofocus autocomplete="current-password" autocapitalize="off" spellcheck="false">
+  <button class="pill full" type="submit">Entrer</button>
+</form>
+<p class="err">{html.escape(error)}</p>""")
 
 
 def render_index(items):
     rows = []
     for it in items:
         name = it.get("file", "")
-        size = human(it.get("size", 0))
-        date = (it.get("uploadedAt") or "").replace("T", " ").replace("Z", "")
-        sha = (it.get("sha256") or "")[:12]
-        version = it.get("version") or "—"
+        version, build = split_version(it.get("version"))
+        ver_html = f"v{html.escape(version)}" if version else "version inconnue"
+        if build:
+            ver_html += f"<span>· build {html.escape(build)}</span>"
         note = it.get("note") or ""
-        note_html = f'<span class="n">{html.escape(note)}</span>' if note else ""
-        rows.append(
-            f'<tr><td class="d">{html.escape(date)}</td>'
-            f'<td class="v">{html.escape(version)}</td>'
-            f'<td class="f"><a href="{html.escape(name)}">{html.escape(name)}</a>{note_html}</td>'
-            f'<td class="s">{size}</td>'
-            f'<td class="h" title="{html.escape(it.get("sha256") or "")}">{html.escape(sha) or "—"}</td></tr>'
-        )
-    if not rows:
-        rows.append('<tr><td colspan="5" class="empty">Aucun fichier pour le moment.</td></tr>')
-    return f"""<!doctype html>
-<html lang="fr"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Dépôt d'APK</title>
-<style>
-body {{ margin:0; padding:24px; background:#111318; color:#e7e9ee;
-       font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif }}
-h1 {{ font-size:19px; margin:0 0 4px; font-weight:600 }}
-p.sub {{ margin:0 0 20px; color:#8b93a3; font-size:13px }}
-table {{ width:100%; border-collapse:collapse; font-size:14px }}
-th {{ text-align:left; font-weight:500; color:#8b93a3; font-size:12px;
-      text-transform:uppercase; letter-spacing:.04em; padding:0 10px 8px }}
-td {{ padding:11px 10px; border-top:1px solid #232734; vertical-align:top }}
-tr:hover td {{ background:#181c24 }}
-a {{ color:#7aa2ff; text-decoration:none }} a:hover {{ text-decoration:underline }}
-.d {{ white-space:nowrap; color:#a8b0c0; font-variant-numeric:tabular-nums }}
-.v {{ white-space:nowrap; font-weight:600 }}
-.s,.h {{ white-space:nowrap; color:#8b93a3; font-variant-numeric:tabular-nums }}
-.n {{ display:block; color:#8b93a3; font-size:12px; margin-top:2px }}
-.empty {{ text-align:center; color:#8b93a3; padding:28px }}
-</style></head><body>
+        note_html = f'<div class="note">{html.escape(note)}</div>' if note else ""
+        rows.append(f"""<li class="item">
+      <div style="flex:1;min-width:0">
+        <div class="ver">{ver_html}</div>
+        <div class="file">{html.escape(name)}</div>
+        <div class="meta">{human(it.get("size", 0))} · {html.escape(fr_when(it.get("uploadedAt", "")))}</div>
+        {note_html}
+      </div>
+      <div class="dl"><a class="pill" href="{html.escape(name)}">Télécharger</a></div>
+    </li>""")
+    body = rows and f'<ul class="list">{"".join(rows)}</ul>' or '<p class="empty">Aucun APK pour le moment.</p>'
+    count = f"{len(items)} version" + ("s" if len(items) > 1 else "")
+    return page(f"""<div class="brand"><span class="dot"></span>KinWaypoint</div>
 <h1>Dépôt d'APK</h1>
-<p class="sub">{len(items)} fichier(s) — du plus récent au plus ancien</p>
-<table><thead><tr><th>Date</th><th>Version</th><th>Fichier</th><th>Taille</th><th>SHA-256</th></tr></thead>
-<tbody>{''.join(rows)}</tbody></table>
-</body></html>"""
+<p class="sub">{count} — la plus récente en premier</p>
+{body}
+<div class="foot"><span></span><a href="/apk/logout">Se déconnecter</a></div>""")
 
 
 def safe_name(raw):
@@ -212,32 +278,50 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def reply_html(self, code, text):
+    def reply_html(self, code, text, headers=None):
         body = text.encode()
         self.send_response(code)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(body)))
+        for key, value in (headers or {}).items():
+            self.send_header(key, value)
         self.end_headers()
         self.wfile.write(body)
 
-    def apk_authorized(self):
-        if not APK_USER or not APK_PASS:
-            return True
-        header = self.headers.get("Authorization", "")
-        if not header.startswith("Basic "):
-            return False
+    # ------------------------------------------------------ accès par code
+    def make_cookie(self):
+        expires = int(time.time()) + COOKIE_DAYS * 86400
+        signature = hmac.new(ADMIN_TOKEN.encode(), str(expires).encode(), hashlib.sha256).hexdigest()[:32]
+        return f"{expires}.{signature}"
+
+    def cookie_valid(self, value):
         try:
-            user, password = base64.b64decode(header[6:]).decode().split(":", 1)
-        except (ValueError, UnicodeDecodeError):
+            expires, signature = value.split(".", 1)
+            if int(expires) < time.time():
+                return False
+        except (ValueError, AttributeError):
             return False
-        return hmac.compare_digest(user, APK_USER) and hmac.compare_digest(password, APK_PASS)
+        expected = hmac.new(ADMIN_TOKEN.encode(), expires.encode(), hashlib.sha256).hexdigest()[:32]
+        return hmac.compare_digest(signature, expected)
+
+    def apk_authorized(self):
+        # 1) le code passé en query (pratique pour un script)
+        query = parse_qs(self.path.split("?", 1)[1]) if "?" in self.path else {}
+        if query.get("code") and hmac.compare_digest(query["code"][0], APK_CODE):
+            return True
+        # 2) le cookie déposé par la page de connexion
+        raw = self.headers.get("Cookie", "")
+        for part in raw.split(";"):
+            key, _, value = part.strip().partition("=")
+            if key == COOKIE_NAME and self.cookie_valid(value):
+                return True
+        return False
 
     def require_apk_auth(self):
         if self.apk_authorized():
             return True
-        self.reply(401, {"error": "authentification requise"},
-                   {"WWW-Authenticate": 'Basic realm="Depot APK", charset="UTF-8"'})
+        self.reply_html(200, render_login(""))
         return False
 
     # -------------------------------------------------------------------- GET
@@ -248,19 +332,25 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(200, {"status": "ok"})
             return
 
+        if path == "/apk/logout":
+            self.reply_html(303, "", {
+                "Location": "/apk/",
+                "Set-Cookie": f"{COOKIE_NAME}=; Path=/apk; Max-Age=0; HttpOnly; Secure; SameSite=Lax",
+            })
+            return
+
         if path == "/apk" or path.startswith("/apk/"):
             if not self.require_apk_auth():
                 return
 
-        if path == "/apk/index.json":
-            self.reply(200, {"items": load_apks()})
-            return
+            if path == "/apk/index.json":
+                self.reply(200, {"items": load_apks()})
+                return
 
-        if path == "/apk":
-            self.reply_html(200, render_index(load_apks()))
-            return
+            if path == "/apk":
+                self.reply_html(200, render_index(load_apks()))
+                return
 
-        if path.startswith("/apk/"):
             name = safe_name(path[len("/apk/"):])
             full = os.path.join(APK_DIR, name)
             if not name or not os.path.isfile(full):
@@ -312,6 +402,10 @@ class Handler(BaseHTTPRequestHandler):
     # ------------------------------------------------------------------- POST
     def do_POST(self):
         path = self.path.split("?")[0].rstrip("/")
+
+        if path == "/apk/login":
+            self.login()
+            return
 
         if path == "/apk/upload":
             if not ADMIN_TOKEN or self.headers.get("X-Admin-Token") != ADMIN_TOKEN:
@@ -384,6 +478,24 @@ class Handler(BaseHTTPRequestHandler):
         url = f"{BASE_URL}/kw/{token}"
         self.log_message(f"code cree mode={mode} ttl={ttl}h")
         self.reply(201, {"url": url, "token": token, "expiresAt": iso(expires)})
+
+    def login(self):
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            form = parse_qs(self.rfile.read(length).decode("utf-8", "replace"))
+        except ValueError:
+            form = {}
+        code = (form.get("code") or [""])[0].strip()
+        if not code or not hmac.compare_digest(code, APK_CODE):
+            self.log_message("code d'acces refuse")
+            self.reply_html(200, render_login("Code incorrect, réessaie."))
+            return
+        self.log_message("depot apk deverrouille")
+        self.reply_html(303, "", {
+            "Location": "/apk/",
+            "Set-Cookie": f"{COOKIE_NAME}={self.make_cookie()}; Path=/apk; "
+                          f"Max-Age={COOKIE_DAYS * 86400}; HttpOnly; Secure; SameSite=Lax",
+        })
 
     def upload_apk(self):
         name = safe_name(self.headers.get("X-Filename", ""))
