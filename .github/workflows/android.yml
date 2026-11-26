@@ -65,6 +65,26 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      # Version de test : l'APK seul (non zippé), sous un lien fixe ouvrable
+      # directement depuis le téléphone, remplacé à chaque build.
+      - name: APK de test téléchargeable
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        run: cp app/build/outputs/apk/release/kinwaypoint-*.apk app/build/outputs/apk/release/kinwaypoint-test.apk
+
+      - name: Publier la version de test
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: test-latest
+          name: "Version de test (dernier build)"
+          body: |
+            APK de test construit automatiquement depuis `${{ github.ref_name }}` (commit ${{ github.sha }}).
+            Lien direct : https://github.com/${{ github.repository }}/releases/download/test-latest/kinwaypoint-test.apk
+            Non destiné aux téléphones des enfants tant qu'il n'est pas validé.
+          prerelease: true
+          make_latest: false
+          files: android/app/build/outputs/apk/release/kinwaypoint-test.apk
+
       - name: Publier la release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
