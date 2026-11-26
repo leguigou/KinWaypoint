@@ -20,6 +20,14 @@ data class TrackingStatusState(
     val sosDeliveredAt: Long? = null,
     /** Appareil immobile : GPS coupé, une position toutes les 10 min. */
     val still: Boolean = false,
+    /** Pas du jour (podomètre), null si indisponible. */
+    val steps: Int? = null,
+    /** Activité estimée (still, walking, bike, vehicle). */
+    val activity: String? = null,
+    /** Vitesse lissée, km/h. */
+    val kmh: Double? = null,
+    /** Suivi rapproché en cours (mouvement détecté : une position toutes les 15 s). */
+    val boosting: Boolean = false,
 )
 
 /** État partagé entre le service de suivi et l'interface (volontairement simple). */

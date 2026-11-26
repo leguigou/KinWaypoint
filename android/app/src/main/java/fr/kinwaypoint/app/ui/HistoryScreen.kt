@@ -90,7 +90,7 @@ private sealed interface HistoryRow {
 /** Mode de déplacement déduit de la vitesse moyenne (estimation, sans capteur). */
 private fun tripMode(kmh: Double): Pair<String, String> = when {
     kmh < 7 -> "🚶" to "Marche"
-    kmh < 25 -> "🚲" to "Vélo / trottinette"
+    kmh <= 15 -> "🚲" to "Vélo / trottinette"
     else -> "🚗" to "Véhicule"
 }
 
@@ -244,11 +244,21 @@ fun HistoryScreen(
                 FilterChip(selected = focus == null, onClick = { focus = null; highlighted = null }, label = { Text("Tout le monde") })
                 members.forEach { m ->
                     val length = traces[m.id]?.let { traceLength(it) } ?: 0f
+                    // Pas du jour : le plus grand compteur envoyé ce jour-là.
+                    val steps = traces[m.id]?.mapNotNull { it.steps }?.maxOrNull()
                     FilterChip(
                         selected = focus == m.id,
                         onClick = { focus = m.id; highlighted = null },
                         leadingIcon = { Box(Modifier.size(12.dp).clip(CircleShape).background(Color(colors[m.id] ?: 0))) },
-                        label = { Text(if (length > 0) "${nameOf(m)} · ${formatDistance(length)}" else nameOf(m)) },
+                        label = {
+                            Text(
+                                listOfNotNull(
+                                    nameOf(m),
+                                    length.takeIf { it > 0 }?.let { formatDistance(it) },
+                                    steps?.let { "${formatSteps(it)} pas" },
+                                ).joinToString(" · "),
+                            )
+                        },
                     )
                 }
             }

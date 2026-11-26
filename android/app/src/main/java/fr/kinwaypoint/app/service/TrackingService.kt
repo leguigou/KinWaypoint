@@ -79,6 +79,10 @@ class TrackingService : Service(), LocationListener {
         private const val STILL_AFTER_MS = 5 * 60 * 1000L
         /** Cadence d'envoi à l'arrêt (sert aussi de signe de vie pour les parents). */
         private const val STILL_INTERVAL_MS = 10 * 60 * 1000L
+        /** Suivi rapproché après un mouvement détecté : une position toutes les 15 s… */
+        private const val BOOST_INTERVAL_MS = 15_000L
+        /** … pendant 5 min après la dernière preuve de mouvement (pas ou vitesse). */
+        private const val BOOST_DURATION_MS = 5 * 60 * 1000L
 
         /** Rayon dans lequel on considère l'appareil immobile (m), selon la précision. */
         internal fun stillRadius(accuracy: Float) = 75f + accuracy.coerceIn(0f, 150f)
@@ -158,9 +162,63 @@ class TrackingService : Service(), LocationListener {
         }
     }
 
-    /** Intervalle effectif : celui réglé en mouvement, 10 min (au moins) à l'arrêt. */
+    // Podomètre et analyse du mouvement.
+    private lateinit var stepCounter: fr.kinwaypoint.app.motion.StepCounter
+    private val analyzer = fr.kinwaypoint.app.motion.MotionAnalyzer()
+    private var boostUntilElapsed = 0L
+    private var boosting = false
+
+    /** Intervalle effectif : 10 min à l'arrêt, 15 s en suivi rapproché, sinon celui réglé. */
     private val currentIntervalMs: Long
-        get() = if (still) maxOf(intervalMs, STILL_INTERVAL_MS) else intervalMs
+        get() = when {
+            still -> maxOf(intervalMs, STILL_INTERVAL_MS)
+            boosting -> minOf(intervalMs, BOOST_INTERVAL_MS)
+            else -> intervalMs
+        }
+
+    /**
+     * Mouvement détecté (pas réguliers ou vitesse) : on sort du mode « à l'arrêt »
+     * et on resserre le suivi pendant 5 min pour mesurer la vitesse.
+     */
+    private fun movementDetected() {
+        boostUntilElapsed = SystemClock.elapsedRealtime() + BOOST_DURATION_MS
+        if (still) enterMoving()
+        if (!boosting && intervalMs > BOOST_INTERVAL_MS) {
+            boosting = true
+            Log.i(TAG, "mouvement : suivi rapproché (15 s) pendant 5 min")
+            TrackingStatus.update { it.copy(boosting = true) }
+            registerLocation()
+        }
+    }
+
+    private fun checkBoostExpired() {
+        if (boosting && SystemClock.elapsedRealtime() > boostUntilElapsed) {
+            boosting = false
+            Log.i(TAG, "fin du suivi rapproché")
+            TrackingStatus.update { it.copy(boosting = false) }
+            registerLocation()
+        }
+    }
+
+    private var stepsStarted = false
+
+    /** Podomètre : autorisation « activité physique » requise depuis Android 10. */
+    private fun startStepsIfAllowed() {
+        if (stepsStarted) return
+        val allowed = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.ACTIVITY_RECOGNITION) == PackageManager.PERMISSION_GRANTED
+        if (!allowed) return
+        stepsStarted = stepCounter.start()
+        if (!stepsStarted) Log.i(TAG, "pas de podomètre sur ce téléphone")
+    }
+
+    private fun onSteps(today: Int, total: Long) {
+        val now = System.currentTimeMillis()
+        analyzer.addSteps(now, total)
+        TrackingStatus.update { it.copy(steps = today) }
+        // Plus de 40 pas / min : la personne marche.
+        if (analyzer.cadence(now) >= 40) movementDetected()
+    }
 
     // Envoi : une seule boucle à la fois, relancée si besoin.
     private val flushLock = Mutex()
@@ -180,6 +238,7 @@ class TrackingService : Service(), LocationListener {
         queue = FixQueue.get(this)
         sensorManager = getSystemService(SensorManager::class.java)
         motionSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_SIGNIFICANT_MOTION)
+        stepCounter = fr.kinwaypoint.app.motion.StepCounter(this) { today, total -> onSteps(today, total) }
         createChannel()
     }
 
@@ -208,6 +267,9 @@ class TrackingService : Service(), LocationListener {
         if (!started) {
             started = true
             startTracking()
+        } else {
+            // Autorisation « activité physique » accordée après coup : le podomètre démarre.
+            startStepsIfAllowed()
         }
 
         if (intent?.action == ACTION_SOS) {
@@ -225,6 +287,7 @@ class TrackingService : Service(), LocationListener {
             withContext(Dispatchers.Main) {
                 registerLocation()
                 registerNetwork()
+                startStepsIfAllowed()
             }
             flush()
         }
@@ -286,6 +349,13 @@ class TrackingService : Service(), LocationListener {
 
         TrackingStatus.update { it.copy(accuracy = candidate.accuracy) }
 
+        // Vitesse lissée : au-delà de 5 km/h, la personne se déplace.
+        val nowMs = System.currentTimeMillis()
+        analyzer.addFix(fr.kinwaypoint.app.motion.MotionAnalyzer.Fix(location.time, location.latitude, location.longitude, location.accuracy))
+        val kmh = analyzer.speedKmh(nowMs)
+        TrackingStatus.update { it.copy(kmh = kmh, activity = analyzer.activity(nowMs).code) }
+        if (kmh != null && kmh > 5) movementDetected() else checkBoostExpired()
+
         updateMotion(location)
 
         if (sosWaitingForFix) {
@@ -312,6 +382,8 @@ class TrackingService : Service(), LocationListener {
     private fun updateMotion(location: Location) {
         // Inutile si l'intervalle réglé est déjà aussi long que celui « à l'arrêt ».
         if (intervalMs >= STILL_INTERVAL_MS) return
+        // Mouvement détecté récemment (pas, vitesse) : on ne passe pas « à l'arrêt ».
+        if (boosting) return
         val now = SystemClock.elapsedRealtime()
         val ref = anchor
 
@@ -387,6 +459,9 @@ class TrackingService : Service(), LocationListener {
             alarm = alarm,
             fixAgeSeconds = sosNow?.let { ((it - fixTime) / 1000L).coerceAtLeast(0L) },
             ringer = readRinger(),
+            steps = stepCounter.stepsToday,
+            activity = analyzer.activity(System.currentTimeMillis()).code,
+            kmh = analyzer.speedKmh(System.currentTimeMillis())?.let { Math.round(it * 10) / 10.0 },
             wifi = readWifiName(),
         )
 
@@ -583,9 +658,10 @@ class TrackingService : Service(), LocationListener {
     override fun onDestroy() {
         runCatching { locationManager.removeUpdates(this) }
         motionSensor?.let { sensor -> runCatching { sensorManager?.cancelTriggerSensor(motionListener, sensor) } }
+        stepCounter.stop()
         connectivity?.let { manager -> runCatching { manager.unregisterNetworkCallback(networkCallback) } }
         scope.cancel()
-        TrackingStatus.update { it.copy(running = false, still = false) }
+        TrackingStatus.update { it.copy(running = false, still = false, boosting = false) }
         super.onDestroy()
     }
 

@@ -14,7 +14,7 @@ import fr.kinwaypoint.app.net.LocationFix
  * Les alertes (SOS) passent toujours avant l'historique en retard.
  */
 class FixQueue private constructor(context: Context) :
-    SQLiteOpenHelper(context.applicationContext, "fix_queue.db", null, 2) {
+    SQLiteOpenHelper(context.applicationContext, "fix_queue.db", null, 3) {
 
     companion object {
         @Volatile private var instance: FixQueue? = null
@@ -48,7 +48,10 @@ class FixQueue private constructor(context: Context) :
                 alarm TEXT,
                 fix_age INTEGER,
                 ringer TEXT,
-                wifi TEXT
+                wifi TEXT,
+                steps INTEGER,
+                activity TEXT,
+                kmh REAL
             )
             """.trimIndent(),
         )
@@ -59,6 +62,12 @@ class FixQueue private constructor(context: Context) :
         if (oldVersion < 2) {
             db.execSQL("ALTER TABLE fixes ADD COLUMN ringer TEXT")
             db.execSQL("ALTER TABLE fixes ADD COLUMN wifi TEXT")
+        }
+        // v3 : podomètre et activité estimée.
+        if (oldVersion < 3) {
+            db.execSQL("ALTER TABLE fixes ADD COLUMN steps INTEGER")
+            db.execSQL("ALTER TABLE fixes ADD COLUMN activity TEXT")
+            db.execSQL("ALTER TABLE fixes ADD COLUMN kmh REAL")
         }
     }
 
@@ -78,6 +87,9 @@ class FixQueue private constructor(context: Context) :
             put("fix_age", fix.fixAgeSeconds)
             put("ringer", fix.ringer)
             put("wifi", fix.wifi)
+            put("steps", fix.steps)
+            put("activity", fix.activity)
+            put("kmh", fix.kmh)
         }
         val db = writableDatabase
         val id = db.insert("fixes", null, values)
@@ -90,7 +102,7 @@ class FixQueue private constructor(context: Context) :
     fun peek(limit: Int): List<Entry> {
         val result = mutableListOf<Entry>()
         readableDatabase.rawQuery(
-            "SELECT id, time, lat, lon, accuracy, altitude, speed, bearing, battery, charging, alarm, fix_age, ringer, wifi " +
+            "SELECT id, time, lat, lon, accuracy, altitude, speed, bearing, battery, charging, alarm, fix_age, ringer, wifi, steps, activity, kmh " +
                 "FROM fixes ORDER BY (alarm IS NULL), time, id LIMIT ?",
             arrayOf(limit.toString()),
         ).use { c ->
@@ -111,6 +123,9 @@ class FixQueue private constructor(context: Context) :
                         fixAgeSeconds = if (c.isNull(11)) null else c.getLong(11),
                         ringer = if (c.isNull(12)) null else c.getString(12),
                         wifi = if (c.isNull(13)) null else c.getString(13),
+                        steps = if (c.isNull(14)) null else c.getInt(14),
+                        activity = if (c.isNull(15)) null else c.getString(15),
+                        kmh = if (c.isNull(16)) null else c.getDouble(16),
                     ),
                 )
             }

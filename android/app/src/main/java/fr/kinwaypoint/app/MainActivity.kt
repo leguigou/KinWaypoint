@@ -62,6 +62,10 @@ class MainActivity : FragmentActivity() {
         ActivityResultContracts.RequestMultiplePermissions(),
     ) {
         permissionsState = snapshotPermissions()
+        // Le suivi en cours prend en compte les nouvelles autorisations (podomètre).
+        if (fr.kinwaypoint.app.service.TrackingStatus.state.value.running) {
+            fr.kinwaypoint.app.service.TrackingService.start(this)
+        }
     }
 
     private var onScanResult: ((String?) -> Unit)? = null
@@ -165,6 +169,9 @@ class MainActivity : FragmentActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             list += Manifest.permission.POST_NOTIFICATIONS
         }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            list += Manifest.permission.ACTIVITY_RECOGNITION
+        }
         return list.toTypedArray()
     }
 
@@ -180,6 +187,8 @@ class MainActivity : FragmentActivity() {
             notifications = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
                 granted(Manifest.permission.POST_NOTIFICATIONS),
             batteryOptimized = !power.isIgnoringBatteryOptimizations(packageName),
+            activityRecognition = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
+                granted(Manifest.permission.ACTIVITY_RECOGNITION),
         )
     }
 

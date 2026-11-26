@@ -32,6 +32,8 @@ import androidx.compose.material.icons.filled.BatteryFull
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.GpsFixed
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MyLocation
@@ -522,6 +524,7 @@ private fun SosFeedback(status: TrackingStatusState) {
 }
 
 /** Bandeau d'état du suivi, en dégradé, avec des pastilles d'information. */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun StatusCard(status: TrackingStatusState, permissions: PermissionSnapshot) {
     val (icon, title) = when {
@@ -558,10 +561,16 @@ fun StatusCard(status: TrackingStatusState, permissions: PermissionSnapshot) {
                 }
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        androidx.compose.foundation.layout.FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
             status.battery?.let { HeroChip(Icons.Default.BatteryFull, "$it %") }
+            status.steps?.let { HeroChip(Icons.AutoMirrored.Filled.DirectionsWalk, "${formatSteps(it)} pas") }
+            activityLabel(status.activity, status.kmh)?.let { HeroChip(Icons.Default.Speed, it) }
             status.accuracy?.let { HeroChip(Icons.Default.GpsFixed, "± ${it.toInt()} m") }
             if (status.running && status.still) HeroChip(Icons.Default.Schedule, "toutes les 10 min")
+            if (status.running && status.boosting) HeroChip(Icons.Default.MyLocation, "suivi rapproché")
         }
         if (status.queued > 0) {
             Text("${status.queued} position(s) gardée(s) en attendant le réseau", color = Color.White, style = MaterialTheme.typography.bodySmall)
@@ -600,6 +609,14 @@ fun PermissionWarnings(permissions: PermissionSnapshot, actions: PlatformActions
             "Choisir « Toujours autoriser » dans les réglages de l'app.",
             "Ouvrir",
             actions.openAppSettings,
+        )
+    }
+    if (permissions.fineLocation && !permissions.activityRecognition) {
+        PermissionRow(
+            "Activité physique (podomètre)",
+            "Compte les pas du jour et détecte la marche pour un suivi plus précis.",
+            "Autoriser",
+            actions.requestLocation,
         )
     }
     if (permissions.batteryOptimized) {

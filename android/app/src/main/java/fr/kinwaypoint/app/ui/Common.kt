@@ -10,6 +10,8 @@ data class PermissionSnapshot(
     val backgroundLocation: Boolean = false,
     val notifications: Boolean = false,
     val batteryOptimized: Boolean = true,
+    /** Activité physique (podomètre), Android 10+. */
+    val activityRecognition: Boolean = true,
 )
 
 /** Actions qui demandent l'activité Android (autorisations, réglages, carte). */
@@ -42,5 +44,27 @@ fun relativeTime(millis: Long): String {
         minutes < 60 -> "il y a $minutes min"
         minutes < 48 * 60 -> "il y a ${minutes / 60} h"
         else -> "il y a ${minutes / (24 * 60)} j"
+    }
+}
+
+/** « 12 345 » (espace fine des milliers, à la française). */
+fun formatSteps(steps: Int): String = String.format(Locale.FRANCE, "%,d", steps).replace(',', '\u202F')
+
+/** Emoji de l'activité : 🚗 au-delà de 15 km/h, 🚲, 🚶. Null à l'arrêt ou inconnu. */
+fun activityEmoji(activity: String?): String? = when (activity) {
+    "vehicle" -> "🚗"
+    "bike" -> "🚲"
+    "walking" -> "🚶"
+    else -> null
+}
+
+/** « 🚗 42 km/h », « 🚶 En marche »… (null à l'arrêt). */
+fun activityLabel(activity: String?, kmh: Double?): String? {
+    val speed = kmh?.takeIf { it >= 1 }?.let { " · ${it.toInt()} km/h" }.orEmpty()
+    return when (activity) {
+        "vehicle" -> "🚗 En véhicule$speed"
+        "bike" -> "🚲 Vélo / trottinette$speed"
+        "walking" -> "🚶 En marche$speed"
+        else -> null
     }
 }

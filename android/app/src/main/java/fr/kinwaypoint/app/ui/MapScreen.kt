@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.Route
 import androidx.compose.material.icons.filled.ZoomOutMap
 import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -142,6 +143,8 @@ fun FamilyMapScreen(
         e.id to when {
             e.id in sosIds -> "SOS"
             place != null -> place.name + (inPlaceSince(mapTraces[e.id].orEmpty(), place)?.let { " · " + shortDuration(clock - it) } ?: "")
+            // En déplacement rapide : la vitesse au-dessus de l'avatar.
+            e.member?.position?.activity == "vehicle" -> e.member?.position?.kmh?.let { "${it.toInt()} km/h" }
             else -> null
         }
     }
@@ -182,6 +185,7 @@ fun FamilyMapScreen(
                 isMe = e.isMe && ownMember?.let { photos[it.id] } == null,
                 label = labels[e.id],
                 sos = e.id in sosIds,
+                badge = activityEmoji(e.member?.position?.activity),
             )
             st.addImage("avatar-${e.id}", bitmap)
         }
@@ -388,6 +392,9 @@ private fun EntryCard(
                 } else {
                     me?.let { StatusPill("± ${it.accuracy.toInt()} m", Muted, icon = Icons.Default.GpsFixed) }
                 }
+                // Pas du jour et déplacement en cours.
+                member?.position?.steps?.let { StatusPill("${formatSteps(it)} pas", MaterialTheme.colorScheme.primary, icon = Icons.AutoMirrored.Filled.DirectionsWalk) }
+                activityLabel(member?.position?.activity, member?.position?.kmh)?.let { StatusPill(it, Warning) }
                 // État du téléphone : sonnerie coupée, Wi-Fi.
                 when (member?.position?.ringer) {
                     "silent" -> StatusPill("Silencieux", Warning, icon = Icons.AutoMirrored.Filled.VolumeOff)

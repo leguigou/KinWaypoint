@@ -290,6 +290,8 @@ internal fun markerBitmap(
     label: String? = null,
     /** SOS en cours : contour rouge et étiquette rouge. */
     sos: Boolean = false,
+    /** Petit badge en haut à gauche de l'avatar (🚗 au-delà de 15 km/h, 🚲, 🚶). */
+    badge: String? = null,
 ): Bitmap {
     val d = context.resources.displayMetrics.density
     val circle = 52 * d
@@ -358,6 +360,17 @@ internal fun markerBitmap(
         }
         val label = if (isMe) "Moi" else name.trim().firstOrNull()?.uppercase() ?: "?"
         canvas.drawText(label, cx, cy - (text.descent() + text.ascent()) / 2, text)
+    }
+
+    if (badge != null) {
+        val bx = cx - r * 0.78f
+        val by = cy - r * 0.78f
+        canvas.drawCircle(bx, by, 11 * d, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.WHITE
+            setShadowLayer(2 * d, 0f, 1 * d, 0x44000000)
+        })
+        val emoji = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 13 * d; textAlign = Paint.Align.CENTER }
+        canvas.drawText(badge, bx, by - (emoji.descent() + emoji.ascent()) / 2, emoji)
     }
 
     if (status != null) {

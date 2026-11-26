@@ -43,6 +43,8 @@ data class TracePoint(
     val speedKmh: Double,
     val accuracy: Double,
     val battery: Int?,
+    val steps: Int? = null,
+    val activity: String? = null,
 )
 
 data class MemberPosition(
@@ -56,6 +58,12 @@ data class MemberPosition(
     val ringer: String? = null,
     /** Nom du Wi-Fi connecté, ou null. */
     val wifi: String? = null,
+    /** Pas du jour (podomètre du téléphone), ou null. */
+    val steps: Int? = null,
+    /** Activité estimée par le téléphone : still, walking, bike, vehicle. */
+    val activity: String? = null,
+    /** Vitesse en km/h (lissée par le téléphone si disponible, sinon GPS). */
+    val kmh: Double? = null,
 )
 
 /** Un lieu de la famille (zone circulaire Traccar) : maison, école… */
@@ -104,6 +112,13 @@ class TraccarApi(baseUrl: String) {
         .build()
 
     companion object {
+        /** Positions sans activité envoyée (ancienne version de l'appli) : déduite de la vitesse. */
+        fun activityFromSpeed(kmh: Double): String? = when {
+            kmh > 15 -> "vehicle"
+            kmh >= 7 -> "bike"
+            else -> null
+        }
+
         /** Adresse (fictive) du compte lecteur des enfants, créé par l'appli parent. */
         const val CHILD_VIEWER_EMAIL = "kw-enfants@kinwaypoint.local"
 
@@ -184,6 +199,10 @@ class TraccarApi(baseUrl: String) {
                 charging = attrs?.takeIf { it.has("charge") }?.optBoolean("charge"),
                 ringer = attrs?.optString("ringer")?.takeIf { it.isNotBlank() },
                 wifi = attrs?.optString("wifi")?.takeIf { it.isNotBlank() },
+                steps = attrs?.takeIf { it.has("steps") }?.optDouble("steps")?.toInt(),
+                activity = attrs?.optString("activity")?.takeIf { it.isNotBlank() }
+                    ?: activityFromSpeed(p.optDouble("speed", 0.0) * 1.852),
+                kmh = attrs?.takeIf { it.has("kmh") }?.optDouble("kmh") ?: p.optDouble("speed", 0.0) * 1.852,
             )
         }
 
@@ -424,6 +443,8 @@ class TraccarApi(baseUrl: String) {
                 speedKmh = p.optDouble("speed", 0.0) * 1.852, // Traccar : nœuds
                 accuracy = p.optDouble("accuracy", 0.0),
                 battery = attrs?.takeIf { it.has("batteryLevel") }?.optDouble("batteryLevel")?.toInt(),
+                steps = attrs?.takeIf { it.has("steps") }?.optDouble("steps")?.toInt(),
+                activity = attrs?.optString("activity")?.takeIf { it.isNotBlank() },
             )
         }.filter { it.time > 0 }.sortedBy { it.time }
     }
