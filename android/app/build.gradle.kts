@@ -12,8 +12,11 @@ android {
         applicationId = "fr.kinwaypoint.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "0.3.0"
+        versionCode = 4
+        versionName = "0.4.0"
+
+        // Téléphones réels uniquement (ARM) : divise par ~2 la taille due à la carte.
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
 
     // Clé de signature FIXE, fournie par la CI (secrets GitHub) ou en local par
@@ -81,6 +84,8 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     // QR code : génération (zxing core) et scan caméra, sans Google Play Services.
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
+    // Carte : MapLibre (open source, sans clé ni compte) + tuiles OpenStreetMap.
+    implementation("org.maplibre.gl:android-sdk:11.10.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
 }

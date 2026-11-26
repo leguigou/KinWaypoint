@@ -191,6 +191,40 @@ class TraccarApi(baseUrl: String) {
         }
     }
 
+    /**
+     * Renomme un appareil. Traccar exige l'objet complet en PUT (un objet
+     * partiel efface les autres champs et est refusé) : on relit puis on renvoie.
+     */
+    fun renameDevice(token: String, id: Long, name: String) {
+        val device = authorized(token, Request.Builder().url(url("api/devices/$id")).get()).use { response ->
+            check(response)
+            JSONObject(response.body?.string().orEmpty())
+        }
+        device.put("name", name.trim())
+        val put = Request.Builder()
+            .url(url("api/devices/$id"))
+            .put(device.toString().toRequestBody("application/json".toMediaType()))
+        authorized(token, put).use { check(it) }
+    }
+
+    /** Supprime un appareil et tout son historique sur le serveur. */
+    fun deleteDevice(token: String, id: Long) {
+        authorized(token, Request.Builder().url(url("api/devices/$id")).delete()).use { check(it) }
+    }
+
+    private fun authorized(token: String, builder: Request.Builder) = http.newCall(
+        builder.header("Authorization", "Bearer $token").header("Accept", "application/json").build(),
+    ).execute()
+
+    private fun check(response: okhttp3.Response) {
+        when {
+            response.code == 401 -> throw AuthException("Session expirée, reconnecte-toi")
+            response.code == 400 || response.code == 403 -> error("Opération refusée par le serveur (droits insuffisants ?)")
+            response.code == 404 -> error("Appareil introuvable (déjà supprimé ?)")
+            !response.isSuccessful -> error("Erreur serveur (HTTP ${response.code})")
+        }
+    }
+
     private fun url(path: String): HttpUrl = base.newBuilder().addPathSegments(path).build()
 
     private fun getArray(token: String, url: HttpUrl): JSONArray {

@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
+import org.maplibre.android.MapLibre
 import fr.kinwaypoint.app.data.SettingsRepository
 import fr.kinwaypoint.app.ui.AppRoot
 import fr.kinwaypoint.app.ui.KinWaypointTheme
@@ -57,6 +58,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         permissionsState = snapshotPermissions()
+        // Initialisation de la carte, une fois, avant tout affichage.
+        MapLibre.getInstance(applicationContext)
         val repository = SettingsRepository(applicationContext)
         val actions = PlatformActions(
             requestLocation = { requestLocation.launch(locationPermissions()) },

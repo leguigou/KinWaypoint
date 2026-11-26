@@ -165,6 +165,7 @@ fun AppRoot(
                 repository = repository,
                 config = parentCfg,
                 acknowledgedAlarmId = acknowledged,
+                permissions = permissions,
                 actions = actions,
                 onLock = { screen = home(AppMode.PARENT) },
                 onChangePin = { screen = Screen.PinCheck(AfterPin.NewPin(Screen.Parent), back = Screen.Parent) },
