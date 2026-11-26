@@ -1,6 +1,5 @@
 package fr.kinwaypoint.app.net
 
-import fr.kinwaypoint.app.data.TrackingConfig
 import okhttp3.FormBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -21,9 +20,9 @@ class TrackerClient {
         .retryOnConnectionFailure(true)
         .build()
 
-    fun send(config: TrackingConfig, fix: LocationFix): Result<Unit> = runCatching {
+    fun send(serverUrl: String, deviceId: String, fix: LocationFix): Result<Unit> = runCatching {
         val body = FormBody.Builder()
-            .add("id", config.deviceId)
+            .add("id", deviceId)
             .add("timestamp", (fix.time / 1000L).toString())
             .add("lat", String.format(Locale.US, "%.6f", fix.latitude))
             .add("lon", String.format(Locale.US, "%.6f", fix.longitude))
@@ -33,11 +32,14 @@ class TrackerClient {
             .add("bearing", String.format(Locale.US, "%.1f", fix.bearing))
             .add("batt", fix.battery.toString())
             .add("charge", fix.charging.toString())
-            .apply { fix.alarm?.let { add("alarm", it) } }
+            .apply {
+                fix.alarm?.let { add("alarm", it) }
+                fix.fixAgeSeconds?.let { add("fixAge", it.toString()) }
+            }
             .build()
 
         val request = Request.Builder()
-            .url(config.serverUrl)
+            .url(serverUrl)
             .post(body)
             .build()
 

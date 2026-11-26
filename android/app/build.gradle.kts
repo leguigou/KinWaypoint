@@ -12,8 +12,23 @@ android {
         applicationId = "fr.kinwaypoint.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
+    }
+
+    // Clé de signature FIXE, fournie par la CI (secrets GitHub) ou en local par
+    // variables d'environnement. Sans elle, chaque build CI aurait une clé de
+    // debug différente et Android refuserait d'installer la mise à jour.
+    val keystorePath = System.getenv("KW_KEYSTORE_FILE")?.takeIf { it.isNotBlank() }
+    signingConfigs {
+        if (keystorePath != null) {
+            create("kinwaypoint") {
+                storeFile = file(keystorePath)
+                storePassword = System.getenv("KW_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("KW_KEY_ALIAS")
+                keyPassword = System.getenv("KW_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
@@ -22,9 +37,12 @@ android {
         }
         release {
             isMinifyEnabled = false
-            // Distribution personnelle : l'APK de release est signé avec la clé
-            // de debug pour rester installable en sideload sans keystore dédié.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (keystorePath != null) {
+                signingConfigs.getByName("kinwaypoint")
+            } else {
+                // Build local de test uniquement : NE PAS distribuer cet APK.
+                signingConfigs.getByName("debug")
+            }
         }
     }
 
@@ -57,6 +75,7 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("androidx.datastore:datastore-preferences:1.1.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")

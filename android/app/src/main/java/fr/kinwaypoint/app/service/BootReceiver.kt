@@ -7,12 +7,14 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.util.Log
 import androidx.core.content.ContextCompat
+import fr.kinwaypoint.app.data.AppMode
 import fr.kinwaypoint.app.data.SettingsRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
-/** Relance le suivi après un redémarrage du téléphone, si l'utilisateur l'avait activé. */
+/** Relance le suivi après un redémarrage du téléphone, si l'appareil est en mode enfant et le suivi activé. */
 class BootReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -22,13 +24,15 @@ class BootReceiver : BroadcastReceiver() {
         val pending = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val config = SettingsRepository(context).snapshot()
+                val repository = SettingsRepository(context)
+                val config = repository.snapshot()
+                val mode = repository.mode.first()
                 val hasLocation = ContextCompat.checkSelfPermission(
                     context,
                     Manifest.permission.ACCESS_FINE_LOCATION,
                 ) == PackageManager.PERMISSION_GRANTED
 
-                if (config.enabled && config.isValid && hasLocation) {
+                if (mode == AppMode.CHILD && config.enabled && config.isValid && hasLocation) {
                     TrackingService.start(context)
                 }
             } catch (e: Exception) {
