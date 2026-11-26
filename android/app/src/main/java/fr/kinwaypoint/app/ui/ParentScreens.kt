@@ -35,6 +35,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -194,6 +195,9 @@ fun ParentHomeScreen(
     var refreshedAt by remember { mutableLongStateOf(0L) }
     var refreshTick by remember { mutableIntStateOf(0) }
     var showMenu by remember { mutableStateOf(false) }
+    val biometricEnabled by repository.biometricEnabled.collectAsState(initial = false)
+    val biometricOfferDismissed by repository.biometricOfferDismissed.collectAsState(initial = true)
+    val canUseBiometric = remember { actions.biometricAvailable() }
     var showAddChild by remember { mutableStateOf(false) }
     var qrFor by remember { mutableStateOf<Pair<String, SetupPayload>?>(null) }
     val trackUrl = config.trackUrl.ifBlank { guessTrackUrl(config.apiUrl) }
@@ -309,6 +313,24 @@ fun ParentHomeScreen(
                                     onClick = { scope.launch { repository.acknowledgeAlarm(alarm.id) } },
                                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
                                 ) { Text("J'ai vu") }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (canUseBiometric && !biometricEnabled && !biometricOfferDismissed) {
+                item {
+                    Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = SoftGreen)) {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("Ouvrir l'espace parent avec ton empreinte ?", fontWeight = FontWeight.SemiBold)
+                            Text("Le code PIN reste valable et toujours demandé pour changer de mode ou de code.", fontSize = 13.sp, color = Muted)
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(onClick = {
+                                    // Une empreinte reconnue confirme que le doigt est bien enregistré avant d'activer.
+                                    actions.authenticate { scope.launch { repository.setBiometric(true) } }
+                                }) { Text("Activer") }
+                                TextButton(onClick = { scope.launch { repository.setBiometric(false) } }) { Text("Non merci") }
                             }
                         }
                     }
@@ -435,6 +457,26 @@ fun ParentHomeScreen(
                     }
                     OutlinedButton(onClick = { showMenu = false; onChangePin() }, modifier = Modifier.fillMaxWidth()) {
                         Text("Changer le code PIN")
+                    }
+                    OutlinedButton(
+                        enabled = canUseBiometric || biometricEnabled,
+                        onClick = {
+                            showMenu = false
+                            if (biometricEnabled) {
+                                scope.launch { repository.setBiometric(false) }
+                            } else {
+                                actions.authenticate { scope.launch { repository.setBiometric(true) } }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            when {
+                                biometricEnabled -> "Désactiver l'empreinte"
+                                canUseBiometric -> "Déverrouiller avec l'empreinte"
+                                else -> "Empreinte : aucune enregistrée sur ce téléphone"
+                            },
+                        )
                     }
                     OutlinedButton(
                         onClick = {

@@ -15,6 +15,11 @@ est créé à ce moment-là.
 - 5 essais libres, puis blocage 30 s, 1 min, 2 min… (plafond 1 h). Le compteur
   survit à la fermeture de l'appli.
 - L'espace parent et les réglages se reverrouillent après 1 min en arrière-plan.
+- **Empreinte digitale** (Android 9+, biométrie forte uniquement) : possible pour
+  **ouvrir l'espace parent** sur un téléphone en mode parent. Jamais pour les
+  réglages d'un téléphone enfant (l'enfant peut y avoir enregistré son doigt),
+  ni pour changer de PIN ou de mode. Toute empreinte enregistrée sur le
+  téléphone est acceptée : y penser si d'autres personnes y ont mis la leur.
 - **PIN oublié** : Réglages Android → Applis → KinWaypoint → Stockage →
   Effacer les données. L'appli repart de zéro (mode, PIN et configuration perdus).
 

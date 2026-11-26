@@ -11,7 +11,10 @@ import android.os.PowerManager
 import android.os.SystemClock
 import android.provider.Settings
 import android.widget.Toast
-import androidx.activity.ComponentActivity
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG
+import androidx.biometric.BiometricPrompt
+import androidx.fragment.app.FragmentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
@@ -32,7 +35,8 @@ import fr.kinwaypoint.app.ui.PermissionSnapshot
 import fr.kinwaypoint.app.ui.PlatformActions
 import java.util.Locale
 
-class MainActivity : ComponentActivity() {
+// FragmentActivity (et non ComponentActivity) : exigée par BiometricPrompt.
+class MainActivity : FragmentActivity() {
 
     companion object {
         /** Au-delà de cette absence, l'espace parent et les réglages se reverrouillent. */
@@ -67,6 +71,8 @@ class MainActivity : ComponentActivity() {
             openBatterySettings = { openBatterySettings() },
             openMap = { lat, lon, label -> openMap(lat, lon, label) },
             scanQr = { callback -> scanQr(callback) },
+            biometricAvailable = { biometricAvailable() },
+            authenticate = { onSuccess -> authenticate(onSuccess) },
         )
 
         setContent {
@@ -138,6 +144,36 @@ class MainActivity : ComponentActivity() {
         intent.data = Uri.fromParts("package", packageName, null)
         runCatching { startActivity(intent) }
             .recoverCatching { startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }
+    }
+
+    /**
+     * Empreinte « forte » uniquement (classe 3) : la reconnaissance faciale par
+     * simple photo, souvent classée faible, est exclue. Android 9+ : en dessous,
+     * l'ancienne boîte de dialogue exige un thème AppCompat absent de l'appli.
+     */
+    private fun biometricAvailable(): Boolean =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.P &&
+            BiometricManager.from(this).canAuthenticate(BIOMETRIC_STRONG) == BiometricManager.BIOMETRIC_SUCCESS
+
+    private fun authenticate(onSuccess: () -> Unit) {
+        if (!biometricAvailable()) return
+        val prompt = BiometricPrompt(
+            this,
+            ContextCompat.getMainExecutor(this),
+            object : BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                    onSuccess()
+                }
+                // Échec, annulation ou « Utiliser le code PIN » : on reste sur le pavé numérique.
+            },
+        )
+        val info = BiometricPrompt.PromptInfo.Builder()
+            .setTitle("Espace parent")
+            .setSubtitle("Pose ton doigt pour déverrouiller")
+            .setNegativeButtonText("Utiliser le code PIN")
+            .setAllowedAuthenticators(BIOMETRIC_STRONG)
+            .build()
+        prompt.authenticate(info)
     }
 
     private fun scanQr(callback: (String?) -> Unit) {

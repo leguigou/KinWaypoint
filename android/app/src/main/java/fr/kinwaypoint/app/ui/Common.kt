@@ -20,6 +20,10 @@ class PlatformActions(
     val openMap: (latitude: Double, longitude: Double, label: String) -> Unit,
     /** Ouvre la caméra ; le texte lu (ou null si annulé) est rendu au callback. */
     val scanQr: (onResult: (String?) -> Unit) -> Unit,
+    /** Une empreinte (biométrie forte) est enregistrée et utilisable sur ce téléphone. */
+    val biometricAvailable: () -> Boolean,
+    /** Affiche la demande d'empreinte ; onSuccess seulement si elle est reconnue. */
+    val authenticate: (onSuccess: () -> Unit) -> Unit,
 )
 
 fun formatTime(millis: Long): String =
