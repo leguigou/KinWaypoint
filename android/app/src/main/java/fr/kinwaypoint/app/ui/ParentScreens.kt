@@ -24,6 +24,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -161,7 +162,7 @@ fun ParentHomeScreen(
     var error by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(true) }
     var refreshedAt by remember { mutableLongStateOf(0L) }
-    var refreshTick by remember { mutableStateOf(0) }
+    var refreshTick by remember { mutableIntStateOf(0) }
     var showMenu by remember { mutableStateOf(false) }
 
     suspend fun refresh() {
@@ -318,7 +319,8 @@ fun ParentHomeScreen(
 private fun MemberCard(member: Member, actions: PlatformActions) {
     val position = member.position
     val battery = position?.battery
-    val lowBattery = battery != null && battery < 20 && position.charging != true
+    val charging = position?.charging == true
+    val lowBattery = battery != null && battery < 20 && !charging
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -330,7 +332,7 @@ private fun MemberCard(member: Member, actions: PlatformActions) {
                 Text(member.name, fontWeight = FontWeight.SemiBold, fontSize = 18.sp, modifier = Modifier.weight(1f))
                 battery?.let {
                     Text(
-                        "🔋 $it %" + if (position.charging == true) " ⚡" else "",
+                        "🔋 $it %" + if (charging) " ⚡" else "",
                         color = if (lowBattery) Danger else Muted,
                         fontWeight = if (lowBattery) FontWeight.Bold else FontWeight.Normal,
                     )

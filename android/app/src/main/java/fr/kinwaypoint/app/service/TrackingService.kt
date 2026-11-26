@@ -252,6 +252,16 @@ class TrackingService : Service(), LocationListener {
         enqueue(candidate, alarm = null)
     }
 
+    // Jusqu'à Android 10, ces méthodes sont abstraites dans LocationListener :
+    // sans implémentation explicite, l'appli plante quand le GPS est (dés)activé.
+    override fun onProviderEnabled(provider: String) = Unit
+
+    override fun onProviderDisabled(provider: String) = Unit
+
+    @Deprecated("Requis jusqu'à Android 10")
+    @Suppress("DEPRECATION")
+    override fun onStatusChanged(provider: String?, status: Int, extras: android.os.Bundle?) = Unit
+
     private fun enqueue(location: Location, alarm: String?, sosNow: Long? = null) {
         lastQueuedElapsed = SystemClock.elapsedRealtime()
         if (sosNow == null) lastQueuedFixTime = location.time
