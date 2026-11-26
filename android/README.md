@@ -142,3 +142,4 @@ Les alertes de zone et le SOS arrivent par Firebase quand l'app est fermée, et 
 Test de la chaine webhook : ce commit doit declencher un build et une verification automatique.
 Test final du rapport automatique.
 Test du handler deterministe.
+Test apres correction de l'attente du run.
