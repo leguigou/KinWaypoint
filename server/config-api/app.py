@@ -46,6 +46,18 @@ APK_BASE_URL = os.environ.get("KW_APK_BASE_URL", "https://famille.deloffre.fr").
 APK_CODE = os.environ.get("KW_APK_CODE", "azerty")
 COOKIE_NAME = "kwapk"
 COOKIE_DAYS = 30
+# Une consommation n'est pas instantanément fatale : on tolère quelques
+# relectures dans une courte fenêtre (double-tap, mauvais réseau, retour arrière
+# du navigateur) avant de fermer définitivement le jeton.
+GRACE_MINUTES = 10
+MAX_READS = 3
+# Aperçus de liens : ces agents consommaient le jeton avant l'utilisateur
+# (Telegram a brûlé un code en 2 s) et envoyaient la configuration à un tiers.
+PREVIEW_BOTS = (
+    "telegrambot", "whatsapp", "facebookexternalhit", "twitterbot", "slackbot",
+    "discordbot", "linkedinbot", "googlebot", "bingbot", "embedly",
+    "quora link preview", "pinterest", "skype", "vkshare", "outbrain",
+)
 MAX_APK_BYTES = 200 * 1024 * 1024
 
 LOCK = threading.Lock()
@@ -57,6 +69,13 @@ def now():
 
 def iso(dt):
     return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def parse_iso(text):
+    try:
+        return datetime.strptime(text, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except (TypeError, ValueError):
+        return None
 
 
 def load():
@@ -378,6 +397,11 @@ class Handler(BaseHTTPRequestHandler):
 
         if path.startswith("/kw/"):
             token = path[len("/kw/"):]
+            user_agent = (self.headers.get("User-Agent") or "").lower()
+            if any(bot in user_agent for bot in PREVIEW_BOTS):
+                self.log_message("apercu de lien refuse (UA: %s)", user_agent[:50])
+                self.reply(403, {"error": "apercu de lien refuse"})
+                return
             if not token or "/" in token:
                 self.reply(404, {"error": "inconnu"})
                 return
@@ -387,22 +411,30 @@ class Handler(BaseHTTPRequestHandler):
                 if entry is None:
                     self.reply(404, {"error": "inconnu"})
                     return
-                if entry.get("used"):
-                    self.log_message("token deja utilise")
-                    self.reply(410, {"error": "deja utilise"})
-                    return
                 if expired(entry):
                     self.log_message("token expire")
                     self.reply(410, {"error": "expire"})
                     return
-                entry["used"] = True
-                entry["usedAt"] = iso(now())
+                if entry.get("used"):
+                    used_at = parse_iso(entry.get("usedAt"))
+                    reads = int(entry.get("usedCount", 1))
+                    too_old = used_at is None or (now() - used_at) > timedelta(minutes=GRACE_MINUTES)
+                    if too_old or reads >= MAX_READS:
+                        self.log_message("token deja utilise (lectures: %d)", reads)
+                        self.reply(410, {"error": "deja utilise"})
+                        return
+                    entry["usedCount"] = reads + 1
+                    self.log_message("relecture toleree (%d/%d)", reads + 1, MAX_READS)
+                else:
+                    entry["used"] = True
+                    entry["usedAt"] = iso(now())
+                    entry["usedCount"] = 1
+                    self.log_message("configuration servie (usage unique)")
                 entry["usedFrom"] = self.client_address[0]
                 data[token] = entry
                 save(data)
                 payload = dict(entry["payload"])
                 payload["expiresAt"] = entry["expiresAt"]
-            self.log_message("configuration servie (usage unique)")
             self.reply(200, payload)
             return
 
