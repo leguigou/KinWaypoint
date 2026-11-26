@@ -100,11 +100,27 @@ private val AvatarPalette = listOf(
 fun avatarColors(name: String): List<Color> =
     AvatarPalette[(name.lowercase().hashCode() and Int.MAX_VALUE) % AvatarPalette.size]
 
+/** Couleurs proposées pour les profils (tracés, avatars). */
+val ProfilePalette = listOf(
+    "#5B5BD6", "#8B5CF6", "#D946EF", "#E5484D", "#FF7A59",
+    "#F59F00", "#12B886", "#15AABF", "#3B82F6", "#475569",
+)
+
+fun parseHex(hex: String?): Color? =
+    hex?.takeIf { it.matches(Regex("#[0-9A-Fa-f]{6}")) }?.let { Color(android.graphics.Color.parseColor(it)) }
+
+/** Couleur d'un profil : celle choisie par les parents, sinon celle déduite du prénom. */
+fun profileColor(name: String, hex: String?): Color = parseHex(hex) ?: avatarColors(name).first()
+
+/** Dégradé d'avatar : à partir de la couleur choisie si elle existe. */
+fun profileGradient(name: String, hex: String?): List<Color> =
+    parseHex(hex)?.let { listOf(it, androidx.compose.ui.graphics.lerp(it, Color.White, 0.3f)) } ?: avatarColors(name)
+
 /** Avatar rond : la photo si elle existe, sinon l'initiale sur un dégradé. */
 @Composable
-fun Avatar(name: String, size: Dp = 48.dp, photo: Bitmap? = null) {
+fun Avatar(name: String, size: Dp = 48.dp, photo: Bitmap? = null, colorHex: String? = null) {
     Box(
-        modifier = Modifier.size(size).clip(CircleShape).background(Brush.linearGradient(avatarColors(name))),
+        modifier = Modifier.size(size).clip(CircleShape).background(Brush.linearGradient(profileGradient(name, colorHex))),
         contentAlignment = Alignment.Center,
     ) {
         if (photo != null) {

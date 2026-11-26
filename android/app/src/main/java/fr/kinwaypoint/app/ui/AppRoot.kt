@@ -207,6 +207,8 @@ fun AppRoot(
                 onLock = { screen = home(AppMode.PARENT) },
                 onChangePin = { screen = Screen.PinCheck(AfterPin.NewPin(Screen.Parent), back = Screen.Parent) },
                 onChangeMode = { changeMode() },
+                tracking = cfg,
+                status = status,
             )
         }
 

@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.NotificationsOff
+import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.PauseCircle
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Schedule
@@ -97,6 +98,12 @@ fun ChildHomeScreen(
     onOpenSettings: () -> Unit,
 ) {
     val context = LocalContext.current
+    var parentsOpen by remember { mutableStateOf(false) }
+
+    if (parentsOpen && config.canSeeParents) {
+        ChildParentsMap(config, permissions, actions, onBack = { parentsOpen = false })
+        return
+    }
 
     // Le suivi doit tourner dès qu'il est activé : si Android l'a arrêté, on le relance.
     LaunchedEffect(config, permissions.fineLocation, status.running) {
@@ -133,6 +140,18 @@ fun ChildHomeScreen(
             }
 
             PermissionWarnings(permissions, actions)
+
+            if (config.canSeeParents) {
+                FilledTonalButton(
+                    onClick = { parentsOpen = true },
+                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                    shape = CircleShape,
+                ) {
+                    Icon(Icons.Default.People, contentDescription = null)
+                    Spacer(Modifier.size(10.dp))
+                    Text("Voir mes parents")
+                }
+            }
 
             if (config.isValid) {
                 Spacer(Modifier.height(4.dp))
@@ -177,6 +196,9 @@ fun ChildSettingsScreen(
     var serverUrl by remember(config) { mutableStateOf(config.serverUrl) }
     var deviceId by remember(config) { mutableStateOf(config.deviceId) }
     var interval by remember(config) { mutableStateOf(config.intervalSeconds.toString()) }
+    // Accès « Voir mes parents » (rempli par QR ou code, jamais saisi à la main).
+    var viewerApi by remember(config) { mutableStateOf(config.apiUrl) }
+    var viewerToken by remember(config) { mutableStateOf(config.viewerToken) }
     var confirmModeChange by remember { mutableStateOf(false) }
     var showConfigCode by remember { mutableStateOf(false) }
     var scannedLink by remember { mutableStateOf<String?>(null) }
@@ -191,6 +213,8 @@ fun ChildSettingsScreen(
                     deviceId = deviceId,
                     intervalSeconds = (interval.toIntOrNull() ?: 60).coerceIn(15, 3600),
                     enabled = enabled,
+                    apiUrl = viewerApi,
+                    viewerToken = viewerToken,
                 ),
             )
             then()
@@ -228,6 +252,10 @@ fun ChildSettingsScreen(
                                 serverUrl = payload.serverUrl
                                 deviceId = payload.deviceId
                                 payload.intervalSeconds?.let { interval = it.toString() }
+                                if (payload.apiUrl != null && payload.viewerToken != null) {
+                                    viewerApi = payload.apiUrl
+                                    viewerToken = payload.viewerToken
+                                }
                                 Toast.makeText(context, "Configuration lue — vérifie puis enregistre", Toast.LENGTH_LONG).show()
                             }
                         }
@@ -345,6 +373,10 @@ fun ChildSettingsScreen(
                     serverUrl = c.serverUrl
                     deviceId = c.deviceId
                     c.intervalSeconds?.let { interval = it.toString() }
+                    if (c.apiUrl != null && c.viewerToken != null) {
+                        viewerApi = c.apiUrl
+                        viewerToken = c.viewerToken
+                    }
                 }
                 Toast.makeText(
                     context,
@@ -608,6 +640,56 @@ fun InfoCard(
                 Text(title, style = MaterialTheme.typography.titleSmall)
                 Text(detail, style = MaterialTheme.typography.bodySmall, color = Muted)
             }
+        }
+    }
+}
+
+/**
+ * Carte des parents, vue depuis le téléphone d'un enfant (compte en lecture seule).
+ * N'y figurent que les parents qui partagent leur position hors mode fantôme :
+ * c'est le serveur qui filtre, pas l'appli.
+ */
+@Composable
+private fun ChildParentsMap(
+    config: TrackingConfig,
+    permissions: PermissionSnapshot,
+    actions: PlatformActions,
+    onBack: () -> Unit,
+) {
+    val api = remember(config.apiUrl) { fr.kinwaypoint.app.net.TraccarApi(config.apiUrl) }
+    var parents by remember { mutableStateOf<List<fr.kinwaypoint.app.net.Member>>(emptyList()) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(api) {
+        while (true) {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                runCatching { api.members(config.viewerToken) }
+            }.onSuccess { parents = it; error = null }
+                .onFailure { error = it.message ?: "Serveur injoignable" }
+            kotlinx.coroutines.delay(30_000)
+        }
+    }
+    val photos = rememberMemberPhotos(api, config.viewerToken, parents)
+
+    androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
+        FamilyMapScreen(
+            members = parents,
+            photos = photos,
+            focusId = null,
+            permissions = permissions,
+            actions = actions,
+            onBack = onBack,
+            title = "Mes parents",
+        )
+        val message = error ?: if (parents.none { it.position != null }) {
+            "Aucun parent ne partage sa position pour le moment."
+        } else {
+            null
+        }
+        message?.let {
+            androidx.compose.foundation.layout.Box(
+                Modifier.align(Alignment.Center).padding(32.dp),
+            ) { InfoCard(title = "Mes parents", detail = it, container = CardSurface, icon = Icons.Default.People) }
         }
     }
 }

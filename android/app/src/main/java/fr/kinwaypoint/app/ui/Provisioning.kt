@@ -42,14 +42,27 @@ import java.security.SecureRandom
  * Contenu d'un QR code de configuration d'un téléphone enfant :
  * `kinwaypoint://setup?server=<adresse d'envoi>&id=<identifiant>&interval=<s>`
  */
-data class SetupPayload(val serverUrl: String, val deviceId: String, val intervalSeconds: Int? = null) {
+data class SetupPayload(
+    val serverUrl: String,
+    val deviceId: String,
+    val intervalSeconds: Int? = null,
+    /** Adresse de l'API et jeton lecteur : permettent à l'enfant de voir ses parents. */
+    val apiUrl: String? = null,
+    val viewerToken: String? = null,
+) {
 
     fun encode(): String = Uri.Builder()
         .scheme("kinwaypoint")
         .authority("setup")
         .appendQueryParameter("server", serverUrl)
         .appendQueryParameter("id", deviceId)
-        .apply { intervalSeconds?.let { appendQueryParameter("interval", it.toString()) } }
+        .apply {
+            intervalSeconds?.let { appendQueryParameter("interval", it.toString()) }
+            if (!apiUrl.isNullOrBlank() && !viewerToken.isNullOrBlank()) {
+                appendQueryParameter("api", apiUrl)
+                appendQueryParameter("viewer", viewerToken)
+            }
+        }
         .build()
         .toString()
 
@@ -60,10 +73,40 @@ data class SetupPayload(val serverUrl: String, val deviceId: String, val interva
             val server = uri.getQueryParameter("server")?.takeIf { it.startsWith("https://") || it.startsWith("http://") }
             val id = uri.getQueryParameter("id")?.takeIf { it.isNotBlank() }
             if (server == null || id == null) return null
-            return SetupPayload(server, id, uri.getQueryParameter("interval")?.toIntOrNull())
+            return SetupPayload(
+                serverUrl = server,
+                deviceId = id,
+                intervalSeconds = uri.getQueryParameter("interval")?.toIntOrNull(),
+                apiUrl = uri.getQueryParameter("api")?.takeIf { it.startsWith("https://") },
+                viewerToken = uri.getQueryParameter("viewer")?.takeIf { it.isNotBlank() },
+            )
         }
     }
 }
+
+/**
+ * Jeton du compte « Enfants (lecture seule) » à glisser dans les QR codes, pour que
+ * l'enfant voie ses parents. Mis en cache ; null si le serveur refuse (droits
+ * insuffisants…) : le QR reste valable, l'enfant ne verra simplement pas ses parents.
+ */
+suspend fun childViewerToken(repository: SettingsRepository, config: ParentConfig): String? {
+    repository.cachedChildViewerToken()?.let { return it }
+    return withContext(Dispatchers.IO) {
+        runCatching { TraccarApi(config.apiUrl).childViewerToken(config.token) }.getOrNull()
+    }?.let { (token, expires) ->
+        repository.cacheChildViewerToken(token, expires)
+        token
+    }
+}
+
+/** QR code de configuration complet pour un enfant (envoi + accès « Voir mes parents »). */
+suspend fun childSetupPayload(repository: SettingsRepository, config: ParentConfig, trackUrl: String, deviceId: String) =
+    SetupPayload(
+        serverUrl = trackUrl,
+        deviceId = deviceId,
+        apiUrl = config.apiUrl,
+        viewerToken = childViewerToken(repository, config),
+    )
 
 /**
  * Identifiant d'appareil aléatoire : 26 caractères (≈ 130 bits) sans caractères
@@ -169,7 +212,7 @@ fun AddChildDialog(
                         }
                         result.onSuccess {
                             repository.saveParent(config.copy(trackUrl = trackUrl.trim()))
-                            onCreated(name.trim(), SetupPayload(trackUrl.trim(), id))
+                            onCreated(name.trim(), childSetupPayload(repository, config, trackUrl.trim(), id))
                         }.onFailure { error = it.message ?: "Création impossible" }
                         busy = false
                     }
