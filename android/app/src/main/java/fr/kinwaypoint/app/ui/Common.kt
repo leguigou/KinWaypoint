@@ -24,6 +24,8 @@ class PlatformActions(
     val biometricAvailable: () -> Boolean,
     /** Affiche la demande d'empreinte ; onSuccess seulement si elle est reconnue. */
     val authenticate: (onSuccess: () -> Unit) -> Unit,
+    /** Ouvre la galerie de photos ; l'image choisie (ou null) est rendue au callback. */
+    val pickImage: (onResult: (android.net.Uri?) -> Unit) -> Unit,
 )
 
 fun formatTime(millis: Long): String =
@@ -31,3 +33,14 @@ fun formatTime(millis: Long): String =
 
 fun formatDateTime(millis: Long): String =
     SimpleDateFormat("dd/MM à HH:mm", Locale.FRANCE).format(Date(millis))
+
+/** « à l'instant », « il y a 5 min », « il y a 3 h », « il y a 2 j ». */
+fun relativeTime(millis: Long): String {
+    val minutes = (System.currentTimeMillis() - millis) / 60_000L
+    return when {
+        minutes < 1 -> "à l'instant"
+        minutes < 60 -> "il y a $minutes min"
+        minutes < 48 * 60 -> "il y a ${minutes / 60} h"
+        else -> "il y a ${minutes / (24 * 60)} j"
+    }
+}

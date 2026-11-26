@@ -42,6 +42,8 @@ services:
       # (alerte même app fermée, sans passer par Firebase). Le jeton du bot et
       # l'identifiant de conversation viennent de l'environnement Dokploy,
       # jamais du dépôt.
+      # Photos des membres (envoyées depuis l'appli parent) : dossier persistant.
+      - MEDIA_PATH=/opt/traccar/media
       - NOTIFICATOR_TYPES=web,telegram,firebase
       - NOTIFICATOR_TELEGRAM_KEY=${TELEGRAM_BOT_TOKEN}
       - NOTIFICATOR_TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
@@ -55,6 +57,7 @@ services:
       - "5055"
     volumes:
       - tracker-logs:/opt/traccar/logs
+      - tracker-media:/opt/traccar/media
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8082/api/health"]
       interval: 60s
@@ -99,3 +102,5 @@ volumes:
     name: tracker_pgdata
   tracker-logs:
     name: tracker_logs
+  tracker-media:
+    name: tracker_media

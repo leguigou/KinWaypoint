@@ -25,6 +25,10 @@ data class Member(
     val online: Boolean,
     val lastUpdate: Long?,
     val position: MemberPosition?,
+    /** Nom du fichier photo sur le serveur (attribut Traccar `deviceImage`), ou null. */
+    val photo: String? = null,
+    /** Change à chaque nouvelle photo : sert de clé de cache. */
+    val photoVersion: Long = 0L,
 )
 
 data class MemberPosition(
@@ -146,6 +150,8 @@ class TraccarApi(baseUrl: String) {
                 online = d.optString("status") == "online",
                 lastUpdate = parseTime(d.optString("lastUpdate")),
                 position = byDevice[id],
+                photo = d.optJSONObject("attributes")?.optString("deviceImage")?.takeIf { it.isNotBlank() },
+                photoVersion = d.optJSONObject("attributes")?.optLong("kwPhotoVersion") ?: 0L,
             )
         }.sortedBy { it.name.lowercase() }
     }
@@ -226,6 +232,82 @@ class TraccarApi(baseUrl: String) {
     }
 
     private fun url(path: String): HttpUrl = base.newBuilder().addPathSegments(path).build()
+
+    // --- Photos des membres ----------------------------------------------------
+    //
+    // Traccar stocke l'image dans son dossier `media/<uniqueId>/` (POST image),
+    // puis l'attribut `deviceImage` de l'appareil la référence (comme le fait
+    // l'interface web). La lecture de /api/media exige une session (cookie) :
+    // le Bearer n'y est pas accepté, on ouvre donc une session via ?token=.
+
+    private val mediaCookies = mutableListOf<okhttp3.Cookie>()
+    private val mediaHttp by lazy {
+        http.newBuilder().cookieJar(object : okhttp3.CookieJar {
+            override fun saveFromResponse(url: HttpUrl, cookies: List<okhttp3.Cookie>) {
+                synchronized(mediaCookies) {
+                    val names = cookies.map { it.name }.toSet()
+                    mediaCookies.removeAll { it.name in names }
+                    mediaCookies.addAll(cookies)
+                }
+            }
+            override fun loadForRequest(url: HttpUrl): List<okhttp3.Cookie> = synchronized(mediaCookies) { mediaCookies.toList() }
+        }).build()
+    }
+
+    /** Envoie une photo (JPEG) pour un membre et la rattache à son appareil. */
+    fun uploadPhoto(token: String, id: Long, jpeg: ByteArray) {
+        val upload = Request.Builder()
+            .url(url("api/devices/$id/image"))
+            .post(jpeg.toRequestBody("image/jpeg".toMediaType()))
+        val fileName = authorized(token, upload).use { response ->
+            check(response)
+            response.body?.string()?.trim().orEmpty().ifBlank { "device.jpeg" }
+        }
+        updateAttributes(token, id) { attrs ->
+            attrs.put("deviceImage", fileName)
+            attrs.put("kwPhotoVersion", System.currentTimeMillis())
+        }
+    }
+
+    /** Retire la photo d'un membre (l'initiale réapparaît). */
+    fun removePhoto(token: String, id: Long) {
+        updateAttributes(token, id) { attrs ->
+            attrs.remove("deviceImage")
+            attrs.remove("kwPhotoVersion")
+        }
+    }
+
+    /** Télécharge une photo de membre. */
+    fun fetchPhoto(token: String, uniqueId: String, fileName: String): ByteArray {
+        val mediaUrl = base.newBuilder().addPathSegments("api/media").addPathSegment(uniqueId).addPathSegment(fileName).build()
+        repeat(2) { attempt ->
+            mediaHttp.newCall(Request.Builder().url(mediaUrl).get().build()).execute().use { response ->
+                if (response.isSuccessful) return response.body?.bytes() ?: ByteArray(0)
+                if (response.code != 401 || attempt == 1) error("Photo indisponible (HTTP ${response.code})")
+            }
+            // Pas (ou plus) de session : on en ouvre une avec le jeton, puis on réessaie.
+            val session = url("api/session").newBuilder().addQueryParameter("token", token).build()
+            mediaHttp.newCall(Request.Builder().url(session).get().build()).execute().use { response ->
+                if (response.code == 401) throw AuthException("Session expirée, reconnecte-toi")
+            }
+        }
+        error("Photo indisponible")
+    }
+
+    /** Relit l'appareil complet, modifie ses attributs, le renvoie (PUT partiel refusé). */
+    private fun updateAttributes(token: String, id: Long, change: (JSONObject) -> Unit) {
+        val device = authorized(token, Request.Builder().url(url("api/devices/$id")).get()).use { response ->
+            check(response)
+            JSONObject(response.body?.string().orEmpty())
+        }
+        val attrs = device.optJSONObject("attributes") ?: JSONObject()
+        change(attrs)
+        device.put("attributes", attrs)
+        val put = Request.Builder()
+            .url(url("api/devices/$id"))
+            .put(device.toString().toRequestBody("application/json".toMediaType()))
+        authorized(token, put).use { check(it) }
+    }
 
     /**
      * Déclare le jeton Firebase du téléphone sur le compte, dans l'attribut

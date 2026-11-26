@@ -17,6 +17,8 @@ import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG
 import androidx.biometric.BiometricPrompt
 import androidx.fragment.app.FragmentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
@@ -68,8 +70,17 @@ class MainActivity : FragmentActivity() {
         onScanResult = null
     }
 
+    private var onImagePicked: ((Uri?) -> Unit)? = null
+    // Sélecteur de photos système : aucune autorisation d'accès aux fichiers n'est demandée.
+    private val imagePicker = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        onImagePicked?.invoke(uri)
+        onImagePicked = null
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Barres système transparentes : l'appli dessine jusqu'aux bords (clair et sombre).
+        enableEdgeToEdge()
         permissionsState = snapshotPermissions()
         // Initialisation de la carte, une fois, avant tout affichage.
         MapLibre.getInstance(applicationContext)
@@ -108,6 +119,10 @@ class MainActivity : FragmentActivity() {
             scanQr = { callback -> scanQr(callback) },
             biometricAvailable = { biometricAvailable() },
             authenticate = { onSuccess -> authenticate(onSuccess) },
+            pickImage = { callback ->
+                onImagePicked = callback
+                imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            },
         )
 
         setContent {

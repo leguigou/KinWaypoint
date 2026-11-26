@@ -1,6 +1,30 @@
 package fr.kinwaypoint.app.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.filled.AddAPhoto
+import androidx.compose.material.icons.filled.BatteryChargingFull
+import androidx.compose.material.icons.filled.HideImage
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.material.icons.filled.BatteryFull
+import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.Fingerprint
+import androidx.compose.material.icons.filled.GpsFixed
+import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
@@ -82,16 +106,17 @@ fun ParentLoginScreen(
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
-    Scaffold { padding ->
+    Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(20.dp),
+            modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Text("Espace parent", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Green)
+            BrandMark(size = 56.dp)
+            Text("Espace parent", style = MaterialTheme.typography.headlineMedium)
             Text(
                 "Connecte-toi avec ton compte du serveur familial. Le mot de passe n'est pas conservé : " +
                     "le téléphone garde seulement un jeton d'accès valable un an.",
-                fontSize = 14.sp,
+                style = MaterialTheme.typography.bodyMedium,
                 color = Muted,
             )
             OutlinedTextField(
@@ -100,6 +125,7 @@ fun ParentLoginScreen(
                 label = { Text("Adresse du serveur (interface)") },
                 placeholder = { Text("https://api.exemple.fr") },
                 singleLine = true,
+                shape = MaterialTheme.shapes.small,
                 modifier = Modifier.fillMaxWidth(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
             )
@@ -110,6 +136,7 @@ fun ParentLoginScreen(
                 placeholder = { Text(guessTrackUrl(apiUrl).ifBlank { "https://track.exemple.fr" }) },
                 supportingText = { Text("Utilisée dans les QR codes de configuration des enfants") },
                 singleLine = true,
+                shape = MaterialTheme.shapes.small,
                 modifier = Modifier.fillMaxWidth(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
             )
@@ -118,6 +145,7 @@ fun ParentLoginScreen(
                 onValueChange = { email = it },
                 label = { Text("E-mail") },
                 singleLine = true,
+                shape = MaterialTheme.shapes.small,
                 modifier = Modifier.fillMaxWidth(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
             )
@@ -127,6 +155,7 @@ fun ParentLoginScreen(
                 label = { Text("Mot de passe") },
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
+                shape = MaterialTheme.shapes.small,
                 modifier = Modifier.fillMaxWidth(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             )
@@ -161,7 +190,8 @@ fun ParentLoginScreen(
                     }
                 },
                 enabled = !busy && apiUrl.isNotBlank() && email.isNotBlank() && password.isNotBlank(),
-                modifier = Modifier.fillMaxWidth().height(52.dp),
+                modifier = Modifier.fillMaxWidth().height(56.dp),
+                shape = CircleShape,
             ) {
                 if (busy) CircularProgressIndicator(Modifier.height(20.dp), color = Color.White) else Text("Se connecter")
             }
@@ -252,66 +282,124 @@ fun ParentHomeScreen(
         }
     }
 
+    val photos = rememberMemberPhotos(api, config.token, members)
+    val context = LocalContext.current
+
+    /** Choix d'une photo dans la galerie, puis envoi au serveur (visible par tous les parents). */
+    fun changePhoto(member: Member) {
+        actions.pickImage { uri ->
+            if (uri != null) {
+                memberOperation { api.uploadPhoto(config.token, member.id, prepareAvatarJpeg(context, uri)) }
+            }
+        }
+    }
+
     val names = members.associate { it.id to it.name }
     val newAlarms = alarms.filter { it.id > acknowledgedAlarmId }
 
     if (mapOpen) {
         FamilyMapScreen(
             members = members,
+            photos = photos,
             focusId = mapFocus,
             permissions = permissions,
             actions = actions,
             onBack = { mapOpen = false },
         )
-    } else Scaffold { padding ->
+    } else Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
         LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             item {
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(Modifier.weight(1f)) {
-                        Text("Famille", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Green)
+                        Text(greeting(), style = MaterialTheme.typography.bodyMedium, color = Muted)
+                        Text("Ma famille", style = MaterialTheme.typography.headlineMedium)
+                    }
+                    FilledTonalIconButton(onClick = { refreshTick++ }) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Actualiser")
+                    }
+                    FilledTonalIconButton(onClick = { showMenu = true }) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "Menu")
+                    }
+                }
+            }
+
+            // Grande carte « Carte de la famille » : point d'entrée principal.
+            item {
+                val online = members.count { it.online }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .shadow(12.dp, MaterialTheme.shapes.large, ambientColor = AppTheme.colors.heroGradient.first(), spotColor = AppTheme.colors.heroGradient.first())
+                        .clip(MaterialTheme.shapes.large)
+                        .background(Brush.linearGradient(AppTheme.colors.heroGradient))
+                        .clickable { openMap(null) }
+                        .padding(20.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Voir la carte", color = Color.White, style = MaterialTheme.typography.titleLarge)
                         Text(
-                            if (refreshedAt > 0) "Actualisé à ${formatTime(refreshedAt)}" else "Chargement…",
-                            fontSize = 12.sp,
-                            color = Muted,
+                            when {
+                                loading -> "Chargement…"
+                                members.isEmpty() -> "Aucun membre pour l'instant"
+                                else -> "$online sur ${members.size} en ligne · actualisé à ${formatTime(refreshedAt)}"
+                            },
+                            color = Color.White.copy(alpha = 0.85f),
+                            style = MaterialTheme.typography.bodySmall,
                         )
                     }
-                    IconButton(onClick = { openMap(null) }) { Icon(Icons.Default.Map, contentDescription = "Carte", tint = Green) }
-                    IconButton(onClick = { refreshTick++ }) { Icon(Icons.Default.Refresh, contentDescription = "Actualiser", tint = Green) }
-                    IconButton(onClick = { showMenu = true }) { Icon(Icons.Default.MoreVert, contentDescription = "Menu", tint = Green) }
+                    Box(
+                        Modifier.size(52.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.2f)),
+                        contentAlignment = Alignment.Center,
+                    ) { Icon(Icons.Default.Map, contentDescription = null, tint = Color.White) }
                 }
             }
 
             if (newAlarms.isNotEmpty()) {
                 items(newAlarms, key = { "alarm-${it.id}" }) { alarm ->
                     val member = members.firstOrNull { it.id == alarm.deviceId }
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = Danger),
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .shadow(12.dp, MaterialTheme.shapes.large, ambientColor = Danger, spotColor = Danger)
+                            .clip(MaterialTheme.shapes.large)
+                            .background(Brush.linearGradient(AppTheme.colors.alarmGradient))
+                            .padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text(
-                                "🚨 SOS — ${names[alarm.deviceId] ?: "Appareil ${alarm.deviceId}"}",
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 18.sp,
-                            )
-                            Text("Déclenché le ${formatDateTime(alarm.time)}", color = Color.White, fontSize = 14.sp)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Box(
+                                Modifier.size(44.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.2f)),
+                                contentAlignment = Alignment.Center,
+                            ) { Icon(Icons.Default.Warning, contentDescription = null, tint = Color.White) }
+                            Column {
+                                Text(
+                                    "SOS — ${names[alarm.deviceId] ?: "Appareil ${alarm.deviceId}"}",
+                                    color = Color.White,
+                                    style = MaterialTheme.typography.titleLarge,
+                                )
+                                Text("Déclenché le ${formatDateTime(alarm.time)}", color = Color.White.copy(alpha = 0.9f), style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                        run {
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 member?.position?.let { p ->
                                     Button(
                                         onClick = { openMap(member.id) },
+                                        shape = CircleShape,
                                         colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Danger),
                                     ) { Text("Voir sur la carte") }
                                 }
-                                OutlinedButton(
+                                TextButton(
                                     onClick = { scope.launch { repository.acknowledgeAlarm(alarm.id) } },
-                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                                    colors = ButtonDefaults.textButtonColors(contentColor = Color.White),
                                 ) { Text("J'ai vu") }
                             }
                         }
@@ -321,12 +409,17 @@ fun ParentHomeScreen(
 
             if (canUseBiometric && !biometricEnabled && !biometricOfferDismissed) {
                 item {
-                    Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = SoftGreen)) {
-                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("Ouvrir l'espace parent avec ton empreinte ?", fontWeight = FontWeight.SemiBold)
-                            Text("Le code PIN reste valable et toujours demandé pour changer de mode ou de code.", fontSize = 13.sp, color = Muted)
+                    SectionCard(container = SoftGreen) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                            IconBadge(Icons.Default.Fingerprint, MaterialTheme.colorScheme.primary, size = 44.dp)
+                            Column(Modifier.weight(1f)) {
+                                Text("Déverrouiller avec ton empreinte ?", style = MaterialTheme.typography.titleSmall)
+                                Text("Le code PIN reste demandé pour changer de mode ou de code.", style = MaterialTheme.typography.bodySmall, color = Muted)
+                            }
+                        }
+                        run {
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Button(onClick = {
+                                Button(shape = CircleShape, onClick = {
                                     // Une empreinte reconnue confirme que le doigt est bien enregistré avant d'activer.
                                     actions.authenticate { scope.launch { repository.setBiometric(true) } }
                                 }) { Text("Activer") }
@@ -338,19 +431,26 @@ fun ParentHomeScreen(
             }
 
             error?.let { message ->
-                item { InfoCard(title = "Actualisation impossible", detail = message, container = SoftOrange) }
+                item { InfoCard(title = "Actualisation impossible", detail = message, container = SoftOrange, icon = Icons.Default.CloudOff, tint = Warning) }
             }
 
             if (loading) {
-                item { CircularProgressIndicator(Modifier.padding(24.dp)) }
+                item {
+                    Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                }
             } else if (members.isEmpty() && error == null) {
                 item {
                     InfoCard(
                         title = "Aucun appareil",
                         detail = "Utilise « Ajouter un enfant » ci-dessous, puis scanne le QR code avec son téléphone en mode enfant.",
                         container = SoftGreen,
+                        icon = Icons.Default.PersonAdd,
                     )
                 }
+            }
+
+            if (members.isNotEmpty()) {
+                item { Text("Membres", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 4.dp)) }
             }
 
             items(members, key = { it.id }) { member ->
@@ -359,25 +459,29 @@ fun ParentHomeScreen(
                     onShowMap = { openMap(member.id) },
                     onShowQr = { qrFor = member.name to SetupPayload(trackUrl, member.uniqueId) },
                     onRename = { renaming = member },
+                    photo = photos[member.id],
+                    onChangePhoto = { changePhoto(member) },
+                    onRemovePhoto = if (member.photo != null) {
+                        { memberOperation { api.removePhoto(config.token, member.id) } }
+                    } else {
+                        null
+                    },
                     onDelete = { deleting = member },
                 )
             }
 
             item {
-                Button(onClick = { showAddChild = true }, modifier = Modifier.fillMaxWidth().height(52.dp)) {
-                    Text("＋ Ajouter un enfant")
+                OutlinedButton(
+                    onClick = { showAddChild = true },
+                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                    shape = CircleShape,
+                ) {
+                    Icon(Icons.Default.PersonAdd, contentDescription = null)
+                    Spacer(Modifier.size(10.dp))
+                    Text("Ajouter un enfant")
                 }
             }
 
-            item {
-                Text(
-                    "Les alertes SOS ne s'affichent que lorsque cette application est ouverte : " +
-                        "les notifications en arrière-plan ne sont pas encore disponibles.",
-                    fontSize = 12.sp,
-                    color = Muted,
-                    modifier = Modifier.padding(vertical = 16.dp),
-                )
-            }
         }
     }
 
@@ -502,6 +606,9 @@ private fun MemberCard(
     onShowQr: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit,
+    photo: android.graphics.Bitmap? = null,
+    onChangePhoto: () -> Unit = {},
+    onRemovePhoto: (() -> Unit)? = null,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     val position = member.position
@@ -509,65 +616,105 @@ private fun MemberCard(
     val charging = position?.charging == true
     val lowBattery = battery != null && battery < 20 && !charging
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-    ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("●", color = if (member.online) Ok else Idle, fontSize = 16.sp)
-                Text(member.name, fontWeight = FontWeight.SemiBold, fontSize = 18.sp, modifier = Modifier.weight(1f))
-                battery?.let {
-                    Text(
-                        "🔋 $it %" + if (charging) " ⚡" else "",
-                        color = if (lowBattery) Danger else Muted,
-                        fontWeight = if (lowBattery) FontWeight.Bold else FontWeight.Normal,
+    SectionCard {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            Box {
+                Box(Modifier.clip(CircleShape).clickable(onClick = onChangePhoto)) {
+                    Avatar(member.name, size = 52.dp, photo = photo)
+                }
+                // Pastille en ligne / hors ligne sur l'avatar
+                Box(
+                    Modifier.align(Alignment.BottomEnd).size(16.dp).clip(CircleShape).background(CardSurface).padding(3.dp)
+                        .clip(CircleShape).background(if (member.online) Ok else Idle),
+                )
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(member.name, style = MaterialTheme.typography.titleMedium)
+                Text(
+                    when {
+                        position != null -> "Vu ${relative(position.fixTime)}"
+                        else -> "Aucune position reçue"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Muted,
+                )
+            }
+            Box {
+                IconButton(onClick = { menuOpen = true }) {
+                    Icon(Icons.Default.MoreVert, contentDescription = "Actions pour ${member.name}", tint = Muted)
+                }
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    if (position != null) {
+                        DropdownMenuItem(
+                            text = { Text("Voir sur la carte") },
+                            leadingIcon = { Icon(Icons.Default.Map, contentDescription = null) },
+                            onClick = { menuOpen = false; onShowMap() },
+                        )
+                    }
+                    DropdownMenuItem(
+                        text = { Text("Renommer") },
+                        leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
+                        onClick = { menuOpen = false; onRename() },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(if (photo != null || onRemovePhoto != null) "Changer la photo" else "Ajouter une photo") },
+                        leadingIcon = { Icon(Icons.Default.AddAPhoto, contentDescription = null) },
+                        onClick = { menuOpen = false; onChangePhoto() },
+                    )
+                    if (onRemovePhoto != null) {
+                        DropdownMenuItem(
+                            text = { Text("Retirer la photo") },
+                            leadingIcon = { Icon(Icons.Default.HideImage, contentDescription = null) },
+                            onClick = { menuOpen = false; onRemovePhoto() },
+                        )
+                    }
+                    DropdownMenuItem(
+                        text = { Text("QR code de configuration") },
+                        leadingIcon = { Icon(Icons.Default.QrCode, contentDescription = null) },
+                        onClick = { menuOpen = false; onShowQr() },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Supprimer", color = Danger) },
+                        leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = Danger) },
+                        onClick = { menuOpen = false; onDelete() },
                     )
                 }
-                Box {
-                    IconButton(onClick = { menuOpen = true }) {
-                        Icon(Icons.Default.MoreVert, contentDescription = "Actions pour ${member.name}")
-                    }
-                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                        if (position != null) {
-                            DropdownMenuItem(
-                                text = { Text("Voir sur la carte") },
-                                leadingIcon = { Icon(Icons.Default.Map, contentDescription = null) },
-                                onClick = { menuOpen = false; onShowMap() },
-                            )
-                        }
-                        DropdownMenuItem(
-                            text = { Text("Renommer") },
-                            leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
-                            onClick = { menuOpen = false; onRename() },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("QR code de configuration") },
-                            leadingIcon = { Icon(Icons.Default.QrCode, contentDescription = null) },
-                            onClick = { menuOpen = false; onShowQr() },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Supprimer", color = Danger) },
-                            leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = Danger) },
-                            onClick = { menuOpen = false; onDelete() },
-                        )
-                    }
-                }
             }
-            if (position == null) {
-                Text("Aucune position reçue pour l'instant", fontSize = 13.sp, color = Muted)
-            } else {
-                Text("Position du ${formatDateTime(position.fixTime)} (${relative(position.fixTime)})", fontSize = 13.sp, color = Muted)
-                if (position.accuracy > 0) {
-                    Text("Précision : ${position.accuracy.toInt()} m", fontSize = 13.sp, color = Muted)
-                }
-                OutlinedButton(onClick = onShowMap) { Text("Voir sur la carte") }
+        }
+
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            StatusPill(if (member.online) "En ligne" else "Hors ligne", if (member.online) Ok else Idle)
+            battery?.let {
+                StatusPill(
+                    "$it %" + if (charging) " · en charge" else "",
+                    when {
+                        lowBattery -> Danger
+                        charging -> Ok
+                        else -> MaterialTheme.colorScheme.primary
+                    },
+                    icon = if (charging) Icons.Default.BatteryChargingFull else Icons.Default.BatteryFull,
+                )
             }
-            member.lastUpdate?.let {
-                Text("Dernière connexion : ${relative(it)}", fontSize = 12.sp, color = Muted)
+            position?.takeIf { it.accuracy > 0 }?.let {
+                StatusPill("± ${it.accuracy.toInt()} m", Muted, icon = Icons.Default.GpsFixed)
+            }
+        }
+
+        if (position != null) {
+            FilledTonalButton(onClick = onShowMap, modifier = Modifier.fillMaxWidth(), shape = CircleShape) {
+                Icon(Icons.Default.Map, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.size(8.dp))
+                Text("Voir sur la carte")
             }
         }
     }
+}
+
+/** « Bonjour », « Bon après-midi » ou « Bonsoir » selon l'heure. */
+private fun greeting(): String = when (java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)) {
+    in 5..11 -> "Bonjour 👋"
+    in 12..17 -> "Bon après-midi 👋"
+    else -> "Bonsoir 👋"
 }
 
 private fun relative(millis: Long): String {

@@ -2,32 +2,49 @@ package fr.kinwaypoint.app.ui
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.LinearGradient
+import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.RectF
+import android.graphics.Shader
+import android.graphics.Typeface
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Bundle
 import android.os.Looper
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material.icons.filled.BatteryChargingFull
+import androidx.compose.material.icons.filled.BatteryFull
+import androidx.compose.material.icons.filled.Directions
+import androidx.compose.material.icons.filled.GpsFixed
+import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.ZoomOutMap
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -35,19 +52,23 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import fr.kinwaypoint.app.net.Member
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.launch
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
@@ -77,18 +98,34 @@ private const val FALLBACK_STYLE = """
 """
 
 private const val SOURCE_ID = "family"
+private const val AVATAR_LAYER = "family-avatar"
 private const val ME_ID = -1L
-private const val COLOR_ME = "#1565C0"
-private const val COLOR_ONLINE = "#2E7D32"
-private const val COLOR_OFFLINE = "#757575"
+private const val COLOR_ONLINE = "#12B886"
+private const val COLOR_OFFLINE = "#9AA0B4"
+private const val COLOR_ME = "#5B5BD6"
+
+/** Un point affiché : un membre de la famille, ou « Moi » (ce téléphone). */
+private data class MapEntry(
+    val id: Long,
+    val name: String,
+    val latitude: Double,
+    val longitude: Double,
+    val member: Member?,
+) {
+    val isMe get() = id == ME_ID
+    val latLng get() = LatLng(latitude, longitude)
+}
 
 /**
- * Carte de la famille : chaque membre (vert = en ligne, gris = hors ligne) et
- * la position de ce téléphone (bleu, « Moi »).
+ * Carte de la famille.
+ * - Au-dessus de chaque point GPS : l'avatar (photo, ou initiale par défaut).
+ * - En bas : une carte par personne, à faire glisser ; la carte suit.
+ * - Toucher un avatar sur la carte fait défiler jusqu'à sa fiche.
  */
 @Composable
 fun FamilyMapScreen(
     members: List<Member>,
+    photos: Map<Long, Bitmap>,
     focusId: Long?,
     permissions: PermissionSnapshot,
     actions: PlatformActions,
@@ -96,14 +133,26 @@ fun FamilyMapScreen(
 ) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val scope = rememberCoroutineScope()
     val me = rememberMyLocation(enabled = permissions.fineLocation)
 
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
     var style by remember { mutableStateOf<Style?>(null) }
-    var selected by remember { mutableStateOf(focusId) }
     var framed by remember { mutableStateOf(false) }
 
     BackHandler(onBack = onBack)
+
+    // « Moi » en dernier : sa position arrive après coup, elle ne doit pas décaler les pages.
+    val entries: List<MapEntry> = buildList {
+        members.forEach { m -> m.position?.let { add(MapEntry(m.id, m.name, it.latitude, it.longitude, m)) } }
+        me?.let { add(MapEntry(ME_ID, "Moi", it.latitude, it.longitude, null)) }
+    }
+    val currentEntries by rememberUpdatedState(entries)
+
+    val pagerState = rememberPagerState(
+        initialPage = entries.indexOfFirst { it.id == focusId }.coerceAtLeast(0),
+    ) { entries.size }
+    val selectedId = entries.getOrNull(pagerState.currentPage)?.id
 
     val mapView = remember {
         MapView(context).apply {
@@ -111,6 +160,11 @@ fun FamilyMapScreen(
             getMapAsync { m ->
                 m.uiSettings.isRotateGesturesEnabled = false
                 m.uiSettings.isTiltGesturesEnabled = false
+                // Mention OpenStreetMap (obligatoire) en haut, sous la barre : les fiches occupent le bas.
+                val d = resources.displayMetrics.density
+                m.uiSettings.isLogoEnabled = false
+                m.uiSettings.attributionGravity = android.view.Gravity.TOP or android.view.Gravity.START
+                m.uiSettings.setAttributionMargins((16 * d).toInt(), (96 * d).toInt(), 0, 0)
                 m.cameraPosition = CameraPosition.Builder().target(LatLng(46.6, 2.4)).zoom(5.0).build()
                 map = m
                 var fallbackTried = false
@@ -145,159 +199,312 @@ fun FamilyMapScreen(
         }
     }
 
-    val points: List<Pair<Long, LatLng>> = buildList {
-        members.forEach { m -> m.position?.let { add(m.id to LatLng(it.latitude, it.longitude)) } }
-        me?.let { add(ME_ID to LatLng(it.latitude, it.longitude)) }
+    // Toucher un avatar → sa fiche passe au premier plan.
+    LaunchedEffect(map) {
+        val m = map ?: return@LaunchedEffect
+        m.addOnMapClickListener { point ->
+            val screen = m.projection.toScreenLocation(point)
+            val id = m.queryRenderedFeatures(screen, AVATAR_LAYER).firstOrNull()
+                ?.getNumberProperty("id")?.toLong() ?: return@addOnMapClickListener false
+            val index = currentEntries.indexOfFirst { it.id == id }
+            if (index >= 0) scope.launch { pagerState.animateScrollToPage(index) }
+            true
+        }
     }
 
-    // Données affichées : rafraîchies à chaque actualisation des membres ou de ma position.
-    LaunchedEffect(style, members, me) {
+    // Images des avatars (photo ou initiale), régénérées quand une photo ou un statut change.
+    val markerKey = entries.map { Triple(it.id, it.name, it.member?.online) } to photos.keys + photos.values.map { it.generationId }
+    LaunchedEffect(style, markerKey) {
         val st = style ?: return@LaunchedEffect
-        val features = buildList {
-            members.forEach { m ->
-                val p = m.position ?: return@forEach
-                add(
-                    Feature.fromGeometry(Point.fromLngLat(p.longitude, p.latitude)).apply {
-                        addStringProperty("name", m.name)
-                        addStringProperty("color", if (m.online) COLOR_ONLINE else COLOR_OFFLINE)
+        entries.forEach { e ->
+            val bitmap = markerBitmap(
+                context = context,
+                name = e.name,
+                photo = photos[e.id],
+                gradient = if (e.isMe) listOf(0xFF5B5BD6.toInt(), 0xFF8B5CF6.toInt()) else avatarColors(e.name).map { it.toArgb() },
+                status = when {
+                    e.isMe -> null
+                    e.member?.online == true -> 0xFF12B886.toInt()
+                    else -> 0xFF9AA0B4.toInt()
+                },
+                isMe = e.isMe,
+            )
+            st.addImage(iconName(e.id), bitmap)
+        }
+    }
+
+    // Données géographiques : positions, avatar sélectionné mis en avant.
+    LaunchedEffect(style, entries, selectedId, markerKey) {
+        val st = style ?: return@LaunchedEffect
+        val features = entries.map { e ->
+            Feature.fromGeometry(Point.fromLngLat(e.longitude, e.latitude)).apply {
+                addNumberProperty("id", e.id)
+                addStringProperty("name", e.name)
+                addStringProperty("icon", iconName(e.id))
+                addStringProperty(
+                    "color",
+                    when {
+                        e.isMe -> COLOR_ME
+                        e.member?.online == true -> COLOR_ONLINE
+                        else -> COLOR_OFFLINE
                     },
                 )
-            }
-            me?.let {
-                add(
-                    Feature.fromGeometry(Point.fromLngLat(it.longitude, it.latitude)).apply {
-                        addStringProperty("name", "Moi")
-                        addStringProperty("color", COLOR_ME)
-                    },
-                )
+                addBooleanProperty("selected", e.id == selectedId)
+                addNumberProperty("sort", if (e.id == selectedId) 1 else 0)
             }
         }
         st.getSourceAs<GeoJsonSource>(SOURCE_ID)?.setGeoJson(FeatureCollection.fromFeatures(features))
     }
 
-    // Cadrage initial : le membre demandé, sinon toute la famille.
-    LaunchedEffect(map, points.size) {
+    // Cadrage initial : la personne demandée, sinon toute la famille.
+    LaunchedEffect(map, entries.size) {
         val m = map ?: return@LaunchedEffect
-        if (framed || points.isEmpty()) return@LaunchedEffect
-        val target = points.firstOrNull { it.first == focusId }?.second
+        if (framed || entries.isEmpty()) return@LaunchedEffect
+        val target = entries.firstOrNull { it.id == focusId }
         if (target != null) {
-            m.animateCamera(CameraUpdateFactory.newLatLngZoom(target, 16.0))
+            m.animateCamera(CameraUpdateFactory.newLatLngZoom(target.latLng, 16.0))
         } else {
-            frameAll(m, points.map { it.second })
+            frameAll(m, entries.map { it.latLng })
         }
         framed = true
+    }
+
+    // Faire glisser les fiches → la carte se recentre sur la personne affichée.
+    LaunchedEffect(map) {
+        val m = map ?: return@LaunchedEffect
+        snapshotFlow { pagerState.settledPage }
+            .distinctUntilChanged()
+            .drop(1)
+            .collect { page ->
+                currentEntries.getOrNull(page)?.let { e ->
+                    m.animateCamera(CameraUpdateFactory.newLatLngZoom(e.latLng, maxOf(m.cameraPosition.zoom, 15.0)), 600)
+                }
+            }
     }
 
     Box(Modifier.fillMaxSize()) {
         AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())
 
         Row(
-            modifier = Modifier.statusBarsPadding().padding(12.dp),
+            modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             FilledTonalIconButton(onClick = onBack) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Retour")
             }
-            Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
+            Card(
+                shape = CircleShape,
+                colors = CardDefaults.cardColors(containerColor = CardSurface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+            ) {
                 Text(
-                    "Carte de la famille",
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                    "Ma famille",
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
                 )
+            }
+            Spacer(Modifier.weight(1f))
+            if (me == null) {
+                FilledTonalIconButton(onClick = actions.requestLocation) {
+                    Icon(Icons.Default.MyLocation, contentDescription = "Afficher ma position")
+                }
+            }
+            FilledTonalIconButton(onClick = { map?.let { frameAll(it, entries.map { e -> e.latLng }) } }) {
+                Icon(Icons.Default.ZoomOutMap, contentDescription = "Voir tout le monde")
             }
         }
 
-        Column(
-            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            val member = members.firstOrNull { it.id == selected }
-            member?.position?.let { p ->
-                Card(colors = CardDefaults.cardColors(containerColor = Color.White), modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(member.name, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
-                        Text(
-                            "Position du ${formatDateTime(p.fixTime)}" + (p.battery?.let { " · 🔋 $it %" } ?: ""),
-                            fontSize = 13.sp,
-                            color = Muted,
-                        )
-                        OutlinedButton(onClick = { actions.openMap(p.latitude, p.longitude, member.name) }) {
-                            Text("Itinéraire (autre appli)")
-                        }
-                    }
+        if (entries.isNotEmpty()) {
+            HorizontalPager(
+                state = pagerState,
+                contentPadding = PaddingValues(horizontal = 28.dp),
+                pageSpacing = 12.dp,
+                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(bottom = 16.dp),
+            ) { page ->
+                val entry = entries[page]
+                EntryCard(entry = entry, photo = photos[entry.id], me = me, actions = actions)
+            }
+        }
+    }
+}
+
+/** Fiche d'une personne, en bas de la carte. */
+@Composable
+private fun EntryCard(entry: MapEntry, photo: Bitmap?, me: Location?, actions: PlatformActions) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(containerColor = CardSurface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+    ) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                if (entry.isMe) {
+                    IconBadge(Icons.Default.MyLocation, MaterialTheme.colorScheme.primary, size = 48.dp)
+                } else {
+                    Avatar(entry.name, size = 48.dp, photo = photo)
+                }
+                Column(Modifier.weight(1f)) {
+                    Text(if (entry.isMe) "Ma position" else entry.name, style = MaterialTheme.typography.titleMedium)
+                    val p = entry.member?.position
+                    Text(
+                        when {
+                            entry.isMe -> "Ce téléphone"
+                            p != null -> "Vu ${relativeTime(p.fixTime)} · ${formatDateTime(p.fixTime)}"
+                            else -> ""
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Muted,
+                    )
                 }
             }
-
-            Row(
-                modifier = Modifier.horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                AssistChip(
-                    onClick = { map?.let { frameAll(it, points.map { p -> p.second }) }; selected = null },
-                    label = { Text("Tout le monde") },
-                    colors = AssistChipDefaults.assistChipColors(containerColor = Color.White),
-                )
-                if (me != null) {
-                    AssistChip(
-                        onClick = {
-                            map?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(me.latitude, me.longitude), 16.0))
-                            selected = null
-                        },
-                        label = { Text("● Moi", color = Color(0xFF1565C0)) },
-                        colors = AssistChipDefaults.assistChipColors(containerColor = Color.White),
-                    )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                val member = entry.member
+                if (member != null) {
+                    StatusPill(if (member.online) "En ligne" else "Hors ligne", if (member.online) Ok else Idle)
+                    member.position?.battery?.let { b ->
+                        val charging = member.position?.charging == true
+                        StatusPill(
+                            "$b %",
+                            if (b < 20 && !charging) Danger else MaterialTheme.colorScheme.primary,
+                            icon = if (charging) Icons.Default.BatteryChargingFull else Icons.Default.BatteryFull,
+                        )
+                    }
+                    // Distance depuis ce téléphone, quand on connaît sa position.
+                    me?.let { here ->
+                        val result = FloatArray(1)
+                        Location.distanceBetween(here.latitude, here.longitude, entry.latitude, entry.longitude, result)
+                        StatusPill(formatDistance(result[0]), Muted, icon = Icons.Default.GpsFixed)
+                    }
                 } else {
-                    AssistChip(
-                        onClick = actions.requestLocation,
-                        label = { Text("Afficher ma position") },
-                        colors = AssistChipDefaults.assistChipColors(containerColor = Color.White),
-                    )
+                    me?.let { StatusPill("± ${it.accuracy.toInt()} m", Muted, icon = Icons.Default.GpsFixed) }
                 }
-                members.forEach { m ->
-                    val p = m.position ?: return@forEach
-                    AssistChip(
-                        onClick = {
-                            map?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(p.latitude, p.longitude), 16.0))
-                            selected = m.id
-                        },
-                        label = { Text("● ${m.name}", color = if (m.online) Ok else Idle) },
-                        colors = AssistChipDefaults.assistChipColors(containerColor = Color.White),
-                    )
+            }
+            if (!entry.isMe) {
+                FilledTonalButton(
+                    onClick = { actions.openMap(entry.latitude, entry.longitude, entry.name) },
+                    shape = CircleShape,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Default.Directions, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.size(8.dp))
+                    Text("Itinéraire")
                 }
             }
         }
     }
 }
 
+private fun formatDistance(meters: Float): String = when {
+    meters < 1000 -> "${meters.toInt()} m"
+    meters < 10_000 -> String.format(java.util.Locale.FRANCE, "%.1f km", meters / 1000)
+    else -> "${(meters / 1000).toInt()} km"
+}
+
+private fun iconName(id: Long) = "avatar-$id"
+
 /** Ajoute au style la source et les calques des marqueurs. */
 private fun prepare(style: Style): Style {
     if (style.getSource(SOURCE_ID) == null) {
         style.addSource(GeoJsonSource(SOURCE_ID))
+        // Point GPS exact, sous la pointe de l'avatar.
         style.addLayer(
             CircleLayer("family-dot", SOURCE_ID).withProperties(
-                PropertyFactory.circleRadius(9f),
+                PropertyFactory.circleRadius(5f),
                 PropertyFactory.circleColor(Expression.toColor(Expression.get("color"))),
                 PropertyFactory.circleStrokeColor("#FFFFFF"),
-                PropertyFactory.circleStrokeWidth(3f),
+                PropertyFactory.circleStrokeWidth(2f),
             ),
         )
+        // Avatar posé au-dessus du point (ancré par sa pointe), plus grand s'il est sélectionné.
         style.addLayer(
-            SymbolLayer("family-name", SOURCE_ID).withProperties(
-                PropertyFactory.textField(Expression.get("name")),
-                PropertyFactory.textFont(arrayOf("Noto Sans Regular")),
-                PropertyFactory.textSize(14f),
-                PropertyFactory.textOffset(arrayOf(0f, 1.4f)),
-                PropertyFactory.textAnchor("top"),
-                PropertyFactory.textColor("#1F2A27"),
-                PropertyFactory.textHaloColor("#FFFFFF"),
-                PropertyFactory.textHaloWidth(2f),
-                PropertyFactory.textAllowOverlap(true),
-                PropertyFactory.textIgnorePlacement(true),
+            SymbolLayer(AVATAR_LAYER, SOURCE_ID).withProperties(
+                PropertyFactory.iconImage(Expression.get("icon")),
+                PropertyFactory.iconAnchor("bottom"),
+                PropertyFactory.iconAllowOverlap(true),
+                PropertyFactory.iconIgnorePlacement(true),
+                PropertyFactory.iconSize(
+                    Expression.switchCase(
+                        Expression.toBool(Expression.get("selected")),
+                        Expression.literal(1.15f),
+                        Expression.literal(0.9f),
+                    ),
+                ),
+                PropertyFactory.symbolSortKey(Expression.toNumber(Expression.get("sort"))),
             ),
         )
     }
     return style
+}
+
+/**
+ * Dessine un marqueur : rond blanc avec ombre, photo ou initiale sur dégradé,
+ * pastille d'état, et une pointe en bas qui désigne la position exacte.
+ */
+private fun markerBitmap(
+    context: Context,
+    name: String,
+    photo: Bitmap?,
+    gradient: List<Int>,
+    status: Int?,
+    isMe: Boolean,
+): Bitmap {
+    val d = context.resources.displayMetrics.density
+    val circle = 52 * d
+    val border = 3 * d
+    val pointer = 10 * d
+    val pad = 5 * d
+    val w = (circle + pad * 2).toInt()
+    val h = (pad + circle + pointer).toInt()
+    val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+    bitmap.density = context.resources.displayMetrics.densityDpi
+    val canvas = Canvas(bitmap)
+    val cx = w / 2f
+    val cy = pad + circle / 2
+
+    val white = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.WHITE
+        setShadowLayer(3 * d, 0f, 1 * d, 0x55000000)
+    }
+    val tip = Path().apply {
+        moveTo(cx - 8 * d, cy + circle / 2 - 6 * d)
+        lineTo(cx + 8 * d, cy + circle / 2 - 6 * d)
+        lineTo(cx, h.toFloat())
+        close()
+    }
+    canvas.drawPath(tip, white)
+    canvas.drawCircle(cx, cy, circle / 2 - d, white)
+
+    val r = circle / 2 - border - d
+    if (photo != null) {
+        val save = canvas.save()
+        canvas.clipPath(Path().apply { addCircle(cx, cy, r, Path.Direction.CW) })
+        canvas.drawBitmap(photo, null, RectF(cx - r, cy - r, cx + r, cy + r), Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG))
+        canvas.restoreToCount(save)
+    } else {
+        val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            shader = LinearGradient(cx - r, cy - r, cx + r, cy + r, gradient[0], gradient[1], Shader.TileMode.CLAMP)
+        }
+        canvas.drawCircle(cx, cy, r, fill)
+        val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.WHITE
+            textSize = if (isMe) 14 * d else 22 * d
+            typeface = Typeface.DEFAULT_BOLD
+            textAlign = Paint.Align.CENTER
+        }
+        val label = if (isMe) "Moi" else name.trim().firstOrNull()?.uppercase() ?: "?"
+        canvas.drawText(label, cx, cy - (text.descent() + text.ascent()) / 2, text)
+    }
+
+    if (status != null) {
+        val dot = 6 * d
+        val dx = cx + r * 0.72f
+        val dy = cy + r * 0.72f
+        canvas.drawCircle(dx, dy, dot + 2 * d, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.WHITE })
+        canvas.drawCircle(dx, dy, dot, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = status })
+    }
+    return bitmap
 }
 
 private fun frameAll(map: MapLibreMap, points: List<LatLng>) {
@@ -307,7 +514,8 @@ private fun frameAll(map: MapLibreMap, points: List<LatLng>) {
     if (points.size == 1 || bounds.latitudeSpan < 0.002 && bounds.longitudeSpan < 0.002) {
         map.animateCamera(CameraUpdateFactory.newLatLngZoom(bounds.center, 15.0))
     } else {
-        map.animateCamera(CameraUpdateFactory.newLatLngBounds(bounds, 160))
+        // Marge basse plus grande : les fiches occupent le bas de l'écran.
+        map.animateCamera(CameraUpdateFactory.newLatLngBounds(bounds, 120, 220, 120, 520))
     }
 }
 

@@ -1,6 +1,23 @@
 package fr.kinwaypoint.app.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.ChildCare
+import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -119,7 +136,10 @@ fun AppRoot(
     val cfg = config
     val parentCfg = parent
     if (current == null || pinState == null || cfg == null || parentCfg == null) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        Box(
+            Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
+            contentAlignment = Alignment.Center,
+        ) { BrandMark(size = 72.dp) }
         return
     }
 
@@ -211,33 +231,78 @@ fun AppRoot(
 @Composable
 private fun ModeSelectScreen(onChoose: (AppMode) -> Unit) {
     Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    listOf(AppTheme.colors.softPrimary, MaterialTheme.colorScheme.background),
+                ),
+            )
+            .systemBarsPadding()
+            .verticalScroll(rememberScrollState())
+            .padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterVertically),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text("KinWaypoint", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = Green)
+        BrandMark(size = 88.dp)
+        Spacer(Modifier.height(8.dp))
+        Text("KinWaypoint", style = MaterialTheme.typography.headlineLarge)
         Text(
-            "À qui est ce téléphone ?",
-            fontSize = 18.sp,
-            textAlign = TextAlign.Center,
-        )
-        Button(onClick = { onChoose(AppMode.CHILD) }, modifier = Modifier.fillMaxWidth().height(64.dp)) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Enfant", fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-                Text("Partage sa position, bouton SOS", fontSize = 12.sp)
-            }
-        }
-        OutlinedButton(onClick = { onChoose(AppMode.PARENT) }, modifier = Modifier.fillMaxWidth().height(64.dp)) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Parent", fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-                Text("Voit la famille, protégé par code PIN", fontSize = 12.sp)
-            }
-        }
-        Text(
-            "Le code PIN parent sera demandé pour ouvrir l'espace parent et pour modifier ou arrêter le suivi d'un enfant.",
-            fontSize = 13.sp,
+            "Le point de ralliement de ta famille",
+            style = MaterialTheme.typography.bodyLarge,
             color = Muted,
             textAlign = TextAlign.Center,
         )
+        Spacer(Modifier.height(16.dp))
+        Text(
+            "À qui est ce téléphone ?",
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        ModeCard(
+            icon = Icons.Default.ChildCare,
+            tint = MaterialTheme.colorScheme.secondary,
+            title = "Enfant",
+            detail = "Partage sa position, bouton SOS",
+            onClick = { onChoose(AppMode.CHILD) },
+        )
+        ModeCard(
+            icon = Icons.Default.Shield,
+            tint = MaterialTheme.colorScheme.primary,
+            title = "Parent",
+            detail = "Voit la famille sur la carte, protégé par code",
+            onClick = { onChoose(AppMode.PARENT) },
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "Un code PIN parent sera créé. Il protège l'espace parent et empêche l'enfant de modifier ou d'arrêter son suivi.",
+            style = MaterialTheme.typography.bodySmall,
+            color = Muted,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+@Composable
+private fun ModeCard(icon: ImageVector, tint: Color, title: String, detail: String, onClick: () -> Unit) {
+    Card(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(containerColor = CardSurface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(18.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            IconBadge(icon, tint, size = 52.dp)
+            Column(Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.titleLarge)
+                Text(detail, style = MaterialTheme.typography.bodyMedium, color = Muted)
+            }
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = Muted)
+        }
     }
 }
