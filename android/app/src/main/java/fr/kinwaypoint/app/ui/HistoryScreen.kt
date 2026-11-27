@@ -75,7 +75,13 @@ private sealed interface HistoryRow {
     val start: Long
     val end: Long
 
-    data class Stop(override val memberId: Long, override val point: TracePoint, override val end: Long) : HistoryRow {
+    data class Stop(
+        override val memberId: Long,
+        override val point: TracePoint,
+        override val end: Long,
+        /** Dernier point de l'arrêt : le trajet suivant part de là (et de cette heure). */
+        val last: TracePoint = point,
+    ) : HistoryRow {
         override val start get() = point.time
     }
 
@@ -101,18 +107,22 @@ private fun tripMode(kmh: Double): Pair<String, String> = when {
  * Découpe la journée : plusieurs points à moins de 60 m pendant 3 min ou plus
  * forment un « arrêt » ; ce qu'il y a entre deux arrêts forme un « trajet ».
  */
-private fun buildRows(memberId: Long, points: List<TracePoint>): List<HistoryRow> {
+private fun buildRows(memberId: Long, rawPoints: List<TracePoint>): List<HistoryRow> {
+    val points = rawPoints.sortedBy { it.time }
     val rows = mutableListOf<HistoryRow>()
     val result = FloatArray(1)
     val moving = mutableListOf<TracePoint>()
 
     fun closeTrip(next: TracePoint?) {
+        // Le trajet part de la FIN de l'arrêt précédent (et non de son début) et
+        // finit au début de l'arrêt suivant : pas de chevauchement dans la liste.
         val tripPoints = buildList {
-            (rows.lastOrNull() as? HistoryRow.Stop)?.let { add(it.point) }
+            (rows.lastOrNull() as? HistoryRow.Stop)?.let { add(it.last) }
             addAll(moving)
             next?.let { add(it) }
         }
-        if (tripPoints.size >= 2 && traceLength(tripPoints) >= 50f) rows += HistoryRow.Trip(memberId, tripPoints)
+        // Bruit GPS sur place (« Marche · 0 m ») : pas un trajet.
+        if (tripPoints.size >= 2 && traceLength(cleanTrace(tripPoints)) >= 80f) rows += HistoryRow.Trip(memberId, tripPoints)
         moving.clear()
     }
 
@@ -128,7 +138,7 @@ private fun buildRows(memberId: Long, points: List<TracePoint>): List<HistoryRow
         }
         if (j > i && points[j].time - anchor.time >= 3 * 60_000L) {
             closeTrip(anchor)
-            rows += HistoryRow.Stop(memberId, anchor, points[j].time)
+            rows += HistoryRow.Stop(memberId, anchor, points[j].time, last = points[j])
             i = j + 1
         } else {
             moving += anchor
@@ -211,6 +221,9 @@ fun HistoryScreen(
             st.setTraces(visible, colors)
             st.setHighlight(highlighted?.point, highlighted?.let { colors[it.memberId] } ?: 0)
         }
+        // Trajet choisi dans la liste : tracé épais du départ à l'arrivée.
+        val trip = (highlighted as? HistoryRow.Trip)?.takeIf { at == null }
+        st.setSelectedTrip(trip?.points.orEmpty(), trip?.let { colors[it.memberId] } ?: 0)
     }
 
     // Lecture : on avance de point en point (les arrêts passent vite, les trajets
@@ -275,22 +288,11 @@ fun HistoryScreen(
             ) {
                 FilterChip(selected = focus == null, onClick = { focus = null; highlighted = null }, label = { Text("Tout le monde") })
                 members.forEach { m ->
-                    val travel = traces[m.id]?.let { travelSplit(it) }
-                    // Pas du jour : le plus grand compteur envoyé ce jour-là.
-                    val steps = traces[m.id]?.mapNotNull { it.steps }?.maxOrNull()
                     FilterChip(
                         selected = focus == m.id,
                         onClick = { focus = m.id; highlighted = null },
                         leadingIcon = { Box(Modifier.size(12.dp).clip(CircleShape).background(Color(colors[m.id] ?: 0))) },
-                        label = {
-                            Text(
-                                listOfNotNull(
-                                    nameOf(m),
-                                    travel?.let { t -> travelParts(t).joinToString(" ") { (e, km) -> "$e $km" } }?.takeIf { it.isNotEmpty() },
-                                    steps?.let { "${formatSteps(it)}/${formatSteps(m.stepGoal)} pas" + if (it >= m.stepGoal) " 🎉" else "" },
-                                ).joinToString(" · "),
-                            )
-                        },
+                        label = { Text(nameOf(m)) },
                     )
                 }
             }

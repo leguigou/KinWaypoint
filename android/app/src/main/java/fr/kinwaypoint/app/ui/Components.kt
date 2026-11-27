@@ -199,6 +199,9 @@ fun StepGoalBar(steps: Int, goal: Int, color: Color, modifier: Modifier = Modifi
             modifier = Modifier.fillMaxWidth().height(6.dp).clip(CircleShape),
             color = if (reached) AppTheme.colors.success else color,
             trackColor = color.copy(alpha = 0.15f),
+            strokeCap = androidx.compose.ui.graphics.StrokeCap.Round,
+            gapSize = 0.dp,
+            drawStopIndicator = {},
         )
     }
 }
