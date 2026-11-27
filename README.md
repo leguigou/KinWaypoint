@@ -40,9 +40,13 @@ Un serveur **Traccar** collecte, stocke et déclenche les alertes.
   faible, SOS ; un **écusson** en haut à droite distingue les comptes parents
   (liste des membres, fiches et marqueurs de la carte, côté parent comme enfant).
 - Distance du jour **à pied** et **en voiture**, podomètre et objectif de pas.
-- Fréquence adaptative pour préserver la batterie :
-  - une position toutes les **5 min** en temps normal ;
-  - toutes les **15 s** dès qu'un déplacement est détecté (pas, vitesse) ;
+- Fréquence adaptative selon la situation (réglages des parents = bornes) :
+  - **à pied** et en temps normal : toutes les **5 min** ;
+  - **en voiture** (plus de 15 km/h) : **1 min au plus** (15 s en « Équilibré ») ;
+    un départ en voiture est repéré en 1 à 2 min grâce à la position réseau,
+    peu gourmande, relevée chaque minute ;
+  - **téléphone branché** : bien plus serré (10 s en voiture, 1 min à pied,
+    2 min sinon) ;
   - toutes les **10 min** à l'arrêt, GPS coupé. L'arrêt est détecté par le
     podomètre et l'accéléromètre, et la position est figée pour ne pas
     enregistrer le « tremblement » du GPS.

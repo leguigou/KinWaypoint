@@ -46,11 +46,16 @@ est créé à ce moment-là. Présentation générale et installation du serveur
 
 ## Suivi (mode enfant, et parent qui partage sa position)
 
-- **Cadence** (réglable à distance par un parent, attributs `kwInt*`) :
-  - 5 min en temps normal ;
-  - 15 s dès qu'un déplacement est détecté (pas réguliers, ou déplacement net
-    entre deux points), pendant 5 min ;
-  - 10 min à l'arrêt, GPS coupé.
+- **Cadence** (bornes réglables à distance par un parent, attributs `kwInt*`) :
+  - à pied et en temps normal : cadence normale (5 min au plus à pied) ;
+  - juste après un départ : 2 min de mesures rapprochées (15 s) pour mesurer la
+    vitesse ;
+  - en voiture (> 15 km/h, 3 min de tolérance aux feux) : cadence « en
+    déplacement », 1 min au plus ;
+  - branché : 10 s en voiture, 1 min à pied, 2 min sinon, moitié à l'arrêt ;
+  - 10 min à l'arrêt, GPS coupé ;
+  - hors arrêt, la position réseau (Wi-Fi, antennes) est relevée chaque minute
+    pour repérer un départ en voiture sans attendre le GPS.
 - **Position grossière** (GPS coupé, intérieur) : si elle reste compatible
   avec la dernière position précise, celle-ci est renvoyée (avec la vraie
   précision), pour éviter les fausses sorties puis rentrées de zone.

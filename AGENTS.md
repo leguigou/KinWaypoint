@@ -203,6 +203,13 @@ demande pas de mise à jour. En cas de doute, mettre à jour.
     marges d'erreur ; la précision envoyée reste la vraie. Ne pas envoyer de
     position grossière brute aux règles de lieux (arrivée / départ).
 
+21. **Cadence** : `TrackingService.currentIntervalMs` décide selon arrêt /
+    voiture (`inVehicle`, vitesse > `VEHICLE_KMH`, 3 min de tolérance) /
+    mesure après départ (`probeUntilElapsed`, 2 min) / marche (`boosting`) /
+    branché (`pluggedIn`, `ACTION_POWER_CONNECTED`). Toute bascule appelle
+    `registerLocation()` pour réappliquer l'intervalle. La cadence « en
+    déplacement » des parents s'applique à la voiture.
+
 ## Git
 
 - Travailler sur la branche indiquée par la session ; ne jamais réécrire

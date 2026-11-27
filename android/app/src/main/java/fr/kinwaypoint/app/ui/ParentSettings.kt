@@ -1043,13 +1043,14 @@ private fun CadenceDialog(member: Member, onDismiss: () -> Unit, onSave: (fr.kin
                 }
                 Text("En temps normal : toutes les ${normalMin.toInt()} min", style = MaterialTheme.typography.bodyMedium)
                 KwSlider(value = normalMin, onValueChange = { normalMin = it.toInt().toFloat() }, valueRange = 1f..30f)
-                Text("En déplacement : toutes les ${movingSec.toInt()} s", style = MaterialTheme.typography.bodyMedium)
+                Text("En voiture : toutes les ${movingSec.toInt()} s", style = MaterialTheme.typography.bodyMedium)
                 KwSlider(value = movingSec, onValueChange = { movingSec = (Math.round(it / 5f) * 5f).coerceAtLeast(5f) }, valueRange = 5f..120f)
                 Text("À l'arrêt : toutes les ${stillMin.toInt()} min", style = MaterialTheme.typography.bodyMedium)
                 KwSlider(value = stillMin, onValueChange = { stillMin = it.toInt().toFloat() }, valueRange = 5f..60f)
                 Text(
-                    "Appliqué dès que le téléphone se réveille (quelques secondes, ou à son prochain envoi). " +
-                        "Il faut que son appli soit à jour et configurée avec l'accès famille.",
+                    "À pied : la cadence normale (5 min au plus). En voiture : 1 min au plus. " +
+                        "Téléphone branché : bien plus serré (10 s en voiture, 1 min à pied). " +
+                        "Appliqué dès que le téléphone se réveille ; il faut que son appli soit à jour.",
                     style = MaterialTheme.typography.bodySmall,
                     color = Muted,
                 )

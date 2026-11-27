@@ -100,6 +100,10 @@ class TrackingService : Service(), LocationListener {
         private const val STILL_INTERVAL_MS = 10 * 60 * 1000L
         /** Suivi rapproché après un mouvement détecté : une position toutes les 15 s… */
         private const val BOOST_INTERVAL_MS = 15_000L
+        /** Mesures rapprochées après un départ, le temps de savoir si c'est à pied ou en voiture. */
+        private const val PROBE_MS = 2 * 60 * 1000L
+        /** Sans vitesse de voiture depuis 3 min (feu, bouchon, parking) : plus « en voiture ». */
+        private const val VEHICLE_GRACE_MS = 3 * 60 * 1000L
         /** Au-delà de cette marge d'erreur (m), une position est « grossière » (antennes, Wi-Fi lointain). */
         private const val COARSE_ACCURACY_M = 100f
         /** Une position précise sert de référence pendant 6 h au plus. */
@@ -265,25 +269,71 @@ class TrackingService : Service(), LocationListener {
     private var boostUntilElapsed = 0L
     private var boosting = false
 
-    /** Intervalle effectif : 10 min à l'arrêt, 15 s en suivi rapproché, sinon celui réglé. */
+    /** En voiture (vitesse > 15 km/h), avec 3 min de tolérance (feux, bouchons). */
+    private var inVehicle = false
+    private var lastVehicleElapsed = 0L
+    /** Juste après un mouvement : 2 min de mesures rapprochées pour savoir si c'est à pied ou en voiture. */
+    private var probeUntilElapsed = 0L
+    /** Téléphone branché : la batterie n'est plus un souci, le suivi peut être bien plus serré. */
+    @Volatile private var pluggedIn = false
+
+    /**
+     * Intervalle effectif selon la situation (réglages des parents = bornes) :
+     * - à l'arrêt : cadence « à l'arrêt » (moitié si branché, 2 min au moins) ;
+     * - en voiture : cadence « en déplacement », 1 min au plus ; 10 s si branché ;
+     * - tout juste en mouvement : mesures rapprochées 2 min pour reconnaître la voiture ;
+     * - à pied : cadence normale, 5 min au plus ; 1 min si branché ;
+     * - sinon : cadence normale (2 min au plus si branché).
+     */
     private val currentIntervalMs: Long
-        get() = when {
-            still -> maxOf(intervalMs, stillMs)
-            boosting -> minOf(intervalMs, movingMs)
-            else -> intervalMs
+        get() {
+            val now = SystemClock.elapsedRealtime()
+            return when {
+                still -> maxOf(intervalMs, stillMs).let { if (pluggedIn) maxOf(it / 2, 120_000L) else it }
+                inVehicle -> if (pluggedIn) minOf(movingMs, 10_000L) else minOf(movingMs, 60_000L)
+                now < probeUntilElapsed -> minOf(intervalMs, movingMs, 15_000L)
+                boosting -> if (pluggedIn) minOf(intervalMs, 60_000L) else minOf(intervalMs, 300_000L)
+                else -> if (pluggedIn) minOf(intervalMs, 120_000L) else intervalMs
+            }
         }
+
+    /** Vitesse de voiture mesurée : cadence voiture ; plus de signe depuis 3 min : on en sort. */
+    private fun updateVehicle(isVehicle: Boolean) {
+        val now = SystemClock.elapsedRealtime()
+        if (isVehicle) lastVehicleElapsed = now
+        val next = isVehicle || (inVehicle && now - lastVehicleElapsed < VEHICLE_GRACE_MS)
+        if (next != inVehicle) {
+            inVehicle = next
+            Log.i(TAG, if (next) "en voiture : suivi serré" else "plus en voiture")
+            registerLocation()
+        }
+    }
 
     /**
      * Mouvement détecté (pas réguliers ou vitesse) : on sort du mode « à l'arrêt »
      * et on resserre le suivi pendant 5 min pour mesurer la vitesse.
      */
     private fun movementDetected() {
-        boostUntilElapsed = SystemClock.elapsedRealtime() + BOOST_DURATION_MS
+        val now = SystemClock.elapsedRealtime()
+        boostUntilElapsed = now + BOOST_DURATION_MS
+        // Nouveau mouvement : 2 min de mesures rapprochées pour mesurer la vitesse.
+        if (!inVehicle && !boosting && now >= probeUntilElapsed) {
+            probeUntilElapsed = now + PROBE_MS
+            registerLocation()
+        }
         if (still) enterMoving()
         if (!boosting && intervalMs > movingMs) {
             boosting = true
             Log.i(TAG, "mouvement : suivi rapproché (15 s) pendant 5 min")
             TrackingStatus.update { it.copy(boosting = true) }
+            registerLocation()
+        }
+    }
+
+    /** Fin de la phase de mesure : on repasse à la cadence de la situation (voiture ou marche). */
+    private fun checkProbeEnded() {
+        if (probeUntilElapsed != 0L && SystemClock.elapsedRealtime() >= probeUntilElapsed) {
+            probeUntilElapsed = 0L
             registerLocation()
         }
     }
@@ -338,8 +388,32 @@ class TrackingService : Service(), LocationListener {
         }
     }
 
+    /** Branché / débranché : la cadence s'adapte aussitôt. */
+    private val powerReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            val plugged = intent.action == Intent.ACTION_POWER_CONNECTED
+            if (plugged != pluggedIn) {
+                pluggedIn = plugged
+                Log.i(TAG, if (plugged) "branché : suivi plus serré" else "débranché : cadence normale")
+                if (started) registerLocation()
+            }
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
+        pluggedIn = runCatching { readBattery().second }.getOrDefault(false)
+        runCatching {
+            ContextCompat.registerReceiver(
+                this,
+                powerReceiver,
+                IntentFilter().apply {
+                    addAction(Intent.ACTION_POWER_CONNECTED)
+                    addAction(Intent.ACTION_POWER_DISCONNECTED)
+                },
+                ContextCompat.RECEIVER_NOT_EXPORTED,
+            )
+        }
         fr.kinwaypoint.app.CrashReport.install(this)
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
         queue = FixQueue.get(this)
@@ -449,7 +523,10 @@ class TrackingService : Service(), LocationListener {
             }
 
             providers.forEach { provider ->
-                locationManager.requestLocationUpdates(provider, currentIntervalMs, 0f, this, Looper.getMainLooper())
+                // Réseau (Wi-Fi, antennes, peu gourmand) : au moins chaque minute hors arrêt,
+                // pour repérer un départ en voiture sans attendre la prochaine mesure GPS.
+                val every = if (provider == LocationManager.NETWORK_PROVIDER && !still) minOf(currentIntervalMs, 60_000L) else currentIntervalMs
+                locationManager.requestLocationUpdates(provider, every, 0f, this, Looper.getMainLooper())
             }
 
             // Une dernière position connue permet d'afficher quelque chose tout de suite.
@@ -496,6 +573,8 @@ class TrackingService : Service(), LocationListener {
         } == true
         lastSpeedFix = location
         if ((kmh != null && kmh > 5) || movedSincePrevious) movementDetected() else checkBoostExpired()
+        updateVehicle(kmh != null && kmh > fr.kinwaypoint.app.motion.MotionAnalyzer.VEHICLE_KMH)
+        checkProbeEnded()
 
         updateMotion(location)
 
@@ -563,8 +642,8 @@ class TrackingService : Service(), LocationListener {
     private fun updateMotion(location: Location) {
         // Inutile si l'intervalle réglé est déjà aussi long que celui « à l'arrêt ».
         if (intervalMs >= stillMs) return
-        // Mouvement détecté récemment (pas, vitesse) : on ne passe pas « à l'arrêt ».
-        if (boosting) return
+        // Mouvement détecté récemment (pas, vitesse, voiture) : on ne passe pas « à l'arrêt ».
+        if (boosting || inVehicle) return
         val now = SystemClock.elapsedRealtime()
         val ref = anchor
 
@@ -965,6 +1044,7 @@ class TrackingService : Service(), LocationListener {
     }
 
     override fun onDestroy() {
+        runCatching { unregisterReceiver(powerReceiver) }
         // Arrêt non demandé par l'appli (Android, volet « Applications actives ») :
         // le chien de garde vérifiera dans 30 s. S'il a été arrêté volontairement
         // (suivi désactivé), il ne fera rien.

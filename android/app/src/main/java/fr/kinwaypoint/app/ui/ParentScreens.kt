@@ -811,23 +811,32 @@ fun ParentHomeScreen(
                             }
                         }
                         run {
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            // Deux boutons de même largeur et même hauteur, textes courts sur une ligne.
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 member?.position?.let { p ->
                                     Button(
                                         onClick = { openMap(member.id) },
                                         shape = CircleShape,
+                                        modifier = Modifier.weight(1f).height(48.dp),
+                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp),
                                         colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Danger),
-                                    ) { Text("Voir sur la carte") }
+                                    ) {
+                                        Icon(Icons.Default.Map, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Spacer(Modifier.size(6.dp))
+                                        Text("Voir", maxLines = 1, fontWeight = FontWeight.SemiBold)
+                                    }
                                 }
                                 OutlinedButton(
                                     onClick = { scope.launch { repository.acknowledgeAlarm(alarm.id) } },
                                     shape = CircleShape,
+                                    modifier = Modifier.weight(1f).height(48.dp),
+                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp),
                                     border = androidx.compose.foundation.BorderStroke(1.5.dp, Color.White),
                                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
                                 ) {
                                     Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
                                     Spacer(Modifier.size(6.dp))
-                                    Text("J'ai vu, fermer")
+                                    Text("J'ai vu", maxLines = 1, fontWeight = FontWeight.SemiBold)
                                 }
                             }
                         }
