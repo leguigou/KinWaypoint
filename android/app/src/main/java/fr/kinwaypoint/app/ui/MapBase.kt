@@ -300,10 +300,25 @@ internal fun frameAll(map: MapLibreMap, points: List<LatLng>, bottomPaddingPx: I
     val bounds = LatLngBounds.Builder().includes(points).build()
     // Points quasi confondus : un cadrage « bounds » zoomerait au maximum.
     if (points.size == 1 || bounds.latitudeSpan < 0.002 && bounds.longitudeSpan < 0.002) {
-        map.animateCamera(CameraUpdateFactory.newLatLngZoom(bounds.center, 15.0))
-    } else {
-        map.animateCamera(CameraUpdateFactory.newLatLngBounds(bounds, pad.side, pad.top, pad.side, pad.bottom))
+        runCatching { map.animateCamera(CameraUpdateFactory.newLatLngZoom(bounds.center, 15.0)) }
+        return
     }
+    // Carte pas encore à sa taille, ou marges plus grandes que la carte : MapLibre
+    // produirait un cadrage invalide (position NaN → plantage). On calcule d'abord
+    // le cadrage, on le vérifie, et sinon on centre simplement sur l'ensemble.
+    val camera = runCatching {
+        map.getCameraForLatLngBounds(bounds, intArrayOf(pad.side, pad.top, pad.side, pad.bottom))
+    }.getOrNull()
+    val target = camera?.target
+    val valid = camera != null && target != null &&
+        !target.latitude.isNaN() && !target.longitude.isNaN() && camera.zoom.isFinite() && camera.zoom > 0
+    runCatching {
+        if (valid) {
+            map.animateCamera(CameraUpdateFactory.newCameraPosition(camera!!))
+        } else {
+            map.animateCamera(CameraUpdateFactory.newLatLngZoom(bounds.center, 11.0))
+        }
+    }.onFailure { android.util.Log.w("KinWaypoint", "cadrage impossible", it) }
 }
 
 /**

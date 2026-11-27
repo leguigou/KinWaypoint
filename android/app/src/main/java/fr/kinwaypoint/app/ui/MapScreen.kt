@@ -187,10 +187,15 @@ fun FamilyMapScreen(
         )
     }
     // Marge appliquée à la caméra : un centrage sur une personne la place au milieu de la zone visible.
+    val screenHeightPx = with(density) { androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp.roundToPx() }
     LaunchedEffect(state.map, insets) {
-        state.map?.moveCamera(
-            CameraUpdateFactory.paddingTo(insets.side.toDouble(), insets.top.toDouble(), insets.side.toDouble(), insets.bottom.toDouble()),
-        )
+        // Seulement si les marges laissent une vraie zone visible (sinon cadrages invalides).
+        if (insets.top + insets.bottom > screenHeightPx * 0.8) return@LaunchedEffect
+        runCatching {
+            state.map?.moveCamera(
+                CameraUpdateFactory.paddingTo(insets.side.toDouble(), insets.top.toDouble(), insets.side.toDouble(), insets.bottom.toDouble()),
+            )
+        }
     }
 
     val pagerState = rememberPagerState(
