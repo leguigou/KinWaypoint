@@ -100,6 +100,8 @@ Un serveur **Traccar** collecte, stocke et déclenche les alertes.
   enfants et des autres parents).
 - Couleurs de profil (palette ou sélecteur libre), photos, objectifs de pas,
   limite de vitesse.
+- **Ordre d'affichage des membres** par glisser-déposer (Paramètres → Famille),
+  partagé par toute la famille : liste, carte, historique.
 - Verrouillage par **PIN** ou **empreinte**, délai de reverrouillage réglable
   (1 min → jamais).
 - **Mise à jour depuis l'application** : notification quand une version sort,

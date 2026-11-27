@@ -87,6 +87,9 @@ demande pas de mise à jour. En cas de doute, mettre à jour.
   rattrapées (`runCatching`) : une erreur réseau ne doit jamais fermer l'appli.
 - Les traces GPS affichées ou mesurées passent par `cleanTrace` (bruit GPS à
   l'arrêt) ; distances par mode via `travelSplit` (à pied / en voiture).
+- Ordre des membres : attribut `kwOrder` des appareils, appliqué une seule fois
+  dans `TraccarApi.members()` (puis ordre alphabétique) ; les écrans ne retrient
+  pas la liste.
 
 ## Pièges connus
 

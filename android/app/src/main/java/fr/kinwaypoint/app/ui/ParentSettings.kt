@@ -25,6 +25,14 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.zIndex
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.foundation.layout.height
 import androidx.compose.material3.Button
 import androidx.compose.material.icons.filled.PersonAdd
@@ -427,6 +435,27 @@ fun ParentSettingsScreen(
                 Icon(Icons.Default.PersonAdd, contentDescription = null)
                 Text("  Ajouter un parent")
             }
+            // --- Ordre d'affichage (glisser-déposer) -------------------------------------
+            SectionCard {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("↕️", style = MaterialTheme.typography.titleMedium)
+                    Text("Ordre d'affichage", style = MaterialTheme.typography.titleMedium)
+                }
+                Text(
+                    "Maintiens un membre puis fais-le glisser. L'ordre vaut pour toute la famille : liste, carte, historique.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Muted,
+                )
+                ReorderableMembers(members, photos) { reordered ->
+                    launchOp {
+                        withContext(Dispatchers.IO) {
+                            reordered.forEachIndexed { index, m -> if (m.order != index) api.setOrder(config.token, m.id, index) }
+                        }
+                        onMembersChanged()
+                    }
+                }
+            }
+
             // --- Objectif de pas -----------------------------------------------------
             SectionCard {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -793,4 +822,82 @@ private fun AddParentDialog(api: TraccarApi, config: ParentConfig, members: List
         },
         dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("Annuler") } },
     )
+}
+
+/**
+ * Liste de membres réordonnable : appui long sur une ligne, puis glisser vers le
+ * haut ou le bas ; la ligne échange sa place avec sa voisine à mi-hauteur.
+ * onReordered est appelé au lâcher, avec le nouvel ordre (s'il a changé).
+ */
+@Composable
+private fun ReorderableMembers(members: List<Member>, photos: Map<Long, Bitmap>, onReordered: (List<Member>) -> Unit) {
+    var items by remember(members.map { it.id to it.order }) { mutableStateOf(members) }
+    var draggingId by remember { mutableStateOf<Long?>(null) }
+    var dragOffset by remember { mutableFloatStateOf(0f) }
+    var rowHeight by remember { mutableFloatStateOf(0f) }
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+
+    Column {
+        items.forEach { m ->
+            androidx.compose.runtime.key(m.id) {
+                val dragging = m.id == draggingId
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .onSizeChanged { if (rowHeight == 0f) rowHeight = it.height.toFloat() }
+                        .zIndex(if (dragging) 1f else 0f)
+                        .graphicsLayer {
+                            translationY = if (dragging) dragOffset else 0f
+                            shadowElevation = if (dragging) 8.dp.toPx() else 0f
+                            shape = RoundedCornerShape(14.dp)
+                            clip = dragging
+                        }
+                        .background(if (dragging) MaterialTheme.colorScheme.surfaceVariant else androidx.compose.ui.graphics.Color.Transparent)
+                        .pointerInput(m.id) {
+                            detectDragGesturesAfterLongPress(
+                                onDragStart = {
+                                    draggingId = m.id
+                                    dragOffset = 0f
+                                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                                },
+                                onDrag = { change, amount ->
+                                    change.consume()
+                                    dragOffset += amount.y
+                                    val h = rowHeight
+                                    val index = items.indexOfFirst { it.id == m.id }
+                                    if (h > 0f && index >= 0) {
+                                        if (dragOffset > h / 2 && index < items.lastIndex) {
+                                            items = items.toMutableList().apply { add(index + 1, removeAt(index)) }
+                                            dragOffset -= h
+                                        } else if (dragOffset < -h / 2 && index > 0) {
+                                            items = items.toMutableList().apply { add(index - 1, removeAt(index)) }
+                                            dragOffset += h
+                                        }
+                                    }
+                                },
+                                onDragEnd = {
+                                    draggingId = null
+                                    dragOffset = 0f
+                                    if (items.map { it.id } != members.map { it.id }) onReordered(items)
+                                },
+                                onDragCancel = {
+                                    draggingId = null
+                                    dragOffset = 0f
+                                },
+                            )
+                        }
+                        .padding(horizontal = 6.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Box {
+                        Avatar(m.name, size = 38.dp, photo = photos[m.id], colorHex = m.color)
+                        if (m.isParent) ParentShield(Modifier.align(Alignment.TopEnd), size = 15.dp)
+                    }
+                    Text(m.name, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                    Icon(Icons.Default.DragHandle, contentDescription = "Déplacer ${m.name}", tint = Muted)
+                }
+            }
+        }
+    }
 }

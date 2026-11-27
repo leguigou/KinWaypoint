@@ -39,6 +39,8 @@ data class Member(
     val speedLimitKmh: Int? = null,
     /** Parent en mode fantôme : invisible des enfants et des autres parents. */
     val ghost: Boolean = false,
+    /** Rang d'affichage choisi par les parents (glisser-déposer), ou null = ordre alphabétique. */
+    val order: Int? = null,
 )
 
 /** Compte parent créé depuis l'appli : identifiants à transmettre (mot de passe affiché une fois). */
@@ -267,7 +269,7 @@ class TraccarApi(baseUrl: String) {
         return (0 until devices.length()).map { i ->
             val d = devices.getJSONObject(i)
             parseMember(d, byDevice[d.getLong("id")])
-        }.sortedBy { it.name.lowercase() }
+        }.sortedWith(compareBy<Member>({ it.order ?: Int.MAX_VALUE }, { it.name.lowercase() }))
     }
 
     /** Message reçu en direct : nouvelles positions, statut des appareils, événements. */
@@ -337,6 +339,7 @@ class TraccarApi(baseUrl: String) {
                 stepGoal = d.optJSONObject("attributes")?.optInt("kwStepGoal", DEFAULT_STEP_GOAL)?.takeIf { it > 0 } ?: DEFAULT_STEP_GOAL,
                 speedLimitKmh = d.optJSONObject("attributes")?.takeIf { it.has("speedLimit") }?.optDouble("speedLimit")?.let { (it * 1.852).toInt() },
                 ghost = d.optJSONObject("attributes")?.optBoolean("kwGhost", false) == true,
+                order = d.optJSONObject("attributes")?.takeIf { it.has("kwOrder") }?.optInt("kwOrder"),
             )
     }
 
@@ -553,6 +556,11 @@ class TraccarApi(baseUrl: String) {
         val alphabet = "abcdefghjkmnpqrstuvwxyz23456789"
         val random = java.security.SecureRandom()
         return (1..3).joinToString("-") { (1..4).map { alphabet[random.nextInt(alphabet.length)] }.joinToString("") }
+    }
+
+    /** Rang d'affichage d'un membre (attribut kwOrder), partagé par toute la famille. */
+    fun setOrder(token: String, id: Long, order: Int) {
+        updateAttributes(token, id) { attrs -> attrs.put("kwOrder", order) }
     }
 
     fun markAsParent(token: String, id: Long) {
