@@ -543,6 +543,7 @@ fun ParentHomeScreen(
             onChangeMode = onChangeMode,
             proximity = proximityConfig,
             onProximityChange = { scope.launch { repository.setProximityAlert(it) } },
+            placesCount = places.size,
         )
     } else if (historyOpen) {
         HistoryScreen(
@@ -590,6 +591,8 @@ fun ParentHomeScreen(
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
+            // Marge sous le dernier bouton (« Ajouter un enfant ») : il ne colle plus au bas de l'écran.
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 32.dp),
         ) {
             item {
                 Row(
