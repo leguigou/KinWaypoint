@@ -148,7 +148,7 @@ fun Avatar(name: String, size: Dp = 48.dp, photo: Bitmap? = null, colorHex: Stri
 fun ParentShield(modifier: Modifier = Modifier, size: Dp = 20.dp) {
     Box(
         modifier.size(size).clip(CircleShape).background(Color.White)
-            .border(1.dp, Color(0x2216172B), CircleShape),
+            .border(1.dp, Color(0x335B5BD6), CircleShape),
         contentAlignment = Alignment.Center,
     ) {
         Image(
