@@ -364,6 +364,8 @@ fun ParentHomeScreen(
     var mapFocus by remember { mutableStateOf<Long?>(null) }
     var renaming by remember { mutableStateOf<Member?>(null) }
     var listeningTo by remember { mutableStateOf<Member?>(null) }
+    // Fenêtre « Faire sonner » (lancer puis arrêter la sonnerie à distance).
+    var ringFor by remember { mutableStateOf<Member?>(null) }
     var deleting by remember { mutableStateOf<Member?>(null) }
 
     fun openMap(focus: Long?) {
@@ -826,19 +828,7 @@ fun ParentHomeScreen(
                     onShowQr = { scope.launch { qrFor = member.name to childSetupPayload(repository, config, trackUrl, member.uniqueId) } },
                     onRename = { renaming = member },
                     onShowHistory = { historyFocus = member.id; historyOpen = true },
-                    onRing = {
-                        scope.launch {
-                            val instant = withContext(Dispatchers.IO) { runCatching { api.ring(config.token, member.id) } }
-                            android.widget.Toast.makeText(
-                                trackingContext,
-                                instant.fold(
-                                    { if (it) "Le téléphone de ${member.name} va sonner dans quelques secondes." else "Il sonnera à son prochain envoi de position (10 min maximum)." },
-                                    { it.message ?: "Impossible de faire sonner" },
-                                ),
-                                android.widget.Toast.LENGTH_LONG,
-                            ).show()
-                        }
-                    },
+                    onRing = { ringFor = member },
                     onListen = if (!member.isParent && member.id != ownDeviceId) {
                         { listeningTo = member }
                     } else {
@@ -899,6 +889,10 @@ fun ParentHomeScreen(
             },
             onDismiss = { showAddChild = false },
         )
+    }
+
+    ringFor?.let { member ->
+        RingDialog(member = member, photo = photos[member.id], api = api, token = config.token, onDismiss = { ringFor = null })
     }
 
     qrFor?.let { (name, payload) -> SetupQrDialog(name, payload, onDismiss = { qrFor = null }, inviteToken = config.token) }

@@ -760,7 +760,12 @@ class TrackingService : Service(), LocationListener {
     /** Traccar renvoie les commandes en attente dans la réponse : « ring » = faire sonner. */
     private fun handleServerCommands(body: String) {
         if (body.isBlank()) return
-        if (body.lines().any { it.trim().equals("ring", ignoreCase = true) }) {
+        val lines = body.lines().map { it.trim() }
+        // « ringStop » après « ring » dans la même réponse : l'arrêt l'emporte.
+        if (lines.any { it.equals("ringStop", ignoreCase = true) }) {
+            Log.i(TAG, "commande reçue : arrêter la sonnerie")
+            RingAlarm.stop(applicationContext)
+        } else if (lines.any { it.equals("ring", ignoreCase = true) }) {
             Log.i(TAG, "commande reçue : faire sonner")
             RingAlarm.start(applicationContext)
         }

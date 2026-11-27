@@ -788,6 +788,17 @@ class TraccarApi(baseUrl: String) {
         return locateNow(token, deviceId)
     }
 
+    /**
+     * Arrête à distance une sonnerie en cours : attribut kwRingStop (horodaté),
+     * lu par le téléphone à son réveil, comme kwRing. Commande « ringStop » en
+     * secours pour un serveur sans Firebase.
+     */
+    fun stopRing(token: String, deviceId: Long): Boolean {
+        updateAttributes(token, deviceId) { attrs -> attrs.put("kwRingStop", System.currentTimeMillis()) }
+        runCatching { sendCommand(token, JSONObject().put("deviceId", deviceId).put("type", "custom").put("attributes", JSONObject().put("data", "ringStop"))) }
+        return locateNow(token, deviceId)
+    }
+
     /** Demandes en attente pour CET appareil (sonnerie, écoute), lues dans ses attributs. */
     fun pendingActions(token: String, uniqueId: String): JSONObject? {
         val devices = getArray(token, url("api/devices"))

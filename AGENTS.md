@@ -162,8 +162,8 @@ demande pas de mise à jour. En cas de doute, mettre à jour.
     `notificationTokens` et que `COMMAND_CLIENT_SERVICE_ACCOUNT` est défini,
     Traccar envoie TOUTES les commandes par Firebase avec leur seul type (sans
     `data`) et ne les met jamais en file. Les demandes avec contenu (sonner,
-    écoute en direct) passent donc par des attributs de l'appareil (`kwRing`,
-    `kwListen`) que le téléphone lit au réveil Firebase et après chaque envoi
+    écoute en direct, arrêt de la sonnerie) passent donc par des attributs de
+    l'appareil (`kwRing`, `kwRingStop`, `kwListen`) que le téléphone lit au réveil Firebase et après chaque envoi
     (`RemoteActions`) ; la commande `custom` ne sert que de secours sans Firebase.
 14. **Fréquence de suivi à distance** : attributs `kwIntNormal`, `kwIntMoving`,
     `kwIntStill` (secondes) de l'appareil, lus par `RemoteActions` et appliqués

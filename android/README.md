@@ -31,7 +31,7 @@ est créé à ce moment-là. Présentation générale et installation du serveur
 |---|---|
 | `service/TrackingService.kt` | Service au premier plan (`location`) : une position par intervalle, fréquence adaptative, podomètre, SOS, commandes du serveur (sonner, écouter) |
 | `service/ListenService.kt`, `ListenActivity.kt` | Écoute en direct, côté enfant (service `microphone` + écran visible) |
-| `service/RingAlarm.kt` | « Faire sonner » (canal alarme, même en silencieux ou « Ne pas déranger » avec l'autorisation ; arrêt par une touche de volume) |
+| `service/RingAlarm.kt` | « Faire sonner » (canal alarme, même en silencieux ou « Ne pas déranger » avec l'autorisation ; arrêt par une touche de volume ou à distance, `kwRingStop`) |
 | `service/RemoteActions.kt` | Lit les demandes du parent posées sur l'appareil Traccar : sonner, écouter, fréquence de suivi |
 | `data/FixQueue.kt` | File SQLite : sans réseau, les positions attendent (≤ 20 000, ≤ 30 j) ; les SOS passent en premier |
 | `service/TrackingWatchdog.kt` | Chien de garde (WorkManager, 15 min, et 30 s après un arrêt) : relance le suivi s'il est activé mais arrêté |

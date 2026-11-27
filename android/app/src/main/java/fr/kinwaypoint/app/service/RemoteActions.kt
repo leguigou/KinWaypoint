@@ -57,9 +57,17 @@ object RemoteActions {
             }
         }
 
-        // Sonnerie : demande récente et pas encore traitée.
+        // Arrêt de la sonnerie demandé par un parent (plus récent que la demande de sonner).
         val ring = attrs.optLong("kwRing", 0L)
-        if (ring > prefs.getLong("ring", 0L) && now - ring in -60_000L..MAX_AGE_MS) {
+        val ringStop = attrs.optLong("kwRingStop", 0L)
+        if (ringStop > prefs.getLong("ringStop", 0L) && now - ringStop in -60_000L..MAX_AGE_MS) {
+            prefs.edit().putLong("ringStop", ringStop).apply()
+            Log.i(TAG, "demande à distance : arrêter la sonnerie")
+            RingAlarm.stop(context.applicationContext)
+        }
+
+        // Sonnerie : demande récente, pas encore traitée, et pas annulée depuis.
+        if (ring > ringStop && ring > prefs.getLong("ring", 0L) && now - ring in -60_000L..MAX_AGE_MS) {
             prefs.edit().putLong("ring", ring).apply()
             Log.i(TAG, "demande à distance : faire sonner")
             RingAlarm.start(context.applicationContext)

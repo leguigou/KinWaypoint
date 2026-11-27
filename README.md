@@ -93,7 +93,9 @@ Un serveur **Traccar** collecte, stocke et déclenche les alertes.
 - **Faire sonner** le téléphone à distance et **demander sa position** tout de
   suite. La sonnerie passe même en silencieux ; en « Ne pas déranger » aussi si
   l'autorisation « Accès Ne pas déranger » est accordée (réglages enfant →
-  Suivi). Elle s'arrête par une **touche de volume** ou le bouton « Arrêter ».
+  Suivi). Elle s'arrête par une **touche de volume** ou le bouton « Arrêter »
+  sur le téléphone, ou **à distance** : la fenêtre « Faire sonner » du parent
+  montre le compte à rebours (1 min) et un bouton « Arrêter la sonnerie ».
 - **Écoute en direct visible** : un parent peut écouter le micro du téléphone
   de l'enfant. L'enfant voit un écran « Un parent t'écoute » et une
   notification permanente ; rien n'est enregistré (voir
