@@ -98,9 +98,11 @@ Un serveur **Traccar** collecte, stocke et déclenche les alertes.
   voiture) avec distance, durée, vitesses moyenne et maximale ; le trajet choisi
   est tracé en gras sur la carte.
 - **Relecture d'une journée** : lecture, pause et curseur horaire.
-- **Courbe de batterie** de la journée (une personne choisie) : charge et
-  décharge de 0 h à 24 h, périodes en charge en vert, minimum et maximum,
-  décharge moyenne (% par heure) et nombre / durée des recharges.
+- **Courbe de batterie** : toucher le bouton batterie (« 71 % ») d'une carte
+  membre ouvre une fenêtre avec la charge et la décharge de 0 h à 24 h
+  (périodes en charge en vert), minimum et maximum, décharge moyenne (% par
+  heure) et nombre / durée des recharges ; flèches pour les jours précédents
+  (30 jours).
 - Bilan de la semaine : pas, objectif, distance, temps passé dans chaque lieu.
 
 ### Sécurité de l'enfant

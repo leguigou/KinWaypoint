@@ -8,6 +8,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.BatteryFull
 import androidx.compose.material3.Icon
@@ -81,7 +84,7 @@ fun batteryStats(points: List<TracePoint>): BatteryStats? {
  * Les périodes en charge sont tracées en vert ; repères à 20 % (batterie faible).
  */
 @Composable
-fun BatteryCurveCard(points: List<TracePoint>, dayStart: Long, color: Color) {
+fun BatteryCurve(points: List<TracePoint>, dayStart: Long, color: Color) {
     val stats = batteryStats(points) ?: return
     val measured = points.filter { it.battery != null }.sortedBy { it.time }
     val dayMs = 24 * 3600 * 1000L
@@ -89,16 +92,7 @@ fun BatteryCurveCard(points: List<TracePoint>, dayStart: Long, color: Color) {
     val grid = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
     val low = Danger.copy(alpha = 0.35f)
 
-    SectionCard(modifier = Modifier) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Icon(
-                if (measured.last().charging == true) Icons.Default.BatteryChargingFull else Icons.Default.BatteryFull,
-                contentDescription = null,
-                tint = if (stats.last < 20) Danger else color,
-            )
-            Text("Batterie de la journée", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-            Text("${stats.last} %", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        }
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
 
         Canvas(Modifier.fillMaxWidth().height(120.dp)) {
             val w = size.width
@@ -179,4 +173,109 @@ private fun BatteryFigure(value: String, label: String, modifier: Modifier = Mod
 private fun chargingDuration(minutes: Long) = when {
     minutes < 60 -> "$minutes min"
     else -> "${minutes / 60} h ${String.format("%02d", minutes % 60)}"
+}
+
+
+/**
+ * Fenêtre « Batterie » d'un membre (bouton batterie de sa carte) : courbe de
+ * charge / décharge du jour choisi, jours précédents avec les flèches.
+ */
+@Composable
+fun BatteryDialog(
+    api: fr.kinwaypoint.app.net.TraccarApi,
+    token: String,
+    member: fr.kinwaypoint.app.net.Member,
+    onDismiss: () -> Unit,
+) {
+    val zone = java.time.ZoneId.systemDefault()
+    val today = java.time.LocalDate.now(zone)
+    var day by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(today) }
+    var points by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<List<TracePoint>?>(null) }
+    var error by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
+    val color = profileColor(member.name, member.color)
+    val dayStart = day.atStartOfDay(zone).toInstant().toEpochMilli()
+
+    androidx.compose.runtime.LaunchedEffect(day) {
+        points = null
+        error = null
+        val end = day.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli() - 1
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching { api.positions(token, member.id, dayStart, end) }
+        }.onSuccess { points = it }.onFailure { error = it.message ?: "Historique indisponible" }
+    }
+
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        androidx.compose.material3.Surface(
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(28.dp),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 6.dp,
+        ) {
+            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                // En-tête : avatar, prénom, niveau actuel.
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Avatar(member.name, size = 40.dp, colorHex = member.color)
+                    Column(Modifier.weight(1f)) {
+                        Text("Batterie", style = MaterialTheme.typography.titleLarge)
+                        Text(member.name, style = MaterialTheme.typography.bodySmall, color = Muted)
+                    }
+                    member.position?.battery?.let { level ->
+                        Icon(
+                            if (member.position?.charging == true) Icons.Default.BatteryChargingFull else Icons.Default.BatteryFull,
+                            contentDescription = null,
+                            tint = if (member.position?.charging == true) AppTheme.colors.success else if (level < 20) Danger else color,
+                        )
+                        Text("$level %", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                // Choix du jour : ‹ Aujourd'hui ›, 30 jours en arrière au plus (rétention du serveur).
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    androidx.compose.material3.IconButton(
+                        onClick = { day = day.minusDays(1) },
+                        enabled = day.isAfter(today.minusDays(29)),
+                    ) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Jour précédent") }
+                    Text(
+                        batteryDayLabel(day, today),
+                        style = MaterialTheme.typography.titleSmall,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        modifier = Modifier.weight(1f),
+                    )
+                    androidx.compose.material3.IconButton(
+                        onClick = { day = day.plusDays(1) },
+                        enabled = day.isBefore(today),
+                    ) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Jour suivant") }
+                }
+
+                val current = points
+                when {
+                    error != null -> Text(error!!, color = Danger, style = MaterialTheme.typography.bodySmall)
+                    current == null -> androidx.compose.foundation.layout.Box(
+                        Modifier.fillMaxWidth().height(180.dp),
+                        contentAlignment = Alignment.Center,
+                    ) { androidx.compose.material3.CircularProgressIndicator() }
+                    batteryStats(current) == null -> androidx.compose.foundation.layout.Box(
+                        Modifier.fillMaxWidth().height(180.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            "Aucune mesure de batterie ce jour-là.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Muted,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        )
+                    }
+                    else -> BatteryCurve(current, dayStart, color)
+                }
+
+                androidx.compose.material3.TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) { Text("Fermer") }
+            }
+        }
+    }
+}
+
+private fun batteryDayLabel(day: java.time.LocalDate, today: java.time.LocalDate): String = when (day) {
+    today -> "Aujourd'hui"
+    today.minusDays(1) -> "Hier"
+    else -> day.format(java.time.format.DateTimeFormatter.ofPattern("EEEE d MMMM", java.util.Locale.FRANCE))
+        .replaceFirstChar { it.uppercase() }
 }

@@ -370,17 +370,6 @@ fun HistoryScreen(
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 40.dp),
                         verticalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
-                        // Une personne choisie : courbe de charge / décharge de sa batterie sur la journée.
-                        focus?.let { id ->
-                            item(key = "batterie") {
-                                BatteryCurveCard(
-                                    points = visible[id].orEmpty(),
-                                    dayStart = day.atStartOfDay(zone).toInstant().toEpochMilli(),
-                                    color = Color(colors[id] ?: 0xFF5B5BD6.toInt()),
-                                )
-                                androidx.compose.foundation.layout.Spacer(Modifier.height(12.dp))
-                            }
-                        }
                         items(rows, key = { "${it.memberId}-${it.start}-${it is HistoryRow.Stop}" }) { row ->
                             val member = members.firstOrNull { it.id == row.memberId }
                             TimelineRow(

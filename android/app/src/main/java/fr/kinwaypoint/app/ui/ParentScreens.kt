@@ -374,6 +374,8 @@ fun ParentHomeScreen(
     var listeningTo by remember { mutableStateOf<Member?>(null) }
     // Fenêtre « Faire sonner » (lancer puis arrêter la sonnerie à distance).
     var ringFor by remember { mutableStateOf<Member?>(null) }
+    // Fenêtre « Batterie » (courbe de charge / décharge par jour).
+    var batteryFor by remember { mutableStateOf<Member?>(null) }
     var deleting by remember { mutableStateOf<Member?>(null) }
 
     fun openMap(focus: Long?) {
@@ -899,6 +901,7 @@ fun ParentHomeScreen(
                     onRename = { renaming = member },
                     onShowHistory = { historyFocus = member.id; historyOpen = true },
                     onRing = { ringFor = member },
+                    onBattery = { batteryFor = member },
                     onListen = if (!member.isParent && member.id != ownDeviceId) {
                         { listeningTo = member }
                     } else {
@@ -959,6 +962,10 @@ fun ParentHomeScreen(
             },
             onDismiss = { showAddChild = false },
         )
+    }
+
+    batteryFor?.let { member ->
+        BatteryDialog(api = api, token = config.token, member = member, onDismiss = { batteryFor = null })
     }
 
     ringFor?.let { member ->
@@ -1040,6 +1047,8 @@ private fun MemberCard(
     travel: TravelSplit? = null,
     onChangePhoto: () -> Unit = {},
     onRemovePhoto: (() -> Unit)? = null,
+    /** Bouton batterie : ouvre la courbe de charge / décharge. */
+    onBattery: () -> Unit = {},
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     val position = member.position
@@ -1068,7 +1077,7 @@ private fun MemberCard(
                 }
                 MemberStatusLine(member.online, position?.fixTime)
             }
-            position?.battery?.let { BatteryBadge(it, position?.charging == true) }
+            position?.battery?.let { BatteryBadge(it, position?.charging == true, onClick = onBattery) }
             IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(36.dp)) {
                 Icon(Icons.Default.MoreVert, contentDescription = "Actions pour ${member.name}", tint = Muted)
             }
@@ -1257,14 +1266,23 @@ private fun MemberStatusLine(online: Boolean, fixTime: Long?) {
 
 /** Batterie en haut à droite : rouge < 10 %, orange < 20 %, vert en charge. */
 @Composable
-private fun BatteryBadge(level: Int, charging: Boolean) {
+private fun BatteryBadge(level: Int, charging: Boolean, onClick: () -> Unit = {}) {
     val color = when {
         charging -> Ok
         level < 10 -> Danger
         level < 20 -> Warning
         else -> MaterialTheme.colorScheme.onSurface
     }
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+    // Même style qu'avant, dans une gélule contourée : on voit que c'est un bouton
+    // (il ouvre la courbe de charge / décharge).
+    Row(
+        Modifier.clip(CircleShape)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
+            .clickable(onClickLabel = "Voir la courbe de batterie", onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
         Icon(
             when {
                 charging -> Icons.Default.BatteryChargingFull
