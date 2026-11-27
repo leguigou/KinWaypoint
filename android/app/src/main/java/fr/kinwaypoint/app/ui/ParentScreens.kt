@@ -1142,31 +1142,34 @@ private fun MemberCard(
 }
 
 /**
- * « ● En ligne · Position il y a 3 min » sur une seule ligne. Couleurs :
- * vert = position récente, orange = position de plus de 15 min, rouge = plus
- * d'1 h, gris = hors ligne.
+ * État du membre sur deux lignes, pour rester lisible à côté de la batterie :
+ * « ● En ligne » (vert) ou « ● Hors ligne » (gris), puis « Position il y a
+ * 3 min » en gris, en orange au-delà de 15 min, en rouge au-delà d'1 h.
  */
 @Composable
 private fun MemberStatusLine(online: Boolean, fixTime: Long?) {
-    val color = when {
-        !online -> Idle
-        fixTime == null -> Idle
-        else -> Color(freshnessColor(fixTime))
-    }
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        Box(Modifier.size(8.dp).clip(CircleShape).background(color))
+    val stateColor = if (online) Ok else Idle
+    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Box(Modifier.size(8.dp).clip(CircleShape).background(stateColor))
+            Text(
+                if (online) "En ligne" else "Hors ligne",
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.SemiBold,
+                color = stateColor,
+                maxLines = 1,
+            )
+        }
+        val ageColor = when {
+            fixTime == null -> Muted
+            System.currentTimeMillis() - fixTime < 15 * 60_000L -> Muted
+            else -> Color(freshnessColor(fixTime))
+        }
         Text(
-            androidx.compose.ui.text.buildAnnotatedString {
-                pushStyle(androidx.compose.ui.text.SpanStyle(color = color, fontWeight = FontWeight.SemiBold))
-                append(if (online) "En ligne" else "Hors ligne")
-                pop()
-                append(" · ")
-                append(fixTime?.let { "Position " + relativeTime(it) } ?: "Aucune position")
-            },
+            fixTime?.let { "Position " + relativeTime(it) } ?: "Aucune position",
             style = MaterialTheme.typography.bodySmall,
-            color = Muted,
-            maxLines = 1,
-            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            color = ageColor,
+            maxLines = 2,
         )
     }
 }
