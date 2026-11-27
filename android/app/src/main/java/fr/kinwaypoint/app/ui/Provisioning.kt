@@ -166,7 +166,7 @@ fun SetupQrDialog(name: String, payload: SetupPayload, onDismiss: () -> Unit, in
                     } else {
                         Text(
                             "Pratique si le téléphone n'est pas à côté de toi : un code de 8 chiffres, valable 1 h, à taper " +
-                                "dans « J'ai un code d'invitation » sur son téléphone.",
+                                "sur son téléphone dans « Relier ce téléphone ».",
                             fontSize = 13.sp,
                             color = Muted,
                         )
@@ -204,17 +204,17 @@ fun SetupQrDialog(name: String, payload: SetupPayload, onDismiss: () -> Unit, in
                 }
                 Image(bitmap = bitmap, contentDescription = "QR code de configuration", modifier = Modifier.size(260.dp))
                 Text(
-                    "Sur son téléphone : mode Enfant → Réglages parent → « Scanner le QR code ».",
+                    "Sur son téléphone : « Enfant », code PIN parent, puis « Scanner le QR code ». Tout le reste est automatique.",
                     fontSize = 13.sp,
                     color = Muted,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 )
                 Text(
-                    "Ce code contient l'identifiant secret de l'appareil : ne le photographie pas, ne l'envoie pas.",
+                    "Ce QR code relie le téléphone à la famille : ne le photographie pas, ne l'envoie pas.",
                     fontSize = 12.sp,
                     color = Danger,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 )
-                Text("Serveur : ${payload.serverUrl}", fontSize = 12.sp, color = Muted)
-                Text(payload.deviceId, fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = Muted)
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Fermer") } },

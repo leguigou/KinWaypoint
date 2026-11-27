@@ -105,6 +105,8 @@ fun ChildHomeScreen(
     permissions: PermissionSnapshot,
     actions: PlatformActions,
     onOpenSettings: () -> Unit,
+    /** Relier ce téléphone (QR ou code), après le PIN parent. */
+    onLink: () -> Unit = onOpenSettings,
 ) {
     val context = LocalContext.current
     var parentsOpen by remember { mutableStateOf(false) }
@@ -150,10 +152,25 @@ fun ChildHomeScreen(
                 }
             }
 
-            if (!config.isValid || !config.enabled) {
+            if (!config.isValid) {
+                // Pas encore relié : un seul bouton, le parent scanne ou tape le code.
+                SectionCard(container = SoftOrange) {
+                    Text("Téléphone pas encore relié", style = MaterialTheme.typography.titleMedium, color = AppTheme.colors.onSoftWarning)
+                    Text(
+                        "Un parent le relie à la famille avec un QR code ou un code d'invitation. Rien d'autre à régler.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = AppTheme.colors.onSoftWarning.copy(alpha = 0.8f),
+                    )
+                    Button(onClick = onLink, shape = CircleShape, modifier = Modifier.fillMaxWidth().height(52.dp)) {
+                        Icon(Icons.Default.QrCodeScanner, contentDescription = null)
+                        Spacer(Modifier.size(10.dp))
+                        Text("Relier ce téléphone")
+                    }
+                }
+            } else if (!config.enabled) {
                 InfoCard(
-                    title = "Suivi pas encore activé",
-                    detail = "Un parent doit le régler avec le cadenas en haut à droite.",
+                    title = "Suivi arrêté",
+                    detail = "Un parent peut le relancer avec le cadenas en haut à droite.",
                     container = SoftOrange,
                     icon = Icons.Default.Schedule,
                 )
@@ -253,20 +270,13 @@ fun ChildSettingsScreen(
     onClose: () -> Unit,
     onChangePin: () -> Unit,
     onChangeMode: () -> Unit,
+    /** Relier de nouveau ce téléphone (QR ou code d'invitation). */
+    onRelink: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    // Clé = config : si la configuration change (code reçu, enregistrement), les champs suivent.
-    var serverUrl by remember(config) { mutableStateOf(config.serverUrl) }
-    var deviceId by remember(config) { mutableStateOf(config.deviceId) }
-    var interval by remember(config) { mutableStateOf(config.intervalSeconds.toString()) }
-    // Accès « Voir mes parents » (rempli par QR ou code, jamais saisi à la main).
-    var viewerApi by remember(config) { mutableStateOf(config.apiUrl) }
-    var viewerToken by remember(config) { mutableStateOf(config.viewerToken) }
     var confirmModeChange by remember { mutableStateOf(false) }
-    var showConfigCode by remember { mutableStateOf(false) }
-    var scannedLink by remember { mutableStateOf<String?>(null) }
 
     // Catégorie ouverte (null = liste) ; retour = revenir à la liste, puis verrouiller.
     var category by remember { mutableStateOf<String?>(null) }
@@ -276,16 +286,8 @@ fun ChildSettingsScreen(
     fun save(enabled: Boolean, then: () -> Unit = {}) {
         scope.launch {
             // copy : les cadences en mouvement / à l'arrêt réglées par les parents sont conservées.
-            repository.save(
-                config.copy(
-                    serverUrl = serverUrl,
-                    deviceId = deviceId,
-                    intervalSeconds = (interval.toIntOrNull() ?: fr.kinwaypoint.app.data.DEFAULT_INTERVAL_SECONDS).coerceIn(15, 3600),
-                    enabled = enabled,
-                    apiUrl = viewerApi,
-                    viewerToken = viewerToken,
-                ),
-            )
+            // Aucun champ technique ici : la configuration vient du QR code ou du code d'invitation.
+            repository.save(config.copy(enabled = enabled))
             then()
         }
     }
@@ -330,7 +332,7 @@ fun ChildSettingsScreen(
                             !permissions.microphone || !permissions.overlay -> "Autorisations à donner"
                             else -> "Autorisée"
                         }) { category = "listen" }
-                    ChildCategoryRow(Icons.Default.Lock, Danger, "Sécurité", "Code PIN, mode de l'appareil") { category = "security" }
+                    ChildCategoryRow(Icons.Default.Lock, Danger, "Sécurité", "Code PIN parent, mode de l'appareil") { category = "security" }
                     ChildCategoryRow(Icons.Default.Info, Muted, "À propos", "Version ${fr.kinwaypoint.app.BuildConfig.VERSION_NAME}") { category = "about" }
                 }
             }
@@ -338,85 +340,18 @@ fun ChildSettingsScreen(
             if (category == "tracking") {
             StatusCard(status = status, permissions = permissions)
 
-            Button(
-                onClick = {
-                    actions.scanQr { text ->
-                        val payload = SetupPayload.decode(text)
-                        when {
-                            text == null -> Unit
-                            // QR contenant un lien de configuration : on va chercher la configuration.
-                            fr.kinwaypoint.app.net.RemoteConfig.looksLikeLink(text) -> {
-                                scannedLink = text.trim()
-                                showConfigCode = true
-                            }
-                            payload == null -> Toast.makeText(context, "Ce QR code n'est pas un code KinWaypoint", Toast.LENGTH_LONG).show()
-                            else -> {
-                                serverUrl = payload.serverUrl
-                                deviceId = payload.deviceId
-                                payload.intervalSeconds?.let { interval = it.toString() }
-                                if (payload.apiUrl != null && payload.viewerToken != null) {
-                                    viewerApi = payload.apiUrl
-                                    viewerToken = payload.viewerToken
-                                }
-                                Toast.makeText(context, "Configuration lue — vérifie puis enregistre", Toast.LENGTH_LONG).show()
-                            }
-                        }
-                    }
-                },
-                modifier = Modifier.fillMaxWidth().height(56.dp),
-                shape = CircleShape,
-            ) {
-                Icon(Icons.Default.QrCodeScanner, contentDescription = null)
-                Spacer(Modifier.size(10.dp))
-                Text("Scanner le QR code de configuration")
-            }
-
-            OutlinedButton(
-                onClick = { scannedLink = null; showConfigCode = true },
-                modifier = Modifier.fillMaxWidth().height(52.dp),
-                shape = CircleShape,
-            ) {
-                Icon(Icons.Default.Link, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.size(8.dp))
-                Text("J'ai un code d'invitation")
-            }
-
             SectionCard {
-                Text("Configuration", style = MaterialTheme.typography.titleMedium)
-                OutlinedTextField(
-                    value = serverUrl,
-                    onValueChange = { serverUrl = it },
-                    label = { Text("Serveur d'envoi") },
-                    placeholder = { Text("https://track.exemple.fr") },
-                    singleLine = true,
-                    shape = MaterialTheme.shapes.small,
-                    modifier = Modifier.fillMaxWidth(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                Text(if (config.isValid) "Téléphone relié à la famille" else "Téléphone pas encore relié", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "La liaison se fait avec le QR code ou le code d'invitation d'un parent : aucune adresse ni clé à saisir.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Muted,
                 )
-                OutlinedTextField(
-                    value = deviceId,
-                    onValueChange = { deviceId = it },
-                    label = { Text("Identifiant de l'appareil") },
-                    placeholder = { Text("long et aléatoire") },
-                    singleLine = true,
-                    shape = MaterialTheme.shapes.small,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                OutlinedTextField(
-                    value = interval,
-                    onValueChange = { interval = it.filter(Char::isDigit).take(4) },
-                    label = { Text("Intervalle normal (secondes)") },
-                    supportingText = {
-                        Text(
-                            "15 à 3600 (300 = 5 min, conseillé). Les parents peuvent régler toutes les cadences à distance " +
-                                "(Paramètres → Famille → Fréquence de suivi) : leur réglage l'emporte.",
-                        )
-                    },
-                    singleLine = true,
-                    shape = MaterialTheme.shapes.small,
-                    modifier = Modifier.fillMaxWidth(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                )
+                OutlinedButton(onClick = onRelink, modifier = Modifier.fillMaxWidth(), shape = CircleShape) {
+                    Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.size(8.dp))
+                    Text(if (config.isValid) "Relier de nouveau" else "Relier ce téléphone")
+                }
             }
 
             PermissionWarnings(permissions, actions)
@@ -424,11 +359,8 @@ fun ChildSettingsScreen(
             Button(
                 onClick = {
                     when {
+                        !config.isValid -> onRelink()
                         !permissions.fineLocation -> actions.requestLocation()
-                        deviceId.isBlank() || serverUrl.isBlank() ->
-                            Toast.makeText(context, "Renseigne le serveur et l'identifiant", Toast.LENGTH_SHORT).show()
-                        !serverUrl.trim().startsWith("https://") && !serverUrl.trim().startsWith("http://") ->
-                            Toast.makeText(context, "L'adresse doit commencer par https://", Toast.LENGTH_SHORT).show()
                         else -> save(enabled = true) {
                             // Redémarrage pour prendre en compte la nouvelle configuration.
                             TrackingService.stop(context)
@@ -440,7 +372,7 @@ fun ChildSettingsScreen(
                 modifier = Modifier.fillMaxWidth().height(56.dp),
                 shape = CircleShape,
                 colors = ButtonDefaults.buttonColors(containerColor = AppTheme.colors.success, contentColor = Color.White),
-            ) { Text(if (status.running) "Enregistrer et redémarrer le suivi" else "Enregistrer et démarrer le suivi") }
+            ) { Text(if (status.running) "Redémarrer le suivi" else "Démarrer le suivi") }
 
             if (status.running || config.enabled) {
                 FilledTonalButton(
@@ -498,7 +430,7 @@ fun ChildSettingsScreen(
             SectionCard {
                 Text("Sécurité", style = MaterialTheme.typography.titleMedium)
                 OutlinedButton(onClick = onChangePin, modifier = Modifier.fillMaxWidth(), shape = CircleShape) {
-                    Text("Changer le code PIN")
+                    Text("Modifier le code PIN parent")
                 }
                 OutlinedButton(onClick = { confirmModeChange = true }, modifier = Modifier.fillMaxWidth(), shape = CircleShape) {
                     Text("Changer le mode de l'appareil")
@@ -532,32 +464,6 @@ fun ChildSettingsScreen(
             }
             }
         }
-    }
-
-    if (showConfigCode) {
-        ConfigCodeDialog(
-            actions = actions,
-            expected = fr.kinwaypoint.app.data.AppMode.CHILD,
-            initialLink = scannedLink,
-            onDismiss = { showConfigCode = false },
-            onResult = { cfg ->
-                showConfigCode = false
-                cfg.child?.let { c ->
-                    serverUrl = c.serverUrl
-                    deviceId = c.deviceId
-                    c.intervalSeconds?.let { interval = it.toString() }
-                    if (c.apiUrl != null && c.viewerToken != null) {
-                        viewerApi = c.apiUrl
-                        viewerToken = c.viewerToken
-                    }
-                }
-                Toast.makeText(
-                    context,
-                    (cfg.label?.let { "$it — " } ?: "") + "configuration reçue, vérifie puis enregistre",
-                    Toast.LENGTH_LONG,
-                ).show()
-            },
-        )
     }
 
     if (confirmModeChange) {

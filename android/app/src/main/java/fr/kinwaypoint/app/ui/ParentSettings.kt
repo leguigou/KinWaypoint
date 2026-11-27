@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -527,8 +528,23 @@ fun ParentSettingsScreen(
 
             if (category == "security") {
             // --- Sécurité -----------------------------------------------------------
+            // Code PIN parent : en premier, c'est le réglage qu'on vient chercher ici.
             SectionCard {
-                Text("Sécurité", style = MaterialTheme.typography.titleMedium)
+                Text("Code PIN parent", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "Il ouvre l'espace parent et protège les réglages des téléphones enfants. " +
+                        "Le changer ici ne change que le code de ce téléphone.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Muted,
+                )
+                Button(onClick = onChangePin, modifier = Modifier.fillMaxWidth(), shape = CircleShape) {
+                    Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.size(8.dp))
+                    Text("Modifier le code PIN parent")
+                }
+            }
+            SectionCard {
+                Text("Déverrouillage", style = MaterialTheme.typography.titleMedium)
                 ToggleRow(
                     icon = Icons.Default.Fingerprint,
                     title = "Déverrouiller avec l'empreinte",
@@ -561,7 +577,6 @@ fun ParentSettingsScreen(
                         )
                     }
                 }
-                OutlinedButton(onClick = onChangePin, modifier = Modifier.fillMaxWidth(), shape = CircleShape) { Text("Changer le code PIN") }
                 OutlinedButton(onClick = onLock, modifier = Modifier.fillMaxWidth(), shape = CircleShape) {
                     Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(16.dp))
                     Text("  Verrouiller maintenant")

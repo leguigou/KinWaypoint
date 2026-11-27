@@ -119,7 +119,7 @@ Un serveur **Traccar** collecte, stocke et déclenche les alertes.
 - **Ordre d'affichage des membres** par glisser-déposer (Paramètres → Famille),
   partagé par toute la famille : liste, carte, historique.
 - Verrouillage par **PIN** ou **empreinte**, délai de reverrouillage réglable
-  (1 min → jamais).
+  (1 min → jamais). **Modifier le code PIN parent** : Paramètres → Sécurité.
 - **Mise à jour depuis l'application** : notification quand une version sort,
   téléchargement, vérification SHA-256, installation ; recherche à la demande
   dans Paramètres → À propos.
@@ -131,8 +131,13 @@ Un serveur **Traccar** collecte, stocke et déclenche les alertes.
 - Écran simple : état du suivi, pas du jour, SOS, « je suis bien arrivé·e ».
 - Carte de la famille : l'enfant s'y voit, avec ses frères et sœurs et les
   parents qui partagent leur position.
-- Réglages protégés par le PIN parent, rangés par catégories : Suivi, Écoute en
-  direct, Sécurité, À propos.
+- **Liaison sans configuration** : « Enfant », code PIN parent, puis QR code ou
+  code d'invitation ; les autorisations s'enchaînent ensuite avec un seul
+  bouton. Aucune adresse ni clé n'est affichée, ni côté enfant ni dans le QR
+  code côté parent.
+- Réglages protégés par le PIN parent, rangés par catégories : Suivi (état,
+  « Relier de nouveau », démarrer / arrêter), Écoute en direct, Sécurité
+  (modifier le code PIN parent, changer de mode), À propos.
 
 ### Garder la position du parent privée
 
@@ -335,16 +340,14 @@ Secrets GitHub nécessaires :
 2. **Ajouter un enfant** : Paramètres → Famille → « Ajouter un enfant » →
    prénom → un QR code (ou un code d'invitation) s'affiche.
    Le compte Traccar du parent doit pouvoir créer des appareils.
-3. **Téléphone enfant** : installer l'APK, choisir « Enfant » (même PIN), puis
-   Réglages (cadenas) → **Suivi** → « Scanner le QR code » (ou, à distance,
-   « J'ai un code d'invitation » et les 8 chiffres) → démarrer le suivi.
-4. Sur le téléphone de l'enfant, accorder :
-   - la localisation **« Toujours autoriser »** ;
-   - l'activité physique (podomètre) ;
-   - les notifications ;
-   - l'exemption d'optimisation de la batterie ;
-   - et, pour l'écoute en direct, le micro et l'affichage par-dessus les autres
-     applications.
+3. **Téléphone enfant** : installer l'APK, choisir « Enfant », créer le code
+   PIN parent, puis **« Scanner le QR code »** (ou, à distance, taper les 8
+   chiffres du code d'invitation). Aucune adresse ni clé à voir ou à saisir :
+   le téléphone se relie tout seul et le suivi est activé.
+4. L'appli enchaîne ensuite les autorisations avec un seul bouton :
+   localisation, puis **« Toujours autoriser »**, activité physique,
+   notifications, batterie sans restriction ; et, en facultatif, le micro et
+   l'affichage par-dessus (écoute en direct) et « Ne pas déranger ».
 
    Vérifier qu'une position arrive écran éteint et remonte après une coupure
    réseau.

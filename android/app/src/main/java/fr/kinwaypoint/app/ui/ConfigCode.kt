@@ -40,6 +40,25 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
+ * Transforme ce qui a été scanné ou tapé en configuration : QR « kinwaypoint://setup »
+ * de l'appli parent, code d'invitation à 8 chiffres, ou lien HTTPS. Appel réseau :
+ * à lancer hors du thread principal. Lève une exception au message lisible.
+ */
+fun resolveConfigCode(value: String): RemoteConfig =
+    SetupPayload.decode(value)?.let { qr ->
+        RemoteConfig(
+            mode = AppMode.CHILD,
+            child = RemoteConfig.Child(qr.serverUrl, qr.deviceId, qr.intervalSeconds, qr.apiUrl, qr.viewerToken),
+            parent = null,
+            label = null,
+        )
+    } ?: when {
+        RemoteConfig.looksLikeInviteCode(value) -> RemoteConfig.redeemInvite(FAMILY_HUB, value)
+        RemoteConfig.looksLikeLink(value) -> RemoteConfig.fetch(value)
+        else -> error("Ce code n'est pas un code KinWaypoint.")
+    }
+
+/**
  * Saisie d'un code de configuration : un lien HTTPS collé ou scanné (QR).
  * Le lien est appelé, le JSON reçu est validé puis rendu via [onResult].
  *
@@ -65,22 +84,7 @@ fun ConfigCodeDialog(
         error = null
         scope.launch {
             val result = withContext(Dispatchers.IO) {
-                runCatching {
-                    // Un QR « kinwaypoint://setup » (généré par l'appli parent) vaut aussi configuration.
-                    SetupPayload.decode(value)?.let { qr ->
-                        RemoteConfig(
-                            mode = AppMode.CHILD,
-                            child = RemoteConfig.Child(qr.serverUrl, qr.deviceId, qr.intervalSeconds, qr.apiUrl, qr.viewerToken),
-                            parent = null,
-                            label = null,
-                        )
-                    } ?: if (RemoteConfig.looksLikeInviteCode(value)) {
-                        // Code d'invitation à 8 chiffres : échangé contre la configuration.
-                        RemoteConfig.redeemInvite(FAMILY_HUB, value)
-                    } else {
-                        RemoteConfig.fetch(value)
-                    }
-                }
+                runCatching { resolveConfigCode(value) }
             }
             busy = false
             result.onSuccess { cfg ->

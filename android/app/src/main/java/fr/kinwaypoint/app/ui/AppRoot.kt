@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.sp
 import fr.kinwaypoint.app.data.AppMode
 import fr.kinwaypoint.app.data.SettingsRepository
 import fr.kinwaypoint.app.service.TrackingStatus
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /** Écrans de l'application. Les écrans « protégés » exigent le PIN parent. */
@@ -57,6 +58,8 @@ sealed interface Screen {
     data object ModeSelect : Screen
     data object ChildHome : Screen
     data object ChildSettings : Screen // protégé
+    /** Liaison du téléphone enfant (QR ou code), puis autorisations. Protégé. */
+    data class ChildLink(val relink: Boolean = false) : Screen
     data object Parent : Screen // protégé
     data class PinCheck(val then: AfterPin, val back: Screen?) : Screen
     data class PinSetup(val then: AfterPin, val back: Screen?) : Screen
@@ -69,7 +72,7 @@ sealed interface AfterPin {
     data class NewPin(val back: Screen) : AfterPin
 }
 
-private fun Screen.isProtected() = this is Screen.ChildSettings || this is Screen.Parent
+private fun Screen.isProtected() = this is Screen.ChildSettings || this is Screen.Parent || this is Screen.ChildLink
 
 /**
  * Racine de l'application : un seul APK, deux modes.
@@ -141,9 +144,14 @@ fun AppRoot(
                 repository.setMode(action.mode)
                 pendingRemote?.let { cfg ->
                     cfg.applyTo(repository)
+                    // Téléphone enfant relié par code : le suivi est activé d'office.
+                    if (action.mode == AppMode.CHILD && cfg.child != null) {
+                        repository.save(repository.config.first().copy(enabled = true))
+                    }
                     pendingRemote = null
                 }
-                screen = if (action.mode == AppMode.CHILD) Screen.ChildSettings else Screen.Parent
+                // Enfant : liaison (QR ou code) puis autorisations, sans écran de configuration.
+                screen = if (action.mode == AppMode.CHILD) Screen.ChildLink() else Screen.Parent
             }
         }
     }
@@ -189,6 +197,19 @@ fun AppRoot(
             onOpenSettings = {
                 screen = Screen.PinCheck(AfterPin.Go(Screen.ChildSettings), back = Screen.ChildHome)
             },
+            onLink = {
+                screen = Screen.PinCheck(AfterPin.Go(Screen.ChildLink()), back = Screen.ChildHome)
+            },
+        )
+
+        is Screen.ChildLink -> ChildLinkScreen(
+            repository = repository,
+            config = cfg,
+            permissions = permissions,
+            actions = actions,
+            relink = current.relink,
+            onDone = { screen = Screen.ChildHome },
+            onCancel = { screen = if (current.relink) Screen.ChildSettings else Screen.ChildHome },
         )
 
         Screen.ChildSettings -> ChildSettingsScreen(
@@ -200,6 +221,7 @@ fun AppRoot(
             onClose = { screen = Screen.ChildHome },
             onChangePin = { screen = Screen.PinCheck(AfterPin.NewPin(Screen.ChildSettings), back = Screen.ChildSettings) },
             onChangeMode = { changeMode() },
+            onRelink = { screen = Screen.ChildLink(relink = true) },
         )
 
         Screen.Parent -> if (!parentCfg.isConnected) {
@@ -229,7 +251,9 @@ fun AppRoot(
             subtitle = when (current.then) {
                 is AfterPin.NewPin -> "Saisis le code actuel avant d'en choisir un nouveau."
                 is AfterPin.ChooseMode -> "Le code parent est requis pour changer le mode."
-                is AfterPin.Go -> if (current.then.screen == Screen.Parent) {
+                is AfterPin.Go -> if (current.then.screen is Screen.ChildLink) {
+                    "Code parent pour relier ce téléphone."
+                } else if (current.then.screen == Screen.Parent) {
                     "Saisis ton code pour ouvrir l'espace parent."
                 } else {
                     "Réservé aux parents."

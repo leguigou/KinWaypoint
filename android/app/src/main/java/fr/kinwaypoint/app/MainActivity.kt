@@ -67,6 +67,11 @@ class MainActivity : FragmentActivity() {
         }
     }
 
+    // Localisation « Toujours » : demande séparée (Android 11+ ouvre sa propre page de réglage).
+    private val requestBackground = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+        permissionsState = snapshotPermissions()
+    }
+
     private val requestMicrophone = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
         permissionsState = snapshotPermissions()
     }
@@ -144,6 +149,14 @@ class MainActivity : FragmentActivity() {
                 imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
             },
             requestMicrophone = { requestMicrophone.launch(Manifest.permission.RECORD_AUDIO) },
+            requestBackgroundLocation = {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    runCatching { requestBackground.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION) }
+                        .onFailure { openAppSettings() }
+                } else {
+                    openAppSettings()
+                }
+            },
             openDndSettings = {
                 runCatching { startActivity(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)) }
                     .onFailure { openAppSettings() }

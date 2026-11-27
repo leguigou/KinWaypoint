@@ -40,6 +40,8 @@ class PlatformActions(
     val openOverlaySettings: () -> Unit = {},
     /** Ouvre le réglage « Accès Ne pas déranger ». */
     val openDndSettings: () -> Unit = {},
+    /** Demande la localisation « Toujours autoriser » (Android ouvre sa page dédiée). */
+    val requestBackgroundLocation: () -> Unit = openAppSettings,
 )
 
 fun formatTime(millis: Long): String =

@@ -9,7 +9,7 @@ est créé à ce moment-là. Présentation générale et installation du serveur
 
 | Mode | Sans PIN | Avec PIN (ou empreinte en mode parent) |
 |---|---|---|
-| Enfant | État du suivi, pas du jour, SOS, « je suis bien arrivé·e », carte de la famille | Réglages : serveur, identifiant, intervalle, écoute en direct, arrêt du suivi, changement de mode ou de PIN |
+| Enfant | État du suivi, pas du jour, SOS, « je suis bien arrivé·e », carte de la famille | Liaison (QR ou code d'invitation), écoute en direct, arrêt du suivi, changement de mode ou de PIN |
 | Parent | Rien (écran de saisie) | Tout l'espace parent |
 
 - Le PIN n'est jamais stocké en clair (empreinte PBKDF2 salée).
@@ -40,6 +40,7 @@ est créé à ce moment-là. Présentation générale et installation du serveur
 | `net/AudioRelay.kt` | Relais audio de l'écoute en direct |
 | `motion/` | Vitesse, activité (marche / voiture), podomètre, heure d'arrivée estimée |
 | `push/PushService.kt` | Réception Firebase (alertes, réveil pour « localiser » / « sonner ») |
+| `ui/ChildOnboarding.kt` | Liaison d'un téléphone enfant (QR ou code), puis autorisations une par une |
 | `ui/` | Écrans Compose : carte, historique, lieux, réglages, bilan, mises à jour |
 
 ## Suivi (mode enfant, et parent qui partage sa position)
@@ -114,17 +115,15 @@ de mots de passe). Ne jamais les committer.
 
 1. Installer l'APK (autoriser l'installation depuis cette source).
 2. Choisir **Enfant**, créer le PIN parent.
-3. Réglages (cadenas) → **Suivi** → « Scanner le QR code » affiché par l'appli parent
-   (membre → ⋮ → QR code).
-4. Accorder :
-   - la localisation **« Toujours autoriser »** ;
-   - l'activité physique ;
-   - les notifications ;
-   - l'exemption d'optimisation de la batterie.
-5. Pour l'écoute en direct, accorder aussi le micro et l'affichage par-dessus
-   les autres applications (les deux sont indispensables). Pour que « Faire
-   sonner » passe en « Ne pas déranger », accorder l'« Accès Ne pas déranger ».
-6. « Enregistrer et démarrer le suivi ».
+3. « Scanner le QR code » affiché par l'appli parent (Paramètres → Famille →
+   « Ajouter un enfant », ou membre → ⋮ → QR code), ou taper le code
+   d'invitation à 8 chiffres (il part tout seul au 8e chiffre).
+4. Suivre le bouton unique : localisation, « Toujours autoriser », activité
+   physique, notifications, batterie sans restriction. En facultatif : micro
+   et affichage par-dessus (écoute en direct), « Ne pas déranger » (sonnerie).
+   Au 2e appui sans effet (autorisation refusée définitivement), la page de
+   l'appli s'ouvre dans les réglages Android.
+5. « Terminer » : le suivi est déjà actif.
 
 Sans la localisation « toujours » et l'exemption batterie, Android coupe le
 service écran éteint : c'est la cause n°1 des « positions qui n'arrivent plus ».
