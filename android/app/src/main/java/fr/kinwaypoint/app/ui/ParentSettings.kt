@@ -22,6 +22,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.GpsFixed
+import androidx.compose.material.icons.filled.Balance
+import androidx.compose.material.icons.filled.Eco
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.material.icons.filled.Sms
 import androidx.compose.material.icons.filled.Warning
@@ -1149,16 +1152,43 @@ private fun CadenceDialog(member: Member, onDismiss: () -> Unit, onSave: (fr.kin
         title = { Text("Fréquence de ${member.name}") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                // FlowRow : une gélule qui ne tient pas passe à la ligne au lieu d'être écrasée.
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(
-                        "Économe" to fr.kinwaypoint.app.net.Cadence.ECO,
-                        "Équilibré" to fr.kinwaypoint.app.net.Cadence.BALANCED,
-                        "Précis" to fr.kinwaypoint.app.net.Cadence.PRECISE,
-                    ).forEach { (label, preset) ->
-                        androidx.compose.material3.FilterChip(selected = current == preset, onClick = { apply(preset) }, label = { Text(label, maxLines = 1, softWrap = false) })
+                // Trois préréglages en pictogrammes (même largeur), légende dessous.
+                val presets = listOf(
+                    Triple(Icons.Default.Eco, "Économe · batterie préservée", fr.kinwaypoint.app.net.Cadence.ECO),
+                    Triple(Icons.Default.Balance, "Équilibré · conseillé", fr.kinwaypoint.app.net.Cadence.BALANCED),
+                    Triple(Icons.Default.GpsFixed, "Précis · trajets détaillés", fr.kinwaypoint.app.net.Cadence.PRECISE),
+                )
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    presets.forEach { (icon, label, preset) ->
+                        val selected = current == preset
+                        Box(
+                            Modifier.weight(1f).height(56.dp)
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f) else Color.Transparent)
+                                .border(
+                                    if (selected) 2.dp else 1.dp,
+                                    if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                                    RoundedCornerShape(16.dp),
+                                )
+                                .clickable(onClickLabel = label) { apply(preset) },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                icon,
+                                contentDescription = label,
+                                tint = if (selected) MaterialTheme.colorScheme.primary else Muted,
+                                modifier = Modifier.size(26.dp),
+                            )
+                        }
                     }
                 }
+                Text(
+                    presets.firstOrNull { it.third == current }?.second ?: "Personnalisé",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                )
                 Text("En temps normal : toutes les ${normalMin.toInt()} min", style = MaterialTheme.typography.bodyMedium)
                 KwSlider(value = normalMin, onValueChange = { normalMin = it.toInt().toFloat() }, valueRange = 1f..30f)
                 Text("En voiture : toutes les ${movingSec.toInt()} s", style = MaterialTheme.typography.bodyMedium)
