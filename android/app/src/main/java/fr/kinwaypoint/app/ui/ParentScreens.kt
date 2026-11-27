@@ -45,6 +45,10 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material.icons.Icons
+import kotlinx.coroutines.flow.first
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.filled.BatteryAlert
 import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
@@ -333,6 +337,8 @@ fun ParentHomeScreen(
     var error by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(true) }
     var refreshedAt by remember { mutableLongStateOf(0L) }
+    // Notifications arrivées depuis la dernière ouverture de la cloche (pastille).
+    var unseenEvents by remember { mutableStateOf(0) }
     var refreshTick by remember { mutableIntStateOf(0) }
     var settingsOpen by remember { mutableStateOf(false) }
     var placesOpen by remember { mutableStateOf(false) }
@@ -398,6 +404,14 @@ fun ParentHomeScreen(
             alarms = recent
             error = null
             refreshedAt = System.currentTimeMillis()
+            // Pastille de la cloche : notifications depuis la dernière consultation (7 jours au plus).
+            // Premier lancement : on part de maintenant, pas de pastille sur l'historique ancien.
+            var seenAt = repository.eventsSeenAt.first()
+            if (seenAt == 0L) { seenAt = refreshedAt; repository.markEventsSeen(seenAt) }
+            val from = maxOf(seenAt + 1, refreshedAt - 7L * 24 * 3600 * 1000)
+            withContext(Dispatchers.IO) {
+                runCatching { api.events(config.token, members.map { it.id }, from, refreshedAt + 60_000).count { it.time > seenAt } }
+            }.onSuccess { unseenEvents = it }
         }.onFailure {
             if (it is AuthException) {
                 // Jeton expiré ou révoqué : retour à l'écran de connexion.
@@ -639,8 +653,36 @@ fun ParentHomeScreen(
                     FilledTonalIconButton(onClick = { refreshTick++ }) {
                         Icon(Icons.Default.Refresh, contentDescription = "Actualiser")
                     }
-                    FilledTonalIconButton(onClick = { eventsOpen = true }) {
-                        Icon(Icons.Default.Notifications, contentDescription = "Notifications")
+                    // Cloche avec pastille : nombre de notifications non consultées.
+                    Box {
+                        FilledTonalIconButton(onClick = {
+                            eventsOpen = true
+                            unseenEvents = 0
+                            scope.launch { repository.markEventsSeen() }
+                        }) {
+                            Icon(
+                                Icons.Default.Notifications,
+                                contentDescription = if (unseenEvents > 0) "Notifications, $unseenEvents nouvelles" else "Notifications",
+                            )
+                        }
+                        if (unseenEvents > 0) {
+                            Box(
+                                Modifier.align(Alignment.TopEnd).offset(x = 2.dp, y = (-2).dp)
+                                    .defaultMinSize(minWidth = 20.dp, minHeight = 20.dp)
+                                    .clip(CircleShape).background(Danger)
+                                    .border(2.dp, MaterialTheme.colorScheme.background, CircleShape)
+                                    .padding(horizontal = 5.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    if (unseenEvents > 99) "99+" else unseenEvents.toString(),
+                                    color = Color.White,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                )
+                            }
+                        }
                     }
                     FilledTonalIconButton(onClick = { historyFocus = null; historyOpen = true }) {
                         Icon(Icons.Default.History, contentDescription = "Historique")

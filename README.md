@@ -79,6 +79,8 @@ Un serveur **Traccar** collecte, stocke et déclenche les alertes.
   - excès de vitesse ;
   - pas de nouvelles depuis 1 h ;
   - **retour près d'un parent** (proximité calculée par le serveur).
+- **Pastille sur la cloche** de l'accueil : nombre de notifications arrivées
+  depuis la dernière ouverture de l'écran des notifications (« 99+ » au-delà).
 
 ### Historique
 - Jour par jour, du plus récent au plus ancien : arrêts et trajets (marche /

@@ -93,6 +93,8 @@ class SettingsRepository(private val context: Context) {
         val PIN_LOCKED_UNTIL = longPreferencesKey("pin_locked_until")
 
         val ACK_ALARM = longPreferencesKey("parent_ack_alarm_id")
+        /** Dernière ouverture de l'écran des notifications (pastille de la cloche). */
+        val EVENTS_SEEN = longPreferencesKey("parent_events_seen_at")
 
         val BIOMETRIC = booleanPreferencesKey("parent_biometric")
         val BIOMETRIC_OFFER_DISMISSED = booleanPreferencesKey("parent_biometric_offer_dismissed")
@@ -266,6 +268,13 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun savePushToken(token: String) {
         context.dataStore.edit { prefs -> prefs[Keys.PUSH_TOKEN] = token }
+    }
+
+    /** Heure de la dernière consultation des notifications (0 = jamais). */
+    val eventsSeenAt: Flow<Long> = context.dataStore.data.map { prefs -> prefs[Keys.EVENTS_SEEN] ?: 0L }
+
+    suspend fun markEventsSeen(time: Long = System.currentTimeMillis()) {
+        context.dataStore.edit { prefs -> prefs[Keys.EVENTS_SEEN] = time }
     }
 
     suspend fun acknowledgeAlarm(id: Long) {
