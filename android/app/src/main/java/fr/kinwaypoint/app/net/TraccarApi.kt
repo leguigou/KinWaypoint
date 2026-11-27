@@ -86,7 +86,48 @@ data class Place(
     val color: String = "#5B5BD6",
     /** Alertes d'arrivée / départ ; false = simple point d'intérêt sur la carte. */
     val alerts: Boolean = true,
+    /** Enfants concernés par les alertes ; null = tout le monde. */
+    val childIds: List<Long>? = null,
+    /** Horaires des alertes ; null = tout le temps. */
+    val schedule: PlaceSchedule? = null,
 )
+
+/** Appareils concernés par les alertes d'un lieu, parmi ceux donnés. */
+fun Place.targets(deviceIds: List<Long>): List<Long> =
+    childIds?.takeIf { it.isNotEmpty() }?.let { chosen -> deviceIds.filter { it in chosen } } ?: deviceIds
+
+/**
+ * Créneau d'un lieu : jours (1 = lundi … 7 = dimanche) et heures (minutes depuis
+ * minuit). Fin avant début = le créneau passe minuit (ex. 20:00 → 07:00).
+ */
+data class PlaceSchedule(val days: Set<Int>, val fromMinutes: Int, val toMinutes: Int) {
+    /**
+     * Calendrier iCalendar lu par Traccar (calendrier de la zone) : les arrivées
+     * et départs ne sont signalés que pendant ces créneaux. Fuseau du téléphone,
+     * heure d'été comprise. Format vérifié avec ical4j 4.4.0 (celui de Traccar 6.17).
+     */
+    fun toICalendar(placeId: Long, name: String, zone: String = java.util.TimeZone.getDefault().id): String {
+        val byDay = days.sorted().joinToString(",") { listOf("MO", "TU", "WE", "TH", "FR", "SA", "SU")[it - 1] }
+        // Lundi 5 janvier 2026 (puis +1 jour si le créneau passe minuit).
+        fun stamp(day: Int, minutes: Int) = String.format(java.util.Locale.US, "202601%02dT%02d%02d00", day, minutes / 60, minutes % 60)
+        val endDay = if (toMinutes <= fromMinutes) 6 else 5
+        val safeName = name.replace(Regex("[\\r\\n,;]"), " ")
+        return listOf(
+            "BEGIN:VCALENDAR",
+            "VERSION:2.0",
+            "PRODID:-//KinWaypoint//Horaires//FR",
+            "BEGIN:VEVENT",
+            "UID:kw-place-$placeId@kinwaypoint",
+            "DTSTAMP:20260101T000000Z",
+            "DTSTART;TZID=$zone:${stamp(5, fromMinutes)}",
+            "DTEND;TZID=$zone:${stamp(endDay, toMinutes)}",
+            "RRULE:FREQ=WEEKLY;BYDAY=$byDay",
+            "SUMMARY:$safeName",
+            "END:VEVENT",
+            "END:VCALENDAR",
+        ).joinToString("\r\n", postfix = "\r\n")
+    }
+}
 
 /** Un événement à afficher dans la cloche : arrivée, départ, SOS. */
 data class FamilyEvent(
@@ -437,6 +478,13 @@ class TraccarApi(baseUrl: String) {
                 icon = g.optJSONObject("attributes")?.optString("kwIcon")?.takeIf { it.isNotBlank() } ?: "other",
                 color = g.optJSONObject("attributes")?.optString("kwColor")?.takeIf { it.matches(Regex("#[0-9A-Fa-f]{6}")) } ?: "#5B5BD6",
                 alerts = g.optJSONObject("attributes")?.let { if (it.has("kwAlerts")) it.optBoolean("kwAlerts") else true } ?: true,
+                childIds = g.optJSONObject("attributes")?.optString("kwChildren")?.takeIf { it.isNotBlank() }
+                    ?.split(",")?.mapNotNull { it.trim().toLongOrNull() },
+                schedule = g.optJSONObject("attributes")?.let { a ->
+                    val days = a.optString("kwDays").split(",").mapNotNull { it.trim().toIntOrNull() }.filter { it in 1..7 }.toSet()
+                    if (days.isEmpty() || g.optLong("calendarId", 0L) == 0L) null
+                    else PlaceSchedule(days, a.optInt("kwFrom", 480), a.optInt("kwTo", 1020))
+                },
             )
         }.sortedBy { it.name.lowercase() }
     }
@@ -459,21 +507,53 @@ class TraccarApi(baseUrl: String) {
                 JSONObject(response.body?.string().orEmpty()).getLong("id")
             }
         } else {
-            // Objet complet relu puis renvoyé (Traccar refuse un PUT partiel).
-            val g = authorized(token, Request.Builder().url(url("api/geofences/${place.id}")).get()).use { response ->
-                check(response)
-                JSONObject(response.body?.string().orEmpty())
-            }
-            val attrs = g.optJSONObject("attributes") ?: JSONObject()
-            attrs.put("kwIcon", place.icon).put("kwColor", place.color).put("kwAlerts", place.alerts)
-            g.put("name", place.name.trim()).put("area", area).put("attributes", attrs)
-            val put = Request.Builder().url(url("api/geofences/${place.id}"))
-                .put(g.toString().toRequestBody("application/json".toMediaType()))
-            authorized(token, put).use { check(it) }
             place.id
         }
-        if (place.alerts) linkPlace(token, id, deviceIds) else unlinkPlace(token, id, deviceIds)
+        // Objet complet relu puis renvoyé (Traccar refuse un PUT partiel) : attributs,
+        // enfants concernés et calendrier des horaires.
+        val g = getObject(token, url("api/geofences/$id"))
+        val attrs = g.optJSONObject("attributes") ?: JSONObject()
+        attrs.put("kwIcon", place.icon).put("kwColor", place.color).put("kwAlerts", place.alerts)
+        if (place.childIds.isNullOrEmpty()) attrs.remove("kwChildren") else attrs.put("kwChildren", place.childIds.joinToString(","))
+        val oldCalendar = g.optLong("calendarId", 0L)
+        val schedule = place.schedule?.takeIf { place.alerts && it.days.isNotEmpty() }
+        val calendarId = if (schedule != null) {
+            attrs.put("kwDays", schedule.days.sorted().joinToString(",")).put("kwFrom", schedule.fromMinutes).put("kwTo", schedule.toMinutes)
+            saveCalendar(token, oldCalendar, "KinWaypoint · ${place.name.trim()}", schedule.toICalendar(id, place.name.trim()))
+        } else {
+            attrs.remove("kwDays"); attrs.remove("kwFrom"); attrs.remove("kwTo")
+            0L
+        }
+        g.put("name", place.name.trim()).put("area", area).put("attributes", attrs).put("calendarId", calendarId)
+        putObject(token, url("api/geofences/$id"), g.toString())
+        if (oldCalendar != 0L && calendarId == 0L) {
+            runCatching { authorized(token, Request.Builder().url(url("api/calendars/$oldCalendar")).delete()).close() }
+        }
+        // Alertes : seulement pour les appareils concernés ; les autres sont détachés.
+        val targets = place.targets(deviceIds)
+        if (place.alerts) linkPlace(token, id, targets) else unlinkPlace(token, id, deviceIds)
+        if (place.alerts) unlinkPlace(token, id, deviceIds - targets.toSet())
         return id
+    }
+
+    /** Crée ou met à jour un calendrier Traccar (contenu iCalendar en base64). */
+    private fun saveCalendar(token: String, existingId: Long, name: String, ics: String): Long {
+        val data = android.util.Base64.encodeToString(ics.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
+        if (existingId != 0L) {
+            val updated = runCatching {
+                val c = getObject(token, url("api/calendars/$existingId"))
+                c.put("name", name).put("data", data)
+                putObject(token, url("api/calendars/$existingId"), c.toString())
+            }
+            if (updated.isSuccess) return existingId
+        }
+        val body = JSONObject().put("name", name).put("data", data)
+        val create = Request.Builder().url(url("api/calendars"))
+            .post(body.toString().toRequestBody("application/json".toMediaType()))
+        return authorized(token, create).use { response ->
+            check(response)
+            JSONObject(response.body?.string().orEmpty()).getLong("id")
+        }
     }
 
     /** Détache un lieu des appareils : plus d'alertes d'arrivée / départ. */

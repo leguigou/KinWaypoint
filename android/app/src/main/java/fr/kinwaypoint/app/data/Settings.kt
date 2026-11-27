@@ -109,6 +109,8 @@ class SettingsRepository(private val context: Context) {
         val RELOCK_MINUTES = intPreferencesKey("parent_relock_minutes")
         val LAST_ACTIVE = longPreferencesKey("app_last_active_at")
         val PARENT_UNLOCKED = booleanPreferencesKey("parent_unlocked")
+
+        val GHOST = booleanPreferencesKey("parent_ghost")
     }
 
     val mode: Flow<AppMode> = context.dataStore.data.map { prefs ->
@@ -205,6 +207,17 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setRelockMinutes(minutes: Int) {
         context.dataStore.edit { prefs -> prefs[Keys.RELOCK_MINUTES] = minutes }
+    }
+
+    /**
+     * Mode fantôme voulu par le parent (null = jamais réglé ici). Mémorisé sur le
+     * téléphone : quand le partage est coupé, le serveur masque toujours la
+     * position, on ne peut donc plus y lire la préférence.
+     */
+    val ghostMode: Flow<Boolean?> = context.dataStore.data.map { prefs -> prefs[Keys.GHOST] }
+
+    suspend fun setGhostMode(ghost: Boolean) {
+        context.dataStore.edit { prefs -> prefs[Keys.GHOST] = ghost }
     }
 
     /** Dernière utilisation de l'appli (heure murale), pour décider au redémarrage. */

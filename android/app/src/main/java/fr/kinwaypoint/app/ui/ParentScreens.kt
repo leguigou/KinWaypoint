@@ -101,6 +101,7 @@ import fr.kinwaypoint.app.net.Alarm
 import fr.kinwaypoint.app.net.AuthException
 import fr.kinwaypoint.app.net.Member
 import fr.kinwaypoint.app.net.TraccarApi
+import fr.kinwaypoint.app.net.targets
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -444,7 +445,12 @@ fun ParentHomeScreen(
             }
             runCatching { api.shareChildrenWithEachOther(config.token, members) }
             // Chaque lieu s'applique à tous les appareils (y compris un enfant ajouté après le lieu).
-            places.filter { it.alerts }.forEach { place -> runCatching { api.linkPlace(config.token, place.id, members.map { it.id }) } }
+            places.filter { it.alerts }.forEach { place ->
+                val all = members.map { it.id }
+                val targets = place.targets(all)
+                runCatching { api.linkPlace(config.token, place.id, targets) }
+                if (targets.size < all.size) runCatching { api.unlinkPlace(config.token, place.id, all - targets.toSet()) }
+            }
             // Les lieux apparaissent aussi sur la carte des enfants.
             runCatching { api.sharePlacesWithChildren(config.token, places.map { it.id }) }
         }
@@ -501,6 +507,7 @@ fun ParentHomeScreen(
             permissions = permissions,
             onChanged = { refreshTick++ },
             onBack = { placesOpen = false },
+            photos = photos,
         )
     } else if (eventsOpen) {
         EventsScreen(
@@ -1034,6 +1041,8 @@ private fun MemberCard(
                 StatusPill("${placeEmoji(it.icon)} ${it.name}$since", parseHex(it.color) ?: MaterialTheme.colorScheme.primary, icon = null, showDot = false)
             }
             StatusPill(if (member.online) "En ligne" else "Hors ligne", if (member.online) Ok else Idle)
+            // Ancienneté de la position : vert < 15 min, orange < 1 h, rouge au-delà.
+            position?.let { StatusPill("🕒 ${relativeTime(it.fixTime)}", Color(freshnessColor(it.fixTime)), showDot = false) }
             battery?.let {
                 StatusPill(
                     "$it %" + if (charging) " · en charge" else "",
@@ -1050,8 +1059,9 @@ private fun MemberCard(
                 "silent" -> StatusPill("Silencieux", Warning, icon = Icons.AutoMirrored.Filled.VolumeOff)
                 "vibrate" -> StatusPill("Vibreur", Muted, icon = Icons.Default.Vibration)
             }
+            // Précision : vert ≤ 30 m, orange ≤ 100 m, rouge au-delà.
             position?.takeIf { it.accuracy > 0 }?.let {
-                StatusPill("± ${it.accuracy.toInt()} m", Muted, icon = Icons.Default.GpsFixed)
+                StatusPill("± ${it.accuracy.toInt()} m · ${accuracyWord(it.accuracy)}", Color(accuracyColor(it.accuracy)), icon = Icons.Default.GpsFixed)
             }
             // Distance parcourue aujourd'hui : à pied, vélo, véhicule.
             travel?.let { t -> travelParts(t).forEach { (emoji, km) -> StatusPill("$emoji $km", MaterialTheme.colorScheme.tertiary, showDot = false) } }

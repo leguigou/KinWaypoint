@@ -31,6 +31,10 @@ import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
+import fr.kinwaypoint.app.net.PlaceSchedule
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -67,6 +71,7 @@ import org.maplibre.android.geometry.LatLng
  * appliquée à tous les appareils : le serveur génère les événements d'arrivée
  * et de départ, envoyés en notification aux parents.
  */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun PlacesScreen(
     api: TraccarApi,
@@ -76,6 +81,7 @@ fun PlacesScreen(
     permissions: PermissionSnapshot,
     onChanged: () -> Unit,
     onBack: () -> Unit,
+    photos: Map<Long, android.graphics.Bitmap> = emptyMap(),
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -93,20 +99,50 @@ fun PlacesScreen(
     var color by remember { mutableStateOf("#5B5BD6") }
     var pickingColor by remember { mutableStateOf(false) }
     var alerts by remember { mutableStateOf(true) }
+    // Enfants concernés (null = tout le monde) et horaires des alertes.
+    var chosen by remember { mutableStateOf<Set<Long>?>(null) }
+    var scheduleOn by remember { mutableStateOf(false) }
+    var days by remember { mutableStateOf(setOf(1, 2, 3, 4, 5)) }
+    var fromMinutes by remember { mutableIntStateOf(8 * 60) }
+    var toMinutes by remember { mutableIntStateOf(17 * 60) }
+    var pickingTime by remember { mutableStateOf<String?>(null) } // "from" / "to"
+    var detail by remember { mutableStateOf<Place?>(null) }
+    var suggestions by remember { mutableStateOf<List<PlaceSuggestion>>(emptyList()) }
 
     fun startAdd() {
         editingId = 0L; name = ""; icon = "home"; color = "#5B5BD6"; alerts = true; radius = 150f
+        chosen = null; scheduleOn = false; days = setOf(1, 2, 3, 4, 5); fromMinutes = 8 * 60; toMinutes = 17 * 60
         adding = true
+    }
+
+    fun startAddAt(s: PlaceSuggestion) {
+        startAdd()
+        name = s.name; icon = s.icon
+        state.map?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(s.latitude, s.longitude), 16.0))
     }
 
     fun startEdit(p: Place) {
         editingId = p.id; name = p.name; icon = p.icon; color = p.color; alerts = p.alerts
         radius = p.radius.toFloat().coerceIn(30f, 500f)
+        chosen = p.childIds?.toSet()
+        scheduleOn = p.schedule != null
+        p.schedule?.let { days = it.days; fromMinutes = it.fromMinutes; toMinutes = it.toMinutes }
         adding = true
         state.map?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(p.latitude, p.longitude), 16.0))
     }
 
-    BackHandler { if (adding) adding = false else onBack() }
+    BackHandler { if (detail != null) detail = null else if (adding) adding = false else onBack() }
+
+    // Lieux fréquents des 14 derniers jours, pas encore enregistrés.
+    LaunchedEffect(members.map { it.id }, places.map { it.id }) {
+        val now = System.currentTimeMillis()
+        suggestions = withContext(Dispatchers.IO) {
+            runCatching {
+                val tracks = members.map { m -> runCatching { api.positions(token, m.id, now - 14 * 24 * 3_600_000L, now) }.getOrDefault(emptyList()) }
+                suggestPlaces(tracks, places)
+            }.getOrDefault(emptyList())
+        }
+    }
 
     // Centre de la carte = position du futur lieu.
     LaunchedEffect(state.map) {
@@ -139,6 +175,7 @@ fun PlacesScreen(
         }
     }
 
+    Box(Modifier.fillMaxSize()) {
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -241,6 +278,75 @@ fun PlacesScreen(
                             }
                             Switch(checked = alerts, onCheckedChange = { alerts = it })
                         }
+                        if (alerts) {
+                            // Qui est concerné par les alertes de ce lieu.
+                            Text("Pour qui ?", style = MaterialTheme.typography.labelLarge)
+                            androidx.compose.foundation.layout.FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                FilterChip(selected = chosen == null, onClick = { chosen = null }, label = { Text("Tout le monde") })
+                                members.forEach { m ->
+                                    val on = chosen?.contains(m.id) == true
+                                    FilterChip(
+                                        selected = on,
+                                        onClick = {
+                                            val next = (chosen ?: emptySet()).let { if (on) it - m.id else it + m.id }
+                                            chosen = next.ifEmpty { null }
+                                        },
+                                        label = { Text(m.name) },
+                                    )
+                                }
+                            }
+                            // Horaires : alertes seulement à certains moments (calendrier du serveur).
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("Seulement à certains horaires", style = MaterialTheme.typography.titleSmall)
+                                    Text(
+                                        if (scheduleOn) PlaceSchedule(days, fromMinutes, toMinutes).label() else "Alertes à toute heure.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Muted,
+                                    )
+                                }
+                                Switch(checked = scheduleOn, onCheckedChange = { scheduleOn = it })
+                            }
+                            if (scheduleOn) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    listOf("L", "M", "M", "J", "V", "S", "D").forEachIndexed { i, letter ->
+                                        val day = i + 1
+                                        val on = day in days
+                                        Box(
+                                            Modifier
+                                                .size(38.dp)
+                                                .clip(CircleShape)
+                                                .background(if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant)
+                                                .clickable { days = if (on) days - day else days + day },
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            Text(
+                                                letter,
+                                                color = if (on) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                style = MaterialTheme.typography.labelLarge,
+                                            )
+                                        }
+                                    }
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    OutlinedButton(onClick = { pickingTime = "from" }, shape = CircleShape, modifier = Modifier.weight(1f)) {
+                                        Text("De ${hhmmMinutes(fromMinutes)}")
+                                    }
+                                    OutlinedButton(onClick = { pickingTime = "to" }, shape = CircleShape, modifier = Modifier.weight(1f)) {
+                                        Text("à ${hhmmMinutes(toMinutes)}")
+                                    }
+                                }
+                                if (toMinutes <= fromMinutes) {
+                                    Text("Le créneau passe minuit : il commence les jours choisis et finit le lendemain.", style = MaterialTheme.typography.bodySmall, color = Muted)
+                                }
+                                if (days.isEmpty()) {
+                                    Text("Choisis au moins un jour.", style = MaterialTheme.typography.bodySmall, color = Danger)
+                                }
+                            }
+                        }
                         Text("Rayon : ${radius.toInt()} m", style = MaterialTheme.typography.labelLarge)
                         Slider(value = radius, onValueChange = { radius = it }, valueRange = 30f..500f)
                         Button(
@@ -253,7 +359,11 @@ fun PlacesScreen(
                                         runCatching {
                                             api.savePlace(
                                                 token,
-                                                Place(editingId, name.ifBlank { "Lieu" }, c.latitude, c.longitude, radius.toDouble(), icon, color, alerts),
+                                                Place(
+                                                    editingId, name.ifBlank { "Lieu" }, c.latitude, c.longitude, radius.toDouble(), icon, color, alerts,
+                                                    childIds = chosen?.toList(),
+                                                    schedule = if (scheduleOn && days.isNotEmpty()) PlaceSchedule(days, fromMinutes, toMinutes) else null,
+                                                ),
                                                 ids,
                                             )
                                         }
@@ -265,7 +375,7 @@ fun PlacesScreen(
                                     busy = false
                                 }
                             },
-                            enabled = !busy && center != null && name.isNotBlank(),
+                            enabled = !busy && center != null && name.isNotBlank() && !(alerts && scheduleOn && days.isEmpty()),
                             shape = CircleShape,
                             modifier = Modifier.fillMaxWidth().height(52.dp),
                         ) { Text(if (editingId == 0L) "Enregistrer le lieu" else "Enregistrer les modifications") }
@@ -283,7 +393,7 @@ fun PlacesScreen(
                             }
                         }
                         items(places, key = { it.id }) { p ->
-                            SectionCard(modifier = Modifier.clickable { startEdit(p) }) {
+                            SectionCard(modifier = Modifier.clickable { detail = p }) {
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                     Box(
                                         Modifier.size(40.dp).clip(MaterialTheme.shapes.small).background(parseHex(p.color) ?: MaterialTheme.colorScheme.primary),
@@ -292,7 +402,14 @@ fun PlacesScreen(
                                     Column(Modifier.weight(1f)) {
                                         Text(p.name, style = MaterialTheme.typography.titleMedium)
                                         Text(
-                                            "Rayon ${p.radius.toInt()} m · " + if (p.alerts) "alertes activées" else "point d'intérêt",
+                                            if (!p.alerts) {
+                                                "Rayon ${p.radius.toInt()} m · point d'intérêt"
+                                            } else {
+                                                listOfNotNull(
+                                                    p.childIds?.let { ids -> members.filter { it.id in ids }.joinToString(", ") { it.name } }?.ifBlank { null } ?: "Tout le monde",
+                                                    p.schedule?.label() ?: "à toute heure",
+                                                ).joinToString(" · ")
+                                            },
                                             style = MaterialTheme.typography.bodySmall,
                                             color = Muted,
                                         )
@@ -301,6 +418,29 @@ fun PlacesScreen(
                                         state.map?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(p.latitude, p.longitude), 16.0))
                                     }) { Icon(Icons.Default.LocationOn, contentDescription = "Voir") }
                                     IconButton(onClick = { deleting = p }) { Icon(Icons.Default.Delete, contentDescription = "Supprimer", tint = Danger) }
+                                }
+                            }
+                        }
+                        // Lieux fréquents repérés dans les déplacements, pas encore enregistrés.
+                        if (suggestions.isNotEmpty()) {
+                            item { Text("Lieux fréquents suggérés", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp)) }
+                            items(suggestions, key = { "s-${it.latitude}-${it.longitude}" }) { s ->
+                                SectionCard(container = SoftGreen) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                        Text(placeEmoji(s.icon), style = MaterialTheme.typography.headlineSmall)
+                                        Column(Modifier.weight(1f)) {
+                                            Text("${s.name} ?", style = MaterialTheme.typography.titleMedium)
+                                            Text(
+                                                "${s.visits} passages sur ${s.days} jours · ${durationText(s.totalMs)} · ${s.hint}",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = Muted,
+                                            )
+                                        }
+                                        IconButton(onClick = {
+                                            state.map?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(s.latitude, s.longitude), 16.0))
+                                        }) { Icon(Icons.Default.LocationOn, contentDescription = "Voir") }
+                                        FilledTonalButton(onClick = { startAddAt(s) }, shape = CircleShape) { Text("Ajouter") }
+                                    }
                                 }
                             }
                         }
@@ -315,6 +455,33 @@ fun PlacesScreen(
                 }
             }
         }
+    }
+
+    // Fiche du lieu, par-dessus la liste (la carte reste chargée dessous).
+    detail?.let { p ->
+        PlaceDetailScreen(
+            api = api,
+            token = token,
+            place = p,
+            members = members,
+            photos = photos,
+            onEdit = { detail = null; startEdit(p) },
+            onShowOnMap = {
+                detail = null
+                state.map?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(p.latitude, p.longitude), 16.0))
+            },
+            onBack = { detail = null },
+        )
+    }
+    }
+
+    pickingTime?.let { which ->
+        TimePickDialog(
+            minutes = if (which == "from") fromMinutes else toMinutes,
+            title = if (which == "from") "Début du créneau" else "Fin du créneau",
+            onDismiss = { pickingTime = null },
+            onPick = { m -> if (which == "from") fromMinutes = m else toMinutes = m; pickingTime = null },
+        )
     }
 
     deleting?.let { p ->
@@ -335,4 +502,18 @@ fun PlacesScreen(
             dismissButton = { TextButton(onClick = { deleting = null }) { Text("Annuler") } },
         )
     }
+}
+
+/** Choix d'une heure (cadran 24 h). */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun TimePickDialog(minutes: Int, title: String, onDismiss: () -> Unit, onPick: (Int) -> Unit) {
+    val state = androidx.compose.material3.rememberTimePickerState(minutes / 60, minutes % 60, is24Hour = true)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = { androidx.compose.material3.TimePicker(state = state) },
+        confirmButton = { TextButton(onClick = { onPick(state.hour * 60 + state.minute) }) { Text("OK") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Annuler") } },
+    )
 }
