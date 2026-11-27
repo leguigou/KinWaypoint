@@ -27,7 +27,7 @@ Le service `audio-relay` est dans `docker-compose.yml` (image construite depuis
 
 1. Redéployer le compose dans Dokploy.
 2. Ajouter un **domaine** au service `audio-relay` :
-   - hôte : `famille.deloffre.fr` (ou un sous-domaine dédié),
+   - hôte : `famille.exemple.fr` (ou un sous-domaine dédié),
    - chemin : `/audio`,
    - port du conteneur : `8765`,
    - HTTPS activé (le relais doit être joint en `wss://`).
@@ -36,12 +36,12 @@ Le service `audio-relay` est dans `docker-compose.yml` (image construite depuis
 3. Dans l'application `config-api` (dépôt d'APK), ajouter la variable :
 
    ```
-   KW_AUDIO_RELAY_URL=wss://famille.deloffre.fr/audio
+   KW_AUDIO_RELAY_URL=wss://famille.exemple.fr/audio
    ```
 
-   puis redémarrer. Vérification : `https://famille.deloffre.fr/apk/server.json`
-   doit contenir `"audioRelayUrl": "wss://famille.deloffre.fr/audio"`.
-4. Santé du relais : `https://famille.deloffre.fr/audio/health` répond `OK`.
+   puis redémarrer. Vérification : `https://famille.exemple.fr/apk/server.json`
+   doit contenir `"audioRelayUrl": "wss://famille.exemple.fr/audio"`.
+4. Santé du relais : `https://famille.exemple.fr/audio/health` répond `OK`.
 
 ## Réglages sur le téléphone de l'enfant
 

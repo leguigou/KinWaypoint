@@ -77,14 +77,19 @@ fun activityLabel(activity: String?, kmh: Double?): String? {
     }
 }
 
-/** Serveur familial (dépôt d'APK, configuration) : il indique aussi les adresses de Traccar. */
-const val FAMILY_HUB = "https://famille.deloffre.fr"
+/**
+ * Serveur familial (dépôt d'APK, configuration) : il indique aussi les adresses
+ * de Traccar. Fourni à la compilation (KW_FAMILY_HUB), jamais écrit dans le code ;
+ * vide si la compilation ne l'a pas reçu.
+ */
+val FAMILY_HUB: String = fr.kinwaypoint.app.BuildConfig.FAMILY_HUB
 
 /** Adresses du serveur Traccar annoncées par le serveur familial (/apk/server.json). */
 data class ServerInfo(val apiUrl: String, val trackUrl: String)
 
 /** Découverte : null si le serveur familial ne répond pas ou n'est pas configuré. */
 suspend fun discoverServer(hub: String = FAMILY_HUB): ServerInfo? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+    if (!hub.startsWith("https://")) return@withContext null
     runCatching {
         val http = okhttp3.OkHttpClient.Builder().callTimeout(15, java.util.concurrent.TimeUnit.SECONDS).build()
         http.newCall(okhttp3.Request.Builder().url("${hub.trimEnd('/')}/apk/server.json").build()).execute().use { response ->

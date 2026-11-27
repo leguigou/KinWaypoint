@@ -112,7 +112,7 @@ services:
 
   # Écoute en direct (visible) : relais audio entre le téléphone de l'enfant et
   # celui du parent. Ne stocke rien. Domaine Dokploy à router vers le port 8765,
-  # par exemple famille.deloffre.fr chemin /audio (voir docs/ECOUTE-DIRECTE.md).
+  # par exemple <domaine-famille> chemin /audio (voir docs/ECOUTE-DIRECTE.md).
   audio-relay:
     build: ./server/audio-relay
     restart: unless-stopped

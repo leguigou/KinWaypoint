@@ -35,14 +35,16 @@ from urllib.parse import parse_qs, unquote
 
 DATA_DIR = os.environ.get("KW_DATA_DIR", "/data")
 PORT = int(os.environ.get("KW_PORT", "8080"))
-BASE_URL = os.environ.get("KW_BASE_URL", "https://famille.deloffre.fr/config").rstrip("/")
+# Adresses publiques : à définir dans l'environnement ; à défaut, déduites de la
+# requête reçue (en-têtes du reverse proxy). Aucun domaine réel dans le code.
+BASE_URL = os.environ.get("KW_BASE_URL", "").rstrip("/")
 ADMIN_TOKEN = os.environ.get("KW_ADMIN_TOKEN", "")
 DEFAULT_TTL_HOURS = int(os.environ.get("KW_TTL_HOURS", "48"))
 STORE = os.path.join(DATA_DIR, "codes.json")
 
 APK_DIR = os.path.join(DATA_DIR, "apk")
 APK_INDEX = os.path.join(DATA_DIR, "apk.json")
-APK_BASE_URL = os.environ.get("KW_APK_BASE_URL", "https://famille.deloffre.fr").rstrip("/")
+APK_BASE_URL = os.environ.get("KW_APK_BASE_URL", "").rstrip("/")
 APK_CODE = os.environ.get("KW_APK_CODE", "azerty")
 # Adresses du serveur Traccar, données à l'appli pour qu'on n'ait plus qu'un
 # e-mail et un mot de passe à saisir (route publique /apk/server.json).
@@ -67,6 +69,21 @@ PREVIEW_BOTS = (
 MAX_APK_BYTES = 200 * 1024 * 1024
 
 LOCK = threading.Lock()
+
+
+def request_origin(handler):
+    """« https://hôte » de la requête, tel que vu par le reverse proxy (Traefik)."""
+    proto = (handler.headers.get("X-Forwarded-Proto") or "https").split(",")[0].strip() or "https"
+    host = (handler.headers.get("X-Forwarded-Host") or handler.headers.get("Host") or "").split(",")[0].strip()
+    return f"{proto}://{host}" if host else ""
+
+
+def apk_base(handler):
+    return APK_BASE_URL or request_origin(handler)
+
+
+def config_base(handler):
+    return BASE_URL or (request_origin(handler) + "/config")
 
 
 def now():
@@ -416,7 +433,7 @@ class Handler(BaseHTTPRequestHandler):
                 "sha256": item.get("sha256", ""),
                 "uploadedAt": item.get("uploadedAt", ""),
                 "note": item.get("note", ""),
-                "apkUrl": f"{APK_BASE_URL}/apk/latest.apk",
+                "apkUrl": f"{apk_base(self)}/apk/latest.apk",
             })
             return
 
@@ -647,7 +664,7 @@ class Handler(BaseHTTPRequestHandler):
             }
             save(data)
 
-        url = f"{BASE_URL}/kw/{token}"
+        url = f"{config_base(self)}/kw/{token}"
         self.log_message(f"code cree mode={mode} ttl={ttl}h")
         self.reply(201, {"url": url, "token": token, "expiresAt": iso(expires)})
 
@@ -731,9 +748,9 @@ class Handler(BaseHTTPRequestHandler):
             save_json(APK_INDEX, meta)
 
         self.log_message(f"apk depose: {name} ({length} o)")
-        self.reply(201, {"ok": True, "file": name, "url": f"{APK_BASE_URL}/apk/{name}", "sha256": entry["sha256"]})
+        self.reply(201, {"ok": True, "file": name, "url": f"{apk_base(self)}/apk/{name}", "sha256": entry["sha256"]})
 
 
 if __name__ == "__main__":
-    print(f"KinWaypoint sur :{PORT} | base={BASE_URL} | data={DATA_DIR}", flush=True)
+    print(f"KinWaypoint sur :{PORT} | base={BASE_URL or '(déduite des requêtes)'} | data={DATA_DIR}", flush=True)
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()

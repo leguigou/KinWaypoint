@@ -776,7 +776,7 @@ private fun ChildParentsMap(
     onBack: () -> Unit,
 ) {
     // Adresse de secours sans accès « Ma famille » : aucun appel n'est fait dans ce cas.
-    val api = remember(config.apiUrl) { fr.kinwaypoint.app.net.TraccarApi(config.apiUrl.ifBlank { FAMILY_HUB }) }
+    val api = remember(config.apiUrl) { fr.kinwaypoint.app.net.TraccarApi(config.apiUrl.ifBlank { "https://localhost" }) }
     var parents by remember { mutableStateOf<List<fr.kinwaypoint.app.net.Member>>(emptyList()) }
     var places by remember { mutableStateOf<List<fr.kinwaypoint.app.net.Place>>(emptyList()) }
     var error by remember { mutableStateOf<String?>(null) }

@@ -5,6 +5,15 @@ plugins {
     id("com.google.gms.google-services")
 }
 
+// Adresse du serveur familial (dépôt d'APK, découverte des adresses Traccar,
+// écoute en direct) : hors du dépôt, fournie à la compilation.
+// - CI : secret GitHub KW_FAMILY_HUB (ex. https://famille.exemple.fr) ;
+// - en local : variable d'environnement KW_FAMILY_HUB, ou propriété Gradle
+//   kwFamilyHub dans ~/.gradle/gradle.properties.
+val familyHub: String = (System.getenv("KW_FAMILY_HUB")?.takeIf { it.isNotBlank() }
+    ?: (project.findProperty("kwFamilyHub") as String?)
+    ?: "").trim().trimEnd('/')
+
 android {
     namespace = "fr.kinwaypoint.app"
     compileSdk = 35
@@ -13,8 +22,10 @@ android {
         applicationId = "fr.kinwaypoint.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 36
-        versionName = "0.22.2"
+        versionCode = 38
+        versionName = "0.22.4"
+
+        buildConfigField("String", "FAMILY_HUB", "\"$familyHub\"")
 
         // Téléphones réels uniquement (ARM) : divise par ~2 la taille due à la carte.
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
@@ -61,6 +72,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     packaging {
