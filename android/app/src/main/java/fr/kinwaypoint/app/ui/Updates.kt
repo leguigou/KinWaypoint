@@ -68,6 +68,18 @@ private fun installedVersionCode(context: Context): Long = runCatching {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) info.longVersionCode else @Suppress("DEPRECATION") info.versionCode.toLong()
 }.getOrDefault(Long.MAX_VALUE)
 
+/**
+ * Ménage : supprime les APK de mise à jour déjà installés (ou plus anciens) et
+ * les téléchargements interrompus. Appelé à chaque lancement.
+ */
+fun cleanupDownloadedUpdates(context: Context) {
+    val installed = installedVersionCode(context)
+    File(context.cacheDir, "updates").listFiles()?.forEach { f ->
+        val code = Regex("""kinwaypoint-(\d+)\.apk""").matchEntire(f.name)?.groupValues?.get(1)?.toLongOrNull()
+        if (f.name.endsWith(".part") || code == null || code <= installed) f.delete()
+    }
+}
+
 /** Nouvelle version disponible (null : à jour, ou aucune source joignable). */
 suspend fun checkForUpdate(context: Context): AvailableUpdate? = withContext(Dispatchers.IO) {
     for (source in UPDATE_SOURCES) {

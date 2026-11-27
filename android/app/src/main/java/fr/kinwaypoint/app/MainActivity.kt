@@ -102,6 +102,8 @@ class MainActivity : FragmentActivity() {
         }
         // Notification quand une nouvelle version est déposée (parents et enfants).
         runCatching { fr.kinwaypoint.app.ui.scheduleUpdateChecks(applicationContext) }
+        // APK de mise à jour déjà installé : supprimé (il n'occupe plus de place).
+        runCatching { fr.kinwaypoint.app.ui.cleanupDownloadedUpdates(applicationContext) }
         lifecycleScope.launch { repository.migrateDefaults() }
 
         // Notifications poussées : on récupère le jeton FCM, puis on le déclare
