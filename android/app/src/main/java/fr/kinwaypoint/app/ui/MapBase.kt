@@ -65,6 +65,8 @@ private const val FALLBACK_STYLE = """
 internal const val FAMILY_SOURCE = "family"
 internal const val TRACE_SOURCE = "traces"
 internal const val HIGHLIGHT_SOURCE = "highlight"
+/** Trajet choisi dans l'historique, dessiné en gras par-dessus les tracés. */
+internal const val TRIP_SOURCE = "selected-trip"
 /** Cercle de précision de la personne affichée (rayon = précision GPS). */
 internal const val ACCURACY_SOURCE = "accuracy"
 internal const val AVATAR_LAYER = "family-avatar"
@@ -240,6 +242,24 @@ private fun prepareLayers(style: Style): Style {
     )
 
     // Point mis en avant (historique : point touché dans la liste).
+    // Trajet sélectionné : liseré blanc et trait épais, au-dessus des tracés.
+    style.addSource(GeoJsonSource(TRIP_SOURCE))
+    style.addLayer(
+        LineLayer("trip-casing", TRIP_SOURCE).withProperties(
+            PropertyFactory.lineColor("#FFFFFF"),
+            PropertyFactory.lineWidth(10f),
+            PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
+            PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND),
+        ),
+    )
+    style.addLayer(
+        LineLayer("trip-line", TRIP_SOURCE).withProperties(
+            PropertyFactory.lineColor(Expression.toColor(Expression.get("color"))),
+            PropertyFactory.lineWidth(6f),
+            PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
+            PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND),
+        ),
+    )
     style.addSource(GeoJsonSource(HIGHLIGHT_SOURCE))
     style.addLayer(
         CircleLayer("highlight", HIGHLIGHT_SOURCE).withProperties(
@@ -279,6 +299,18 @@ internal fun Style.setTraces(traces: Map<Long, List<TracePoint>>, colors: Map<Lo
             }
         }
         getSourceAs<GeoJsonSource>(TRACE_SOURCE)?.setGeoJson(FeatureCollection.fromFeatures(features))
+    }
+}
+
+/** Affiche (ou efface, liste vide) un trajet en gras. */
+internal fun Style.setSelectedTrip(points: List<TracePoint>, color: Int) {
+    safely {
+        val line = cleanTrace(points).takeIf { it.size >= 2 }?.let { pts ->
+            listOf(Feature.fromGeometry(LineString.fromLngLats(pts.map { Point.fromLngLat(it.longitude, it.latitude) })).apply {
+                addStringProperty("color", hex(color))
+            })
+        } ?: emptyList()
+        getSourceAs<GeoJsonSource>(TRIP_SOURCE)?.setGeoJson(FeatureCollection.fromFeatures(line))
     }
 }
 

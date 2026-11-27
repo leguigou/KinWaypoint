@@ -232,7 +232,14 @@ fun UpdateBanner() {
             }
         }
         if (progress >= 0f) {
-            LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth().height(6.dp).clip(CircleShape))
+            // Barre pleine et épaisse, sans le point de fin ni l'espace ajoutés par Material 3.
+            LinearProgressIndicator(
+                progress = { progress },
+                modifier = Modifier.fillMaxWidth().height(10.dp).clip(CircleShape),
+                strokeCap = androidx.compose.ui.graphics.StrokeCap.Round,
+                gapSize = 0.dp,
+                drawStopIndicator = {},
+            )
         }
         Button(
             enabled = progress < 0f,
