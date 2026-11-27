@@ -22,8 +22,8 @@ android {
         applicationId = "fr.kinwaypoint.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 71
-        versionName = "0.41.0"
+        versionCode = 72
+        versionName = "0.41.1"
 
         buildConfigField("String", "FAMILY_HUB", "\"$familyHub\"")
 

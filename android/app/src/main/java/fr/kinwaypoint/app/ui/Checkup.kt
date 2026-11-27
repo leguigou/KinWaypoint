@@ -50,83 +50,188 @@ data class CheckItem(
 /** Nombre de points indispensables à corriger. */
 fun List<CheckItem>.problems() = count { !it.ok && !it.optional }
 
-/** Ligne des paramètres qui ouvre le check-up (« Tout est au vert » ou « 2 points à corriger »). */
+/** Couleurs du dégradé : vert si tout va bien, orange s'il reste des points à corriger. */
+private fun checkupGradient(problems: Int) =
+    if (problems == 0) listOf(Color(0xFF12B886), Color(0xFF15AABF)) else listOf(Color(0xFFF59F00), Color(0xFFFF7A59))
+
+private fun checkupHeadline(problems: Int) = when (problems) {
+    0 -> "Tout est au vert"
+    1 -> "1 point à corriger"
+    else -> "$problems points à corriger"
+}
+
+/** Anneau de score : part des vérifications indispensables réussies, « 7/9 » au centre. */
+@Composable
+private fun ScoreRing(ok: Int, total: Int, size: androidx.compose.ui.unit.Dp, stroke: androidx.compose.ui.unit.Dp) {
+    val progress = if (total == 0) 1f else ok / total.toFloat()
+    Box(Modifier.size(size), contentAlignment = Alignment.Center) {
+        androidx.compose.foundation.Canvas(Modifier.size(size)) {
+            val w = stroke.toPx()
+            val arc = androidx.compose.ui.geometry.Size(this.size.width - w, this.size.height - w)
+            val topLeft = androidx.compose.ui.geometry.Offset(w / 2, w / 2)
+            drawArc(Color.White.copy(alpha = 0.25f), -90f, 360f, false, topLeft, arc, style = androidx.compose.ui.graphics.drawscope.Stroke(w))
+            drawArc(
+                Color.White, -90f, 360f * progress, false, topLeft, arc,
+                style = androidx.compose.ui.graphics.drawscope.Stroke(w, cap = androidx.compose.ui.graphics.StrokeCap.Round),
+            )
+        }
+        if (ok == total) {
+            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color.White, modifier = Modifier.size(size * 0.42f))
+        } else {
+            Text("$ok/$total", color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
+        }
+    }
+}
+
+/**
+ * Carte « Check-up du téléphone » en tête des réglages : dégradé vert (tout va
+ * bien) ou orange (à corriger), anneau de score, touchable en entier.
+ */
 @Composable
 fun CheckupRow(items: List<CheckItem>, onClick: () -> Unit) {
-    val problems = items.problems()
-    val tint = if (problems == 0) AppTheme.colors.success else Warning
-    SectionCard(container = tint.copy(alpha = 0.10f)) {
+    val required = items.filter { !it.optional }
+    val okCount = required.count { it.ok }
+    val problems = required.size - okCount
+    androidx.compose.material3.Card(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = Color.Transparent),
+        elevation = androidx.compose.material3.CardDefaults.cardElevation(defaultElevation = 4.dp),
+    ) {
         Row(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable(onClick = onClick),
+            Modifier.fillMaxWidth()
+                .background(androidx.compose.ui.graphics.Brush.linearGradient(checkupGradient(problems)))
+                .padding(horizontal = 20.dp, vertical = 18.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            IconBadge(if (problems == 0) Icons.Default.CheckCircle else Icons.Default.HealthAndSafety, tint, size = 44.dp)
-            Column(Modifier.weight(1f)) {
-                Text("Check-up du téléphone", style = MaterialTheme.typography.titleMedium)
+            ScoreRing(okCount, required.size, size = 56.dp, stroke = 5.dp)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("Check-up du téléphone", style = MaterialTheme.typography.titleMedium, color = Color.White)
                 Text(
-                    if (problems == 0) "Tout est au vert" else if (problems == 1) "1 point à corriger" else "$problems points à corriger",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (problems == 0) AppTheme.colors.success else Warning,
+                    checkupHeadline(problems),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.White.copy(alpha = 0.9f),
                     fontWeight = FontWeight.SemiBold,
                 )
             }
-            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = Muted)
+            Box(
+                Modifier.size(36.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.22f)),
+                contentAlignment = Alignment.Center,
+            ) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = Color.White) }
         }
     }
 }
 
-/** Fenêtre du check-up : chaque point avec son état et, s'il le faut, un bouton « Corriger ». */
+/**
+ * Fenêtre du check-up : bandeau dégradé avec le score, puis « À corriger »
+ * (avec bouton), « Facultatif », et « Tout va bien » en lignes compactes.
+ */
 @Composable
 fun CheckupDialog(title: String, items: List<CheckItem>, onDismiss: () -> Unit) {
-    val problems = items.problems()
-    val tint = if (problems == 0) AppTheme.colors.success else Warning
+    val required = items.filter { !it.optional }
+    val okCount = required.count { it.ok }
+    val problems = required.size - okCount
+    val toFix = items.filter { !it.ok && !it.optional }
+    val optional = items.filter { !it.ok && it.optional }
+    val fine = items.filter { it.ok }
     Dialog(onDismissRequest = onDismiss) {
         Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surface, tonalElevation = 6.dp) {
-            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Box(Modifier.size(64.dp).clip(CircleShape).background(tint.copy(alpha = 0.15f)), contentAlignment = Alignment.Center) {
-                        Icon(if (problems == 0) Icons.Default.CheckCircle else Icons.Default.Warning, contentDescription = null, tint = tint, modifier = Modifier.size(36.dp))
+            Column {
+                // Bandeau : score et verdict.
+                Row(
+                    Modifier.fillMaxWidth()
+                        .background(androidx.compose.ui.graphics.Brush.linearGradient(checkupGradient(problems)))
+                        .padding(horizontal = 22.dp, vertical = 22.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    ScoreRing(okCount, required.size, size = 72.dp, stroke = 6.dp)
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(title, style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.9f))
+                        Text(checkupHeadline(problems), style = MaterialTheme.typography.headlineSmall, color = Color.White, fontWeight = FontWeight.Bold)
+                        Text(
+                            "$okCount sur ${required.size} vérifications réussies",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.White.copy(alpha = 0.85f),
+                        )
                     }
-                    Text(title, style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
-                    Text(
-                        if (problems == 0) "Tout est au vert ✅" else if (problems == 1) "1 point à corriger" else "$problems points à corriger",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = tint,
-                        fontWeight = FontWeight.SemiBold,
-                    )
                 }
                 Column(
-                    Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()).padding(horizontal = 18.dp, vertical = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    items.forEach { CheckRow(it) }
+                    if (toFix.isNotEmpty()) {
+                        SectionLabel("À corriger")
+                        toFix.forEach { FixCard(it, Warning) }
+                    }
+                    if (optional.isNotEmpty()) {
+                        SectionLabel("Facultatif")
+                        optional.forEach { FixCard(it, Muted) }
+                    }
+                    if (fine.isNotEmpty()) {
+                        SectionLabel("Tout va bien")
+                        Column(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp))
+                                .background(AppTheme.colors.success.copy(alpha = 0.07f))
+                                .padding(horizontal = 14.dp, vertical = 6.dp),
+                        ) {
+                            fine.forEach { item ->
+                                Row(
+                                    Modifier.fillMaxWidth().padding(vertical = 7.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                ) {
+                                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = AppTheme.colors.success, modifier = Modifier.size(18.dp))
+                                    Text(item.title, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                                }
+                            }
+                        }
+                    }
                 }
-                TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) { Text("Fermer") }
+                TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End).padding(end = 12.dp, bottom = 8.dp)) { Text("Fermer") }
             }
         }
     }
 }
 
 @Composable
-private fun CheckRow(item: CheckItem) {
-    val tint = when {
-        item.ok -> AppTheme.colors.success
-        item.optional -> Muted
-        else -> Warning
-    }
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Box(Modifier.size(36.dp).clip(CircleShape).background(tint.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) {
-            Icon(if (item.ok) Icons.Default.CheckCircle else item.icon, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
-        }
-        Column(Modifier.weight(1f)) {
-            Text(item.title + if (item.optional && !item.ok) " (facultatif)" else "", style = MaterialTheme.typography.titleSmall)
-            Text(item.detail, style = MaterialTheme.typography.bodySmall, color = Muted)
-        }
-        if (!item.ok && item.fix != null) {
-            FilledTonalButton(onClick = item.fix, shape = CircleShape, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp)) {
-                Text(item.fixLabel ?: "Corriger", maxLines = 1)
+private fun SectionLabel(text: String) {
+    Text(
+        text.uppercase(),
+        style = MaterialTheme.typography.labelMedium,
+        color = Muted,
+        letterSpacing = androidx.compose.ui.unit.TextUnit(1f, androidx.compose.ui.unit.TextUnitType.Sp),
+        modifier = Modifier.padding(top = 6.dp, start = 4.dp),
+    )
+}
+
+/** Point à corriger (ou facultatif) : pastille, titre, explication, bouton pleine largeur. */
+@Composable
+private fun FixCard(item: CheckItem, tint: Color) {
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp))
+            .background(tint.copy(alpha = 0.09f))
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Box(Modifier.size(38.dp).clip(CircleShape).background(tint.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
+                Icon(item.icon, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
             }
+            Column(Modifier.weight(1f)) {
+                Text(item.title, style = MaterialTheme.typography.titleSmall)
+                Text(item.detail, style = MaterialTheme.typography.bodySmall, color = Muted)
+            }
+        }
+        if (item.fix != null) {
+            FilledTonalButton(
+                onClick = item.fix,
+                shape = CircleShape,
+                modifier = Modifier.fillMaxWidth(),
+                colors = androidx.compose.material3.ButtonDefaults.filledTonalButtonColors(containerColor = tint.copy(alpha = 0.18f), contentColor = if (tint == Muted) MaterialTheme.colorScheme.onSurface else tint),
+            ) { Text(item.fixLabel ?: "Corriger", fontWeight = FontWeight.SemiBold, maxLines = 1) }
         }
     }
 }
