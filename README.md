@@ -31,7 +31,9 @@ Un serveur **Traccar** collecte, stocke et déclenche les alertes.
 - Fiches glissantes par personne :
   - lieu actuel et durée (« 🏠 Maison · 2 h 26 ») ;
   - batterie et état de charge ;
-  - sonnerie (silencieux / vibreur) et Wi-Fi ;
+  - sonnerie (silencieux / vibreur) ;
+  - **Wi-Fi** : coupé, activé sans connexion, ou connecté avec le nom du réseau
+    (ex. « Wi-Fi · Maison-5G ») ;
   - distance ;
   - heure d'arrivée estimée vers un lieu.
 - **Ancienneté et précision** de chaque position en couleur (vert / orange /
@@ -46,11 +48,17 @@ Un serveur **Traccar** collecte, stocke et déclenche les alertes.
   - toutes les **10 min** à l'arrêt, GPS coupé. L'arrêt est détecté par le
     podomètre et l'accéléromètre, et la position est figée pour ne pas
     enregistrer le « tremblement » du GPS.
+- **Fréquence réglable à distance**, par personne (Paramètres → Famille →
+  Fréquence de suivi) : Économe, Équilibré (par défaut), Précis, ou réglage
+  libre des trois délais. Le téléphone l'applique à son prochain envoi.
 - File locale en cas de coupure réseau ; reprise après redémarrage du téléphone.
 
 ### Lieux et alertes
 - Lieux (maison, école…) avec icône, couleur, rayon, **personnes concernées**
   et **horaires** (ex. lun–ven 08:00–17:00, créneaux passant minuit).
+- **Wi-Fi d'un lieu** (optionnel) : quand le téléphone est connecté à ce réseau,
+  la personne est affichée dans le lieu (« 🏠 Maison · Wi-Fi »), même si le GPS
+  est imprécis à l'intérieur.
 - **Fiche par lieu** : dernier passage, nombre de visites et temps cumulé, par
   personne, sur 7 ou 30 jours.
 - **Lieux fréquents suggérés** à partir des 14 derniers jours (« Maison ? »,
@@ -75,8 +83,10 @@ Un serveur **Traccar** collecte, stocke et déclenche les alertes.
 ### Sécurité de l'enfant
 - **SOS** par appui long (3 s) : part immédiatement, même sans réseau (file
   d'attente persistante).
-- **Faire sonner** le téléphone à distance (même en silencieux) et **demander
-  sa position** tout de suite.
+- **Faire sonner** le téléphone à distance et **demander sa position** tout de
+  suite. La sonnerie passe même en silencieux ; en « Ne pas déranger » aussi si
+  l'autorisation « Accès Ne pas déranger » est accordée (réglages enfant →
+  Suivi). Elle s'arrête par une **touche de volume** ou le bouton « Arrêter ».
 - **Écoute en direct visible** : un parent peut écouter le micro du téléphone
   de l'enfant. L'enfant voit un écran « Un parent t'écoute » et une
   notification permanente ; rien n'est enregistré (voir
@@ -381,6 +391,8 @@ fréquents et les cercles de Findmykids servent de référence fonctionnelle.
 | ✅ Fait | Couper le partage parent retire aussi l'accès des enfants |
 | ✅ Fait | Relecture d'un trajet avec lecture, pause et curseur horaire |
 | ✅ Fait | Horaires et personnes concernés par lieu, suggestion des lieux fréquents |
+| ✅ Fait | Fréquence de suivi réglable à distance, état du Wi-Fi et Wi-Fi des lieux |
+| ✅ Fait | Sonnerie arrêtée par une touche de volume, forcée en « Ne pas déranger » |
 
 | Difficulté | À ajouter ou à renforcer | Point de départ |
 |---|---|---|
@@ -416,6 +428,8 @@ des chantiers distincts, hors du périmètre actuel.
    `attributes::jsonb->>'batteryLevel'` pour lire la batterie en SQL.
 6. **Traccar refuse les mises à jour partielles** (PUT) : relire l'objet
    complet, le modifier, le renvoyer.
+7. **Nom du Wi-Fi** : Android ne le donne qu'avec la localisation accordée et
+   activée ; sinon seul l'état (activé / coupé) remonte.
 
 ---
 

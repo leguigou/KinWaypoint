@@ -31,6 +31,11 @@ object RingAlarm {
     private val main = Handler(Looper.getMainLooper())
     private var player: MediaPlayer? = null
     private var previousVolume = -1
+    /** Session média « à volume distant » : une touche de volume arrête la sonnerie. */
+    private var session: android.media.session.MediaSession? = null
+    /** État « Ne pas déranger » et mode sonnerie d'avant, rétablis à l'arrêt (-1 = inchangé). */
+    private var previousFilter = -1
+    private var previousRingerMode = -1
 
     fun start(context: Context) = main.post { startOnMain(context.applicationContext) }
 
@@ -39,6 +44,28 @@ object RingAlarm {
     private fun startOnMain(context: Context) {
         if (player != null) return
         val audio = context.getSystemService(AudioManager::class.java)
+        // « Ne pas déranger » et mode silencieux : levés pendant la sonnerie si l'autorisation
+        // « accès Ne pas déranger » a été donnée (sinon le canal alarme sonne déjà en
+        // silencieux / vibreur, mais pas en « Ne pas déranger » total).
+        val notifications = context.getSystemService(NotificationManager::class.java)
+        if (notifications.isNotificationPolicyAccessGranted) {
+            runCatching {
+                previousFilter = notifications.currentInterruptionFilter
+                if (previousFilter != NotificationManager.INTERRUPTION_FILTER_ALL) {
+                    notifications.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL)
+                } else {
+                    previousFilter = -1
+                }
+            }
+            runCatching {
+                previousRingerMode = audio.ringerMode
+                if (previousRingerMode != AudioManager.RINGER_MODE_NORMAL) {
+                    audio.ringerMode = AudioManager.RINGER_MODE_NORMAL
+                } else {
+                    previousRingerMode = -1
+                }
+            }
+        }
         runCatching {
             previousVolume = audio.getStreamVolume(AudioManager.STREAM_ALARM)
             audio.setStreamVolume(AudioManager.STREAM_ALARM, audio.getStreamMaxVolume(AudioManager.STREAM_ALARM), 0)
@@ -60,6 +87,7 @@ object RingAlarm {
             }
         }.onFailure { Log.e("KinWaypoint", "sonnerie impossible", it) }.getOrNull()
         showNotification(context)
+        listenVolumeKeys(context)
         main.postDelayed({ stopOnMain(context) }, DURATION_MS)
     }
 
@@ -67,6 +95,17 @@ object RingAlarm {
         main.removeCallbacksAndMessages(null)
         player?.let { runCatching { it.stop(); it.release() } }
         player = null
+        session?.let { runCatching { it.isActive = false; it.release() } }
+        session = null
+        val audio = context.getSystemService(AudioManager::class.java)
+        if (previousRingerMode >= 0) {
+            runCatching { audio.ringerMode = previousRingerMode }
+            previousRingerMode = -1
+        }
+        if (previousFilter >= 0) {
+            runCatching { context.getSystemService(NotificationManager::class.java).setInterruptionFilter(previousFilter) }
+            previousFilter = -1
+        }
         if (previousVolume >= 0) {
             runCatching {
                 context.getSystemService(AudioManager::class.java).setStreamVolume(AudioManager.STREAM_ALARM, previousVolume, 0)
@@ -74,6 +113,29 @@ object RingAlarm {
             previousVolume = -1
         }
         context.getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
+    }
+
+    /**
+     * Touche de volume (haut ou bas) = arrêter la sonnerie, même écran verrouillé :
+     * une session média active « à volume distant » reçoit les touches de volume
+     * à la place du téléphone.
+     */
+    private fun listenVolumeKeys(context: Context) {
+        session = runCatching {
+            android.media.session.MediaSession(context, "KinWaypointRing").apply {
+                setPlaybackToRemote(object : android.media.VolumeProvider(VOLUME_CONTROL_RELATIVE, 10, 5) {
+                    override fun onAdjustVolume(direction: Int) {
+                        if (direction != 0) stop(context)
+                    }
+                })
+                setPlaybackState(
+                    android.media.session.PlaybackState.Builder()
+                        .setState(android.media.session.PlaybackState.STATE_PLAYING, 0, 1f)
+                        .build(),
+                )
+                isActive = true
+            }
+        }.onFailure { Log.w("KinWaypoint", "touches de volume non captées", it) }.getOrNull()
     }
 
     private fun showNotification(context: Context) {
@@ -93,7 +155,7 @@ object RingAlarm {
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("Ta famille cherche ce téléphone")
-            .setContentText("Touche « Arrêter » pour couper la sonnerie.")
+            .setContentText("Appuie sur une touche de volume, ou sur « Arrêter », pour couper la sonnerie.")
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setOngoing(true)

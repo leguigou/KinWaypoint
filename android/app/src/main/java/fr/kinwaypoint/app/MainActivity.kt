@@ -144,6 +144,10 @@ class MainActivity : FragmentActivity() {
                 imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
             },
             requestMicrophone = { requestMicrophone.launch(Manifest.permission.RECORD_AUDIO) },
+            openDndSettings = {
+                runCatching { startActivity(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)) }
+                    .onFailure { openAppSettings() }
+            },
             openOverlaySettings = {
                 runCatching {
                     startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.fromParts("package", packageName, null)))
@@ -217,6 +221,7 @@ class MainActivity : FragmentActivity() {
                 granted(Manifest.permission.ACTIVITY_RECOGNITION),
             microphone = granted(Manifest.permission.RECORD_AUDIO),
             overlay = Settings.canDrawOverlays(this),
+            dndAccess = getSystemService(android.app.NotificationManager::class.java).isNotificationPolicyAccessGranted,
         )
     }
 

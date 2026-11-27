@@ -31,7 +31,8 @@ est créé à ce moment-là. Présentation générale et installation du serveur
 |---|---|
 | `service/TrackingService.kt` | Service au premier plan (`location`) : une position par intervalle, fréquence adaptative, podomètre, SOS, commandes du serveur (sonner, écouter) |
 | `service/ListenService.kt`, `ListenActivity.kt` | Écoute en direct, côté enfant (service `microphone` + écran visible) |
-| `service/RingAlarm.kt` | « Faire sonner » (canal alarme, même en silencieux) |
+| `service/RingAlarm.kt` | « Faire sonner » (canal alarme, même en silencieux ou « Ne pas déranger » avec l'autorisation ; arrêt par une touche de volume) |
+| `service/RemoteActions.kt` | Lit les demandes du parent posées sur l'appareil Traccar : sonner, écouter, fréquence de suivi |
 | `data/FixQueue.kt` | File SQLite : sans réseau, les positions attendent (≤ 5000, ≤ 30 j) ; les SOS passent en premier |
 | `data/Settings.kt` | Réglages (DataStore) |
 | `net/TrackerClient.kt` | Envoi des positions (protocole OsmAnd) |
@@ -43,8 +44,8 @@ est créé à ce moment-là. Présentation générale et installation du serveur
 
 ## Suivi (mode enfant, et parent qui partage sa position)
 
-- **Cadence** :
-  - 5 min en temps normal (réglable) ;
+- **Cadence** (réglable à distance par un parent, attributs `kwInt*`) :
+  - 5 min en temps normal ;
   - 15 s dès qu'un déplacement est détecté (pas réguliers, ou déplacement net
     entre deux points), pendant 5 min ;
   - 10 min à l'arrêt, GPS coupé.
@@ -54,7 +55,8 @@ est créé à ce moment-là. Présentation générale et installation du serveur
   repart aux premiers pas, au capteur de mouvement significatif, ou sur un
   déplacement vu par le réseau.
 - **Attributs envoyés** en plus de la position : batterie et charge, sonnerie,
-  Wi-Fi, pas du jour, activité, vitesse, âge de la mesure (`fixAge`), alarme.
+  Wi-Fi (activé `wifiOn`, nom `ssid`), pas du jour, activité, vitesse, âge de la
+  mesure (`fixAge`), alarme.
 - **SOS** : appui maintenu 3 s. L'alerte part tout de suite avec la dernière
   position connue (son âge réel dans `fixAge`), puis la mesure suivante part sans
   attendre. L'écran affiche « en cours d'envoi », puis « reçue à HH:MM ».
@@ -120,7 +122,8 @@ de mots de passe). Ne jamais les committer.
    - les notifications ;
    - l'exemption d'optimisation de la batterie.
 5. Pour l'écoute en direct, accorder aussi le micro et l'affichage par-dessus
-   les autres applications (les deux sont indispensables).
+   les autres applications (les deux sont indispensables). Pour que « Faire
+   sonner » passe en « Ne pas déranger », accorder l'« Accès Ne pas déranger ».
 6. « Enregistrer et démarrer le suivi ».
 
 Sans la localisation « toujours » et l'exemption batterie, Android coupe le

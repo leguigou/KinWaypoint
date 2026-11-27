@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -72,7 +73,7 @@ class ListenActivity : ComponentActivity() {
                     if (!ListenService.active.value) finish()
                 }
                 Box(
-                    Modifier.fillMaxSize().background(Brush.verticalGradient(AppTheme.colors.heroGradient)).padding(32.dp),
+                    Modifier.fillMaxSize().background(Brush.verticalGradient(AppTheme.colors.heroGradient)).systemBarsPadding().padding(32.dp),
                     contentAlignment = Alignment.Center,
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(18.dp)) {

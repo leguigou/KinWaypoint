@@ -90,6 +90,12 @@ demande pas de mise à jour. En cas de doute, mettre à jour.
 - Ordre des membres : attribut `kwOrder` des appareils, appliqué une seule fois
   dans `TraccarApi.members()` (puis ordre alphabétique) ; les écrans ne retrient
   pas la liste.
+- Écrans défilants : marge basse d'au moins 40 dp (`contentPadding` ou
+  `padding(bottom = …)`) ; un écran hors `Scaffold` ajoute
+  `navigationBarsPadding()` (appli en plein écran, `targetSdk` 35), sinon les
+  derniers boutons passent sous la barre de navigation.
+- Lieu affiché d'une personne : toujours via `placeFor` (Wi-Fi du lieu d'abord,
+  puis position).
 
 ## Pièges connus
 
@@ -139,6 +145,18 @@ demande pas de mise à jour. En cas de doute, mettre à jour.
     écoute en direct) passent donc par des attributs de l'appareil (`kwRing`,
     `kwListen`) que le téléphone lit au réveil Firebase et après chaque envoi
     (`RemoteActions`) ; la commande `custom` ne sert que de secours sans Firebase.
+14. **Fréquence de suivi à distance** : attributs `kwIntNormal`, `kwIntMoving`,
+    `kwIntStill` (secondes) de l'appareil, lus par `RemoteActions` et appliqués
+    par `TrackingService.reload()`. Il faut un accès famille configuré sur le
+    téléphone (jeton parent ou lecteur), sinon rien n'est lu.
+15. **Wi-Fi** : `wifiOn` (activé ou non) et `ssid` (nom, seulement si la
+    localisation est accordée et activée). `FixQueue` en version 4 (colonne
+    `wifi_on`) : toute nouvelle colonne passe par une montée de version.
+16. **Sonnerie** (`RingAlarm`) : forcer le son en « Ne pas déranger » exige
+    l'autorisation `ACCESS_NOTIFICATION_POLICY` accordée à la main par
+    l'utilisateur ; le mode sonnerie et le filtre sont rétablis à l'arrêt. Les
+    touches de volume sont captées par une `MediaSession` active pendant la
+    sonnerie (marche écran allumé ; écran éteint, cela dépend du fabricant).
 
 ## Git
 

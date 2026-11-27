@@ -218,7 +218,7 @@ fun PlacesScreen(
             Box(Modifier.fillMaxWidth().weight(1f)) {
                 if (adding) {
                     Column(
-                        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+                        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 40.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         Text("Déplace la carte pour placer le lieu sous la cible.", style = MaterialTheme.typography.bodySmall, color = Muted)
@@ -402,7 +402,7 @@ fun PlacesScreen(
                         ) { Text(if (editingId == 0L) "Enregistrer le lieu" else "Enregistrer les modifications") }
                     }
                 } else {
-                    LazyColumn(contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    LazyColumn(contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 40.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (places.isEmpty()) {
                             item {
                                 InfoCard(

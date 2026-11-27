@@ -136,7 +136,7 @@ fun ChildHomeScreen(
 
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp),
+            modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(start = 20.dp, top = 20.dp, end = 20.dp, bottom = 40.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -292,7 +292,7 @@ fun ChildSettingsScreen(
 
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp),
+            modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(start = 20.dp, top = 20.dp, end = 20.dp, bottom = 40.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -787,6 +787,14 @@ fun PermissionWarnings(permissions: PermissionSnapshot, actions: PlatformActions
             "Compte les pas du jour et détecte la marche pour un suivi plus précis.",
             "Autoriser",
             actions.requestLocation,
+        )
+    }
+    if (permissions.fineLocation && !permissions.dndAccess) {
+        PermissionRow(
+            "Sonner même en « Ne pas déranger »",
+            "Pour que « Faire sonner » s'entende aussi en mode Ne pas déranger : autorise KinWaypoint dans « Accès Ne pas déranger ».",
+            "Autoriser",
+            actions.openDndSettings,
         )
     }
     if (permissions.batteryOptimized) {
