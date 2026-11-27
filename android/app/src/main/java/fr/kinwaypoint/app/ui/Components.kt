@@ -225,3 +225,53 @@ fun StepGoalBar(steps: Int, goal: Int, color: Color, modifier: Modifier = Modifi
         )
     }
 }
+
+/**
+ * Curseur de l'appli : poignée ronde contourée de blanc avec une ombre légère
+ * (au lieu de la barre verticale Material), piste fine et arrondie.
+ */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+fun KwSlider(
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    valueRange: ClosedFloatingPointRange<Float>,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    onValueChangeFinished: (() -> Unit)? = null,
+) {
+    val accent = if (enabled) MaterialTheme.colorScheme.primary else Muted
+    androidx.compose.material3.Slider(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = modifier,
+        enabled = enabled,
+        onValueChangeFinished = onValueChangeFinished,
+        valueRange = valueRange,
+        thumb = {
+            Box(
+                Modifier
+                    .size(26.dp)
+                    .shadow(4.dp, CircleShape)
+                    .clip(CircleShape)
+                    .background(Color.White)
+                    .padding(4.dp)
+                    .clip(CircleShape)
+                    .background(accent),
+            )
+        },
+        track = { state ->
+            val span = state.valueRange.endInclusive - state.valueRange.start
+            val fraction = if (span > 0f) ((state.value - state.valueRange.start) / span).coerceIn(0f, 1f) else 0f
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(8.dp)
+                    .clip(CircleShape)
+                    .background(accent.copy(alpha = 0.16f)),
+            ) {
+                Box(Modifier.fillMaxWidth(fraction).height(8.dp).clip(CircleShape).background(accent))
+            }
+        },
+    )
+}

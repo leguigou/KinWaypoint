@@ -101,6 +101,9 @@ demande pas de mise à jour. En cas de doute, mettre à jour.
   gris = hors ligne ou neutre ; la couleur du membre est réservée à l'avatar, à
   l'objectif de pas et à l'action principale. « Ajouter un enfant » n'existe que
   dans Paramètres → Famille.
+- Curseurs : toujours `KwSlider` (poignée ronde contourée, piste fine), jamais
+  le `Slider` Material brut. Rangées de gélules (`FilterChip`) dans un
+  `FlowRow` pour qu'elles passent à la ligne au lieu d'être écrasées.
 
 ## Pièges connus
 

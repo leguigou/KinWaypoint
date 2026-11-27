@@ -323,7 +323,7 @@ fun HistoryScreen(
                             contentDescription = if (playing) "Pause" else "Rejouer la journée",
                         )
                     }
-                    androidx.compose.material3.Slider(
+                    KwSlider(
                         // Secondes depuis le premier point : un Float ne garde pas la précision d'une date.
                         value = ((shownAt - first) / 1000f).coerceIn(0f, (last - first) / 1000f),
                         onValueChange = { s ->
