@@ -40,6 +40,10 @@ Android (confirmation obligatoire). GitHub (`test-latest/version.json`) sert de
 secours si le dépôt ne répond pas. La liste complète et les anciennes versions
 restent derrière le code.
 
+**Le serveur retient toujours le plus grand numéro de version.** Penser à
+incrémenter `versionCode` à chaque livraison, quelle que soit la branche qui
+compile.
+
 ## Connexion simplifiée (route publique)
 
 `GET /apk/server.json` donne à l'appli les adresses du serveur Traccar, pour

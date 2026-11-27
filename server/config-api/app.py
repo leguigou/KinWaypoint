@@ -402,10 +402,12 @@ class Handler(BaseHTTPRequestHandler):
             })
             return
 
-        # --- Découverte : adresses du serveur Traccar (PUBLIC, aucune donnée sensible).
+        # --- Découverte : adresses du serveur Traccar (PUBLIC, aucune donnée
+        # sensible). Sans KW_TRACCAR_API_URL, on répond 404 : l'appli affiche
+        # « Serveur familial introuvable » et ouvre les réglages avancés.
         if path == "/apk/server.json":
             if not TRACCAR_API_URL:
-                self.reply(404, {"error": "KW_TRACCAR_API_URL non configurée"})
+                self.reply(404, {"error": "KW_TRACCAR_API_URL non configuree"})
                 return
             self.reply(200, {
                 "version": 1,
@@ -420,7 +422,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/apk/latest.json":
             best = latest_apk()
             if best is None:
-                self.reply(404, {"error": "aucun APK versionné"})
+                self.reply(404, {"error": "aucun APK versionne"})
                 return
             code, name, item = best
             self.reply(200, {
@@ -547,6 +549,13 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/apk/latest.json":
             self.send_response(200 if latest_apk() else 404)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+
+        if path == "/apk/server.json":
+            self.send_response(200 if TRACCAR_API_URL else 404)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", "0")
             self.end_headers()
