@@ -178,6 +178,8 @@ Un serveur **Traccar** collecte, stocke et déclenche les alertes.
   dernier envoi, accès famille, localisation « Toujours », activité,
   notifications, batterie, et en facultatif micro / affichage par-dessus /
   « Ne pas déranger ».
+- **Code d'invitation en 8 cases** : un collage les remplit d'un coup, la
+  liaison part dès le 8e chiffre (bouton « Coller le code »).
 - **Lecture du QR code** en portrait, avec un cadre de visée au centre, une
   lampe et une lecture automatique.
 - **Liaison sans configuration** : « Enfant », code PIN parent, puis QR code ou

@@ -163,21 +163,12 @@ fun ChildLinkScreen(
             SectionCard {
                 Text("Le parent est à distance", style = MaterialTheme.typography.titleMedium)
                 Text("Tape le code à 8 chiffres qu'il t'a donné (valable 1 h).", style = MaterialTheme.typography.bodySmall, color = Muted)
-                OutlinedTextField(
+                // 8 cases ; un collage les remplit, la liaison part dès le 8e chiffre.
+                CodeBoxes(
                     value = code,
-                    onValueChange = { text ->
-                        code = text.filter(Char::isDigit).take(8)
-                        error = null
-                        // 8 chiffres : la liaison part toute seule, pas de bouton à chercher.
-                        if (code.length == 8) link(code)
-                    },
-                    placeholder = { Text("0000 0000", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center) },
-                    singleLine = true,
+                    onValueChange = { code = it; error = null },
+                    onComplete = { link(it) },
                     enabled = !busy,
-                    textStyle = TextStyle(fontSize = 28.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 6.sp, textAlign = TextAlign.Center),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                    shape = MaterialTheme.shapes.medium,
-                    modifier = Modifier.fillMaxWidth(),
                 )
             }
 

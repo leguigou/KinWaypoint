@@ -22,6 +22,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.material.icons.filled.Sms
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -178,6 +179,8 @@ fun ParentSettingsScreen(
         rules = loaded ?: emptySet()
     }
     val pushToken by repository.pushToken.collectAsState(initial = null)
+    // « Renseigner » depuis le check-up : mettre le curseur dans le champ du numéro.
+    var focusPhone by remember { mutableStateOf(false) }
     // Numéro de ce parent pour les SMS de SOS (null = pas encore lu).
     var ownPhone by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) {
@@ -236,6 +239,7 @@ fun ParentSettingsScreen(
             }
 
             // --- Liste des catégories (écran principal) ------------------------------
+            var checkupOpen by remember { mutableStateOf(false) }
             // Check-up : ce qu'il faut pour recevoir les alertes (et, si partagée, envoyer sa position).
             val checks = buildList {
                 add(
@@ -271,7 +275,8 @@ fun ParentSettingsScreen(
                         Icons.Default.Sms, "Mon numéro pour les SMS de SOS",
                         if (!ownPhone.isNullOrBlank()) "Un SOS t'arrive aussi par SMS, même sans Internet chez l'enfant." else "Renseigne-le dans Compte pour recevoir aussi les SOS par SMS.",
                         ok = !ownPhone.isNullOrBlank(), optional = true,
-                        fixLabel = "Renseigner", fix = { category = "account" },
+                        fixLabel = "Renseigner",
+                        fix = { checkupOpen = false; category = "account"; focusPhone = true },
                     ),
                 )
                 if (sharing) {
@@ -285,7 +290,6 @@ fun ParentSettingsScreen(
                     addAll(permissionChecks(permissions, actions, withListen = false).filter { it.title != "Notifications" && it.title != "SMS de secours" })
                 }
             }
-            var checkupOpen by remember { mutableStateOf(false) }
             if (checkupOpen) CheckupDialog("Check-up du téléphone", checks, onDismiss = { checkupOpen = false })
 
             if (category == null) {
@@ -719,6 +723,15 @@ fun ParentSettingsScreen(
                     color = Muted,
                 )
                 var phoneField by remember(ownPhone) { mutableStateOf(ownPhone.orEmpty()) }
+                // Venu du check-up (« Renseigner ») : curseur dans le champ, clavier ouvert.
+                val phoneFocus = remember { androidx.compose.ui.focus.FocusRequester() }
+                LaunchedEffect(focusPhone, ownPhone) {
+                    if (focusPhone && ownPhone != null) {
+                        kotlinx.coroutines.delay(150)
+                        runCatching { phoneFocus.requestFocus() }
+                        focusPhone = false
+                    }
+                }
                 OutlinedTextField(
                     value = phoneField,
                     onValueChange = { phoneField = it.filter { c -> c.isDigit() || c == '+' || c == ' ' }.take(20) },
@@ -728,7 +741,7 @@ fun ParentSettingsScreen(
                     enabled = ownPhone != null && !busy,
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Phone),
                     shape = MaterialTheme.shapes.small,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().then(androidx.compose.ui.Modifier.focusRequester(phoneFocus)),
                 )
                 Button(
                     onClick = {
