@@ -451,13 +451,19 @@ fun ParentHomeScreen(
     }
     val liveNow by rememberUpdatedState(live)
 
+    // Notification reçue pendant que l'appli est ouverte : actualisation immédiate.
+    LaunchedEffect(Unit) {
+        fr.kinwaypoint.app.push.PushService.alerts.collect { refreshTick++ }
+    }
+
     // Actualisation toutes les 30 s, uniquement quand l'écran est visible.
     LaunchedEffect(api, refreshTick) {
         lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             while (true) {
                 refresh()
-                // Connexion en direct établie : simple vérification toutes les 5 min.
-                delay(if (liveNow) 300_000L else REFRESH_MS)
+                // Connexion en direct établie : vérification chaque minute quand même
+                // (une connexion peut décrocher sans prévenir, après une mise en veille).
+                delay(if (liveNow) 60_000L else REFRESH_MS)
             }
         }
     }

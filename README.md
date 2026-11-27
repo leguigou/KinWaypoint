@@ -80,6 +80,8 @@ Un serveur **Traccar** collecte, stocke et déclenche les alertes.
   - excès de vitesse ;
   - pas de nouvelles depuis 1 h ;
   - **retour près d'un parent** (proximité calculée par le serveur).
+- **Appli ouverte** : une alerte reçue met à jour tout de suite l'accueil
+  (bandeau SOS, cloche, fiches), sans fermer ni rouvrir l'appli.
 - **Pastille sur la cloche** de l'accueil : nombre de notifications arrivées
   depuis la dernière ouverture de l'écran des notifications (« 99+ » au-delà).
 

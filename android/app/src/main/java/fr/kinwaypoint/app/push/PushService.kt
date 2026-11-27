@@ -25,6 +25,13 @@ class PushService : FirebaseMessagingService() {
 
     companion object {
         private const val CHANNEL_ID = "alerts"
+
+        /**
+         * Alerte reçue (SOS, lieu, batterie…) : l'appli ouverte se met à jour tout
+         * de suite (bandeau SOS, cloche, cartes), sans attendre la prochaine
+         * actualisation ni la connexion en direct, qui peut avoir décroché.
+         */
+        val alerts = kotlinx.coroutines.flow.MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     }
 
     override fun onNewToken(token: String) {
@@ -54,6 +61,7 @@ class PushService : FirebaseMessagingService() {
             ?: message.data["message"]
             ?: ""
         show(title, body)
+        alerts.tryEmit(Unit)
     }
 
     private fun show(title: String, body: String) {
