@@ -45,6 +45,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import kotlinx.coroutines.flow.first
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.border
@@ -678,26 +680,31 @@ fun ParentHomeScreen(
                             )
                         }
                         if (unseenEvents > 0) {
+                            // Rond parfait pour un chiffre ; gélule seulement à partir de 10.
+                            val label = if (unseenEvents > 99) "99+" else unseenEvents.toString()
                             Box(
-                                Modifier.align(Alignment.TopEnd).offset(x = 2.dp, y = (-2).dp)
-                                    .defaultMinSize(minWidth = 20.dp, minHeight = 20.dp)
+                                Modifier.align(Alignment.TopEnd).offset(x = 3.dp, y = (-3).dp)
+                                    .height(22.dp)
+                                    .then(if (label.length == 1) Modifier.width(22.dp) else Modifier.widthIn(min = 22.dp))
                                     .clip(CircleShape).background(Danger)
                                     .border(2.dp, MaterialTheme.colorScheme.background, CircleShape)
-                                    .padding(horizontal = 5.dp),
+                                    .padding(horizontal = if (label.length == 1) 0.dp else 6.dp),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Text(
-                                    if (unseenEvents > 99) "99+" else unseenEvents.toString(),
+                                    label,
                                     color = Color.White,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
+                                    style = androidx.compose.ui.text.TextStyle(
+                                        fontSize = 11.sp,
+                                        lineHeight = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        // Sans la marge de police d'Android, le chiffre est bien centré dans le rond.
+                                        platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false),
+                                    ),
                                     maxLines = 1,
                                 )
                             }
                         }
-                    }
-                    FilledTonalIconButton(onClick = { historyFocus = null; historyOpen = true }) {
-                        Icon(Icons.Default.History, contentDescription = "Historique")
                     }
                     FilledTonalIconButton(onClick = { settingsOpen = true }) {
                         Icon(Icons.Default.Settings, contentDescription = "Paramètres")
