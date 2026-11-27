@@ -183,6 +183,9 @@ class TrackingService : Service(), LocationListener {
 
     // Fréquence adaptative (thread principal uniquement).
     private var still = false
+    /** À l'arrêt, on renvoie cette position (la dernière avant l'arrêt) au lieu du bruit GPS. */
+    private var snapTo: Location? = null
+    private var lastQueuedLocation: Location? = null
     private var anchor: Location? = null
     private var anchorSinceElapsed = 0L
     private var sensorManager: SensorManager? = null
@@ -469,7 +472,17 @@ class TrackingService : Service(), LocationListener {
         if (candidate.time <= lastQueuedFixTime) return // déjà envoyée, rien de neuf
 
         sendNextImmediately = false
-        enqueue(candidate, alarm = null)
+        // À l'arrêt : même position à chaque envoi (heure, batterie… à jour). Le
+        // tremblement GPS ne crée ni faux trajet, ni faux kilomètres, ni fausse
+        // alerte de proximité. Un vrai départ fait sortir du mode « à l'arrêt » avant.
+        val toSend = snapTo?.takeIf { still }?.let { anchor ->
+            Location(anchor).apply {
+                time = candidate.time
+                elapsedRealtimeNanos = candidate.elapsedRealtimeNanos
+                speed = 0f
+            }
+        } ?: candidate
+        enqueue(toSend, alarm = null)
     }
 
     // --- Fréquence adaptative ------------------------------------------------
@@ -513,6 +526,7 @@ class TrackingService : Service(), LocationListener {
     private fun enterStill() {
         if (still) return
         still = true
+        snapTo = lastQueuedLocation ?: best
         stepsAtStill = lastStepTotal
         watchPhoneMotion(false)
         Log.i(TAG, "immobile : passage en mode économie")
@@ -530,6 +544,7 @@ class TrackingService : Service(), LocationListener {
         anchorSinceElapsed = SystemClock.elapsedRealtime()
         motionSensor?.let { sensor -> runCatching { sensorManager?.cancelTriggerSensor(motionListener, sensor) } }
         stepsAtStill = -1L
+        snapTo = null
         watchPhoneMotion(true)
         TrackingStatus.update { it.copy(still = false) }
         if (wasStill) {
@@ -552,6 +567,7 @@ class TrackingService : Service(), LocationListener {
     private fun enqueue(location: Location, alarm: String?, sosNow: Long? = null) {
         lastQueuedElapsed = SystemClock.elapsedRealtime()
         if (sosNow == null) lastQueuedFixTime = location.time
+        if (alarm == null && sosNow == null && !still) lastQueuedLocation = location
 
         val (battery, charging) = readBattery()
         // Batterie faible : une seule alerte sous 15 % ; réarmée après recharge (≥ 25 % ou en charge).

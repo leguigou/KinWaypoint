@@ -112,6 +112,7 @@ fun EventsScreen(
                                 e.type == "geofenceExit" -> "$name a quitté $placeName" to false
                                 e.type == "deviceUnknown" -> "📵 Pas de nouvelles de $name depuis 1 h" to false
                                 e.type == "deviceOverspeed" -> "🚗 $name roule au-delà de la limite" to false
+                                e.type == "proximityEnter" -> "👋 $name est de retour près de toi" to false
                                 e.alarm.equals("lowBattery", ignoreCase = true) -> "🔋 Batterie faible pour $name" to false
                                 e.alarm.equals("general", ignoreCase = true) -> "✅ $name est bien arrivé·e" to false
                                 else -> "$name a déclenché un SOS" to true

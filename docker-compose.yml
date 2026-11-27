@@ -63,6 +63,14 @@ services:
     volumes:
       - tracker-logs:/opt/traccar/logs
       - tracker-media:/opt/traccar/media
+      # Textes des notifications en français (KinWaypoint) : remplacent ceux
+      # de Traccar pour la langue « fr » (attribut language posé par l'appli).
+      - ./server/traccar/templates/fr/geofenceEnter.vm:/opt/traccar/templates/notifications/fr/geofenceEnter.vm:ro
+      - ./server/traccar/templates/fr/geofenceExit.vm:/opt/traccar/templates/notifications/fr/geofenceExit.vm:ro
+      - ./server/traccar/templates/fr/alarm.vm:/opt/traccar/templates/notifications/fr/alarm.vm:ro
+      - ./server/traccar/templates/fr/deviceOverspeed.vm:/opt/traccar/templates/notifications/fr/deviceOverspeed.vm:ro
+      - ./server/traccar/templates/fr/deviceUnknown.vm:/opt/traccar/templates/notifications/fr/deviceUnknown.vm:ro
+      - ./server/traccar/templates/fr/proximityEnter.vm:/opt/traccar/templates/notifications/fr/proximityEnter.vm:ro
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8082/api/health"]
       interval: 60s

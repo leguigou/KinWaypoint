@@ -1,0 +1,29 @@
+## KinWaypoint : SOS, batterie faible, « bien arrivé ».
+#set($alarmKey = $event.getString('alarm'))
+#if($alarmKey == "sos")
+#set($subject = "🆘 $device.name a besoin d'aide")
+#set($digest = "SOS de $device.name à $dateTool.format('HH:mm', $event.eventTime, $locale, $timezone)#{if}($position.address) · $position.address#{end}. Ouvre KinWaypoint pour voir sa position.")
+#elseif($alarmKey == "lowBattery")
+#set($subject = "🪫 Batterie faible · $device.name")
+#if($position.hasAttribute('batteryLevel'))
+#set($digest = "Le téléphone de $device.name n'a plus que $position.getInteger('batteryLevel') % de batterie ($dateTool.format('HH:mm', $event.eventTime, $locale, $timezone)).")
+#else
+#set($digest = "Le téléphone de $device.name est presque déchargé ($dateTool.format('HH:mm', $event.eventTime, $locale, $timezone)).")
+#end
+#elseif($alarmKey == "general")
+#set($subject = "✅ $device.name confirme son arrivée")
+#set($digest = "$device.name a signalé que tout va bien ($dateTool.format('HH:mm', $event.eventTime, $locale, $timezone)).")
+#else
+#set($alarmName = $translations.get("alarm${alarmKey.substring(0, 1).toUpperCase()}${alarmKey.substring(1)}"))
+#set($subject = "⚠️ Alerte · $device.name")
+#set($digest = "Alerte « $alarmName » pour $device.name ($dateTool.format('HH:mm', $event.eventTime, $locale, $timezone)).")
+#end
+<!DOCTYPE html>
+<html>
+<body>
+$esc.html($digest)<br>
+Position : <a href="$webUrl/event/$event.id">#{if}($position.address)$esc.html($position.address)#{else}$position.latitude&deg;, $position.longitude&deg;#{end}</a><br>
+<br>
+<a href="$webUrl/settings/notifications?token=$token">Se désabonner</a>
+</body>
+</html>

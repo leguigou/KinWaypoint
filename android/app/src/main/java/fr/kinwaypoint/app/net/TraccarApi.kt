@@ -105,6 +105,8 @@ enum class AlertRule(val key: String, val type: String, val alarms: String? = nu
     LOW_BATTERY("lowBattery", "alarm", "lowBattery"),
     CHECK_IN("checkIn", "alarm", "general"),
     OVERSPEED("overspeed", "deviceOverspeed"),
+    /** Un enfant revient près du téléphone d'un parent (calculé par Traccar, appareils liés). */
+    PROXIMITY("proximity", "proximityEnter"),
 }
 
 data class Alarm(
@@ -502,7 +504,7 @@ class TraccarApi(baseUrl: String) {
         val builder = url("api/reports/events").newBuilder()
             .addQueryParameter("from", iso(from))
             .addQueryParameter("to", iso(to))
-        listOf("geofenceEnter", "geofenceExit", "alarm", "deviceUnknown", "deviceOverspeed").forEach { builder.addQueryParameter("type", it) }
+        listOf("geofenceEnter", "geofenceExit", "alarm", "deviceUnknown", "deviceOverspeed", "proximityEnter").forEach { builder.addQueryParameter("type", it) }
         deviceIds.forEach { builder.addQueryParameter("deviceId", it.toString()) }
         val array = getArray(token, builder.build())
         return (0 until array.length()).map { i ->
@@ -584,6 +586,47 @@ class TraccarApi(baseUrl: String) {
         } else if (!enabled && existing != null) {
             authorized(token, Request.Builder().url(url("api/notifications/$existing")).delete()).use { check(it) }
         }
+    }
+
+    /**
+     * Alerte de proximité calculée par Traccar : chaque enfant est lié au téléphone
+     * du parent, avec une distance d'entrée (attribut proximityEnterDistance).
+     * Quand une position de l'enfant passe de « plus loin » à « plus près » que
+     * cette distance, Traccar crée un événement proximityEnter → notification
+     * Firebase, même appli fermée. meters = 0 : désactivé.
+     */
+    fun setProximity(token: String, childIds: List<Long>, parentDeviceId: Long, meters: Int) {
+        childIds.forEach { child ->
+            updateAttributes(token, child) { attrs ->
+                if (meters > 0) attrs.put("proximityEnterDistance", meters.toDouble()) else attrs.remove("proximityEnterDistance")
+            }
+            if (meters > 0) {
+                val body = JSONObject().put("deviceId", child).put("linkedDeviceId", parentDeviceId).toString()
+                val request = Request.Builder().url(url("api/permissions"))
+                    .post(body.toRequestBody("application/json".toMediaType()))
+                authorized(token, request).use { response ->
+                    // Lien déjà présent : l'état voulu est atteint.
+                    if (!response.isSuccessful && response.code != 400) check(response)
+                }
+            }
+        }
+    }
+
+    /**
+     * Notifications en français et à l'heure du téléphone : attributs language
+     * et timezone du compte, lus par Traccar pour choisir les textes et formater
+     * l'heure. Ne réécrit le compte que si quelque chose change.
+     */
+    fun ensureUserPreferences(token: String, timezone: String = java.util.TimeZone.getDefault().id) {
+        val sessionUrl = url("api/session").newBuilder().addQueryParameter("token", token).build()
+        val userId = getObject(token, sessionUrl).getLong("id")
+        val user = getObject(token, url("api/users/$userId"))
+        val attributes = user.optJSONObject("attributes") ?: JSONObject()
+        if (attributes.optString("language") == "fr" && attributes.optString("timezone") == timezone) return
+        attributes.put("language", "fr")
+        attributes.put("timezone", timezone)
+        user.put("attributes", attributes)
+        putObject(token, url("api/users/$userId"), user.toString())
     }
 
     /** Limite de vitesse d'un appareil (km/h) : au-delà, Traccar génère « excès de vitesse ». */

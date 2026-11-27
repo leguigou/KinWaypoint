@@ -50,6 +50,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -119,6 +120,8 @@ fun FamilyMapScreen(
     traces: Map<Long, List<TracePoint>> = emptyMap(),
     ownDeviceId: Long = 0L,
     onOpenHistory: (() -> Unit)? = null,
+    /** Demander la position d'un membre tout de suite (bouton actualiser). Null : pas de bouton. */
+    onLocate: ((Long) -> Unit)? = null,
     title: String = "Ma famille",
     places: List<fr.kinwaypoint.app.net.Place> = emptyList(),
     /** Membres avec un SOS en cours (non acquitté). */
@@ -220,7 +223,7 @@ fun FamilyMapScreen(
     }
 
     // Images des avatars (photo ou initiale), régénérées quand une photo, une couleur ou un statut change.
-    val markerKey = entries.map { listOf(it.id, it.name, it.member?.online, it.colorHex, labels[it.id]) } to photos.values.map { it.generationId }
+    val markerKey = entries.map { listOf(it.id, it.name, it.member?.online, it.colorHex, labels[it.id], statusBadges(it.member?.position)) } to photos.values.map { it.generationId }
     LaunchedEffect(state.style, markerKey) {
         val st = state.style ?: return@LaunchedEffect
         st.safely { entries.forEach { e ->
@@ -238,6 +241,7 @@ fun FamilyMapScreen(
                 label = labels[e.id],
                 sos = e.id in sosIds,
                 badge = activityEmoji(e.member?.position?.activity),
+                sideBadges = statusBadges(e.member?.position),
             )
             addImage("avatar-${e.id}", bitmap)
         } }
@@ -405,6 +409,7 @@ fun FamilyMapScreen(
                     me = me,
                     actions = actions,
                     arrival = etas[entry.id],
+                    onLocate = if (!entry.isMe && entry.member != null) onLocate?.let { f -> { f(entry.id) } } else null,
                     onNeededHeight = { px ->
                         val old = neededHeights[entry.id]
                         if (old == null || kotlin.math.abs(old - px) > 2) neededHeights[entry.id] = px
@@ -428,6 +433,7 @@ private fun EntryCard(
     me: Location?,
     actions: PlatformActions,
     arrival: Eta.Arrival? = null,
+    onLocate: (() -> Unit)? = null,
     /** Hauteur (px) dont la fiche a besoin pour tout afficher sans défiler. */
     onNeededHeight: (Int) -> Unit = {},
 ) {
@@ -476,6 +482,11 @@ private fun EntryCard(
                         style = MaterialTheme.typography.bodySmall,
                         color = Muted,
                     )
+                }
+                onLocate?.let { locate ->
+                    FilledTonalIconButton(onClick = locate) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Demander sa position maintenant")
+                    }
                 }
             }
             // Pastilles sur plusieurs lignes si besoin (statut, batterie, distance, tracé).

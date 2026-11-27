@@ -1,0 +1,12 @@
+## KinWaypoint : un enfant revient près du téléphone d'un parent (appareils liés, distance proximityEnterDistance).
+#set($subject = "👋 $device.name est près de toi")
+#set($digest = "$device.name est de retour près de toi ($dateTool.format('HH:mm', $event.eventTime, $locale, $timezone)).")
+<!DOCTYPE html>
+<html>
+<body>
+$esc.html($digest)<br>
+Position : <a href="$webUrl/event/$event.id">#{if}($position.address)$esc.html($position.address)#{else}$position.latitude&deg;, $position.longitude&deg;#{end}</a><br>
+<br>
+<a href="$webUrl/settings/notifications?token=$token">Se désabonner</a>
+</body>
+</html>

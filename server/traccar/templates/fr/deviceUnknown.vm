@@ -1,0 +1,11 @@
+## KinWaypoint : « pas de nouvelles » (aucune position depuis 1 h).
+#set($subject = "📵 Pas de nouvelles de $device.name")
+#set($digest = "Aucune position reçue du téléphone de $device.name depuis plus d'une heure ($dateTool.format('HH:mm', $event.eventTime, $locale, $timezone)). Il est peut-être éteint ou sans réseau.")
+<!DOCTYPE html>
+<html>
+<body>
+$esc.html($digest)<br>
+<br>
+<a href="$webUrl/settings/notifications?token=$token">Se désabonner</a>
+</body>
+</html>

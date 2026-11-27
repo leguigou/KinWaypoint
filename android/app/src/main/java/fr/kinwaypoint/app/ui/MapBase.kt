@@ -407,6 +407,8 @@ internal fun markerBitmap(
     sos: Boolean = false,
     /** Petit badge en haut à gauche de l'avatar (🚗 au-delà de 15 km/h, 🚲, 🚶). */
     badge: String? = null,
+    /** Pastilles d'état à droite de l'avatar, de haut en bas (🔇 silencieux, 🪫 batterie faible). */
+    sideBadges: List<String> = emptyList(),
 ): Bitmap {
     val d = context.resources.displayMetrics.density
     val circle = 52 * d
@@ -425,7 +427,9 @@ internal fun markerBitmap(
     val labelH = if (labelText != null) 24 * d else 0f
     val gap = if (labelText != null) 4 * d else 0f
 
-    val w = maxOf(circle + pad * 2, labelW + pad * 2).toInt()
+    // Pastilles à droite : on élargit l'image des deux côtés pour garder la pointe centrée.
+    val sideExtra = if (sideBadges.isNotEmpty()) 14 * d else 0f
+    val w = maxOf(circle + pad * 2 + sideExtra * 2, labelW + pad * 2).toInt()
     val top = pad + labelH + gap
     val h = (top + circle + pointer).toInt()
     val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
@@ -488,6 +492,17 @@ internal fun markerBitmap(
         canvas.drawText(badge, bx, by - (emoji.descent() + emoji.ascent()) / 2, emoji)
     }
 
+    sideBadges.take(2).forEachIndexed { i, emojiText ->
+        val bx = cx + r + 4 * d
+        val by = cy - r * 0.85f + i * 21 * d
+        canvas.drawCircle(bx, by, 10 * d, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.WHITE
+            setShadowLayer(2 * d, 0f, 1 * d, 0x44000000)
+        })
+        val emoji = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 11 * d; textAlign = Paint.Align.CENTER }
+        canvas.drawText(emojiText, bx, by - (emoji.descent() + emoji.ascent()) / 2, emoji)
+    }
+
     if (status != null) {
         val dot = 6 * d
         val dx = cx + r * 0.72f
@@ -499,6 +514,17 @@ internal fun markerBitmap(
 }
 
 // --- Lieux ------------------------------------------------------------------------
+
+/** 🪫 (batterie faible) si le téléphone sait l'afficher, sinon 🔋. */
+internal val LowBatteryEmoji: String by lazy {
+    if (Paint().hasGlyph("🪫")) "🪫" else "🔋"
+}
+
+/** Pastilles d'état d'un membre : silencieux, batterie faible (hors charge). */
+internal fun statusBadges(position: fr.kinwaypoint.app.net.MemberPosition?): List<String> = listOfNotNull(
+    if (position?.ringer == "silent") "🔇" else null,
+    if ((position?.battery ?: 100) < 20 && position?.charging != true) LowBatteryEmoji else null,
+)
 
 /** Emoji d'un type de lieu (dessiné sur la carte) et libellé. */
 internal fun placeEmoji(icon: String) = PlaceIcons.firstOrNull { it.key == icon }?.emoji ?: "📍"
