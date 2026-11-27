@@ -281,6 +281,53 @@ internal fun traceLength(points: List<TracePoint>): Float {
     }.toFloat()
 }
 
+/** Distance parcourue, répartie par mode de déplacement (en mètres). */
+internal data class TravelSplit(val foot: Float = 0f, val bike: Float = 0f, val vehicle: Float = 0f) {
+    val total: Float get() = foot + bike + vehicle
+    operator fun plus(o: TravelSplit) = TravelSplit(foot + o.foot, bike + o.bike, vehicle + o.vehicle)
+}
+
+/**
+ * Répartit la distance d'un tracé entre marche, vélo/trottinette et véhicule.
+ * Chaque tronçon entre deux points est classé selon l'activité détectée par le
+ * téléphone, sinon selon sa vitesse (> 15 km/h : véhicule, comme l'icône 🚗 ;
+ * 8 à 15 km/h : vélo ; en dessous : à pied).
+ * Ignorés : les petits écarts dus au bruit GPS à l'arrêt, les sauts aberrants
+ * (> 250 km/h) et les longs trous lents (téléphone éteint, pas de mesure).
+ */
+internal fun travelSplit(points: List<TracePoint>): TravelSplit {
+    var foot = 0.0
+    var bike = 0.0
+    var vehicle = 0.0
+    val result = FloatArray(1)
+    points.sortedBy { it.time }.zipWithNext().forEach { (a, b) ->
+        val seconds = (b.time - a.time) / 1000.0
+        if (seconds <= 0) return@forEach
+        Location.distanceBetween(a.latitude, a.longitude, b.latitude, b.longitude, result)
+        val d = result[0].toDouble()
+        if (d < maxOf(a.accuracy, b.accuracy, 10.0)) return@forEach
+        val kmh = d / seconds * 3.6
+        if (kmh > 250) return@forEach
+        val activity = b.activity ?: a.activity
+        val reported = maxOf(a.speedKmh, b.speedKmh)
+        val isVehicle = activity == "vehicle" || kmh > 15 || (activity == null && reported > 15)
+        if (!isVehicle && seconds > 30 * 60) return@forEach
+        when {
+            isVehicle -> vehicle += d
+            activity == "bike" || kmh > 8 -> bike += d
+            else -> foot += d
+        }
+    }
+    return TravelSplit(foot.toFloat(), bike.toFloat(), vehicle.toFloat())
+}
+
+/** « 🚶 2,1 km », « 🚲 800 m », « 🚗 14 km » : modes réellement utilisés (≥ 50 m). */
+internal fun travelParts(split: TravelSplit): List<Pair<String, String>> = listOfNotNull(
+    split.foot.takeIf { it >= 50 }?.let { "🚶" to formatDistance(it) },
+    split.bike.takeIf { it >= 50 }?.let { "🚲" to formatDistance(it) },
+    split.vehicle.takeIf { it >= 50 }?.let { "🚗" to formatDistance(it) },
+)
+
 internal fun formatDistance(meters: Float): String = when {
     meters < 1000 -> "${meters.toInt()} m"
     meters < 10_000 -> String.format(java.util.Locale.FRANCE, "%.1f km", meters / 1000)
@@ -297,9 +344,18 @@ internal data class MapInsets(val top: Int, val bottom: Int, val side: Int)
 internal fun frameAll(map: MapLibreMap, points: List<LatLng>, bottomPaddingPx: Int = 520, insets: MapInsets? = null) {
     if (points.isEmpty()) return
     val pad = insets ?: MapInsets(top = 260, bottom = bottomPaddingPx, side = 120)
-    val bounds = LatLngBounds.Builder().includes(points).build()
+    // Un seul point : MapLibre refuse de construire un cadre (plantage) → simple centrage.
+    if (points.size == 1) {
+        runCatching { map.animateCamera(CameraUpdateFactory.newLatLngZoom(points[0], 15.0)) }
+        return
+    }
+    val bounds = runCatching { LatLngBounds.Builder().includes(points).build() }.getOrNull()
+    if (bounds == null) {
+        runCatching { map.animateCamera(CameraUpdateFactory.newLatLngZoom(points[0], 15.0)) }
+        return
+    }
     // Points quasi confondus : un cadrage « bounds » zoomerait au maximum.
-    if (points.size == 1 || bounds.latitudeSpan < 0.002 && bounds.longitudeSpan < 0.002) {
+    if (bounds.latitudeSpan < 0.002 && bounds.longitudeSpan < 0.002) {
         runCatching { map.animateCamera(CameraUpdateFactory.newLatLngZoom(bounds.center, 15.0)) }
         return
     }

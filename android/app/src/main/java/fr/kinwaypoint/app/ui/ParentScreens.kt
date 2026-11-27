@@ -383,8 +383,8 @@ fun ParentHomeScreen(
                 }
             }
             refreshedAt = System.currentTimeMillis()
-            // Le tracé du jour s'allonge en direct quand la carte est ouverte.
-            if (mapOpen) {
+            // Le tracé du jour (et la distance parcourue) s'allonge en direct.
+            run {
                 todayTraces = todayTraces.toMutableMap().apply {
                     message.positions.forEach { (id, p) ->
                         val trace = this[id].orEmpty()
@@ -433,9 +433,9 @@ fun ParentHomeScreen(
         }
     }
 
-    // Tracés du jour, rechargés chaque minute tant que la carte est ouverte.
+    // Tracés du jour (carte, distances parcourues) : rechargés chaque minute
+    // quand la carte est ouverte, toutes les 5 minutes sinon.
     LaunchedEffect(mapOpen, members.map { it.id }) {
-        if (!mapOpen) return@LaunchedEffect
         while (true) {
             val zone = java.time.ZoneId.systemDefault()
             val from = java.time.LocalDate.now(zone).atStartOfDay(zone).toInstant().toEpochMilli()
@@ -443,7 +443,7 @@ fun ParentHomeScreen(
             withContext(Dispatchers.IO) {
                 runCatching { members.associate { m -> m.id to api.positions(config.token, m.id, from, now) } }
             }.onSuccess { todayTraces = it }
-            delay(60_000)
+            delay(if (mapOpen) 60_000 else 5 * 60_000)
         }
     }
 
@@ -739,6 +739,7 @@ fun ParentHomeScreen(
                     },
                     isMe = member.id == ownDeviceId,
                     place = member.position?.let { placeAt(it.latitude, it.longitude, places) },
+                    travel = todayTraces[member.id]?.let { travelSplit(it) },
                     photo = photos[member.id],
                     onChangePhoto = { changePhoto(member) },
                     onRemovePhoto = if (member.photo != null) {
@@ -846,6 +847,8 @@ private fun MemberCard(
     isMe: Boolean = false,
     /** Lieu où se trouve le membre (maison, école…), ou null. */
     place: fr.kinwaypoint.app.net.Place? = null,
+    /** Distance du jour par mode de déplacement. */
+    travel: TravelSplit? = null,
     onChangePhoto: () -> Unit = {},
     onRemovePhoto: (() -> Unit)? = null,
 ) {
@@ -958,6 +961,8 @@ private fun MemberCard(
             position?.takeIf { it.accuracy > 0 }?.let {
                 StatusPill("± ${it.accuracy.toInt()} m", Muted, icon = Icons.Default.GpsFixed)
             }
+            // Distance parcourue aujourd'hui : à pied, vélo, véhicule.
+            travel?.let { t -> travelParts(t).forEach { (emoji, km) -> StatusPill("$emoji $km", MaterialTheme.colorScheme.tertiary, showDot = false) } }
         }
         position?.steps?.let { StepGoalBar(it, member.stepGoal, profileColor(member.name, member.color)) }
 

@@ -50,7 +50,7 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 /** Bilan d'une journée. */
-private data class DaySummary(val day: LocalDate, val steps: Int?, val meters: Float, val placeMillis: Map<Long, Long>)
+private data class DaySummary(val day: LocalDate, val steps: Int?, val travel: TravelSplit, val placeMillis: Map<Long, Long>)
 
 /** Découpe 7 jours de positions en bilans quotidiens. */
 private fun summarize(points: List<TracePoint>, days: List<LocalDate>, places: List<Place>, zone: ZoneId): List<DaySummary> {
@@ -69,7 +69,7 @@ private fun summarize(points: List<TracePoint>, days: List<LocalDate>, places: L
                 }
             }
         }
-        DaySummary(day, list.mapNotNull { it.steps }.maxOrNull(), traceLength(list), placeMillis)
+        DaySummary(day, list.mapNotNull { it.steps }.maxOrNull(), travelSplit(list), placeMillis)
     }
 }
 
@@ -140,7 +140,7 @@ fun WeeklyScreen(
                         val stepDays = data.mapNotNull { it.steps }
                         val totalSteps = stepDays.sum()
                         val reached = data.count { (it.steps ?: 0) >= goal }
-                        val meters = data.sumOf { it.meters.toDouble() }.toFloat()
+                        val travel = data.fold(TravelSplit()) { acc, d -> acc + d.travel }
 
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             StatTile("👟", formatSteps(totalSteps), "pas", Modifier.weight(1f))
@@ -148,7 +148,13 @@ fun WeeklyScreen(
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             StatTile("🎯", "$reached / 7", "objectif atteint", Modifier.weight(1f))
-                            StatTile("🗺️", formatDistance(meters), "parcourus", Modifier.weight(1f))
+                            StatTile("🗺️", formatDistance(travel.total), "parcourus", Modifier.weight(1f))
+                        }
+                        // Distance de la semaine par mode de déplacement.
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            StatTile("🚶", formatDistance(travel.foot), "à pied", Modifier.weight(1f))
+                            if (travel.bike >= 50) StatTile("🚲", formatDistance(travel.bike), "à vélo", Modifier.weight(1f))
+                            StatTile("🚗", formatDistance(travel.vehicle), "en véhicule", Modifier.weight(1f))
                         }
 
                         SectionCard {

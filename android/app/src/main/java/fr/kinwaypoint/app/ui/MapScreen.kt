@@ -508,9 +508,8 @@ private fun EntryCard(
                     "vibrate" -> StatusPill("Vibreur", Muted, icon = Icons.Default.Vibration)
                 }
                 member?.position?.wifi?.let { StatusPill(it, Muted, icon = Icons.Default.Wifi) }
-                if (trace.size >= 2) {
-                    StatusPill(formatDistance(traceLength(trace)) + " aujourd'hui", color, icon = Icons.Default.Route)
-                }
+                // Distance du jour par mode : à pied, vélo, véhicule.
+                travelParts(travelSplit(trace)).forEach { (emoji, km) -> StatusPill("$emoji $km", color, showDot = false) }
             }
             arrival?.let {
                 Text(
