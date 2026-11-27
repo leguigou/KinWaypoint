@@ -85,6 +85,8 @@ data class TracePoint(
     val battery: Int?,
     val steps: Int? = null,
     val activity: String? = null,
+    /** Téléphone en charge à ce moment (attribut « charge »), ou null si inconnu. */
+    val charging: Boolean? = null,
 )
 
 data class MemberPosition(
@@ -948,6 +950,7 @@ class TraccarApi(baseUrl: String) {
                 battery = attrs?.takeIf { it.has("batteryLevel") }?.optDouble("batteryLevel")?.toInt(),
                 steps = attrs?.takeIf { it.has("steps") }?.optDouble("steps")?.toInt(),
                 activity = attrs?.optString("activity")?.takeIf { it.isNotBlank() },
+                charging = attrs?.takeIf { it.has("charge") }?.optBoolean("charge"),
             )
         }.filter { it.time > 0 }.sortedBy { it.time }
     }
