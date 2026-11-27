@@ -1420,9 +1420,17 @@ private fun MemberActionsSheet(
                 ActionRow(Icons.Default.QrCode, "QR code de configuration", primary, run(onShowQr))
             }
 
-            // Action irréversible, à part.
-            SectionCard(container = SoftRed) {
-                ActionRow(Icons.Default.Delete, "Supprimer ${member.name}", Danger, run(onDelete), showChevron = false)
+            // Action irréversible, à part : simple gélule contourée de rouge, discrète.
+            OutlinedButton(
+                onClick = run(onDelete),
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                shape = CircleShape,
+                border = androidx.compose.foundation.BorderStroke(1.dp, Danger.copy(alpha = 0.5f)),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = Danger),
+            ) {
+                Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.size(8.dp))
+                Text("Supprimer ${member.name}", maxLines = 1)
             }
         }
     }
