@@ -738,6 +738,7 @@ fun ParentHomeScreen(
                         }
                     },
                     isMe = member.id == ownDeviceId,
+                    place = member.position?.let { placeAt(it.latitude, it.longitude, places) },
                     photo = photos[member.id],
                     onChangePhoto = { changePhoto(member) },
                     onRemovePhoto = if (member.photo != null) {
@@ -830,6 +831,7 @@ fun ParentHomeScreen(
 
 }
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun MemberCard(
     member: Member,
@@ -842,6 +844,8 @@ private fun MemberCard(
     onRing: () -> Unit = {},
     onLocate: () -> Unit = {},
     isMe: Boolean = false,
+    /** Lieu où se trouve le membre (maison, école…), ou null. */
+    place: fr.kinwaypoint.app.net.Place? = null,
     onChangePhoto: () -> Unit = {},
     onRemovePhoto: (() -> Unit)? = null,
 ) {
@@ -932,7 +936,13 @@ private fun MemberCard(
             }
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        // FlowRow : les gélules passent à la ligne au lieu de déborder sur petit écran.
+        androidx.compose.foundation.layout.FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            // Dans un lieu : gélule « 🏠 Maison » à la couleur du lieu, en premier.
+            place?.let { StatusPill("${placeEmoji(it.icon)} ${it.name}", parseHex(it.color) ?: MaterialTheme.colorScheme.primary, icon = null, showDot = false) }
             StatusPill(if (member.online) "En ligne" else "Hors ligne", if (member.online) Ok else Idle)
             battery?.let {
                 StatusPill(
