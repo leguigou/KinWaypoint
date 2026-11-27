@@ -49,10 +49,9 @@ import java.util.Locale
 // FragmentActivity (et non ComponentActivity) : exigée par BiometricPrompt.
 class MainActivity : FragmentActivity() {
 
-    companion object {
-        /** Au-delà de cette absence, l'espace parent et les réglages se reverrouillent. */
-        private const val RELOCK_AFTER_MS = 60_000L
-    }
+    /** Absence au-delà de laquelle l'espace parent se reverrouille (0 = jamais), réglable. */
+    @Volatile private var relockAfterMs = 60_000L
+    private var repositoryRef: SettingsRepository? = null
 
     private var permissionsState by mutableStateOf(PermissionSnapshot())
     private var lockSignal by mutableIntStateOf(0)
@@ -94,6 +93,13 @@ class MainActivity : FragmentActivity() {
         // Initialisation de la carte, une fois, avant tout affichage.
         MapLibre.getInstance(applicationContext)
         val repository = SettingsRepository(applicationContext)
+        repositoryRef = repository
+        lifecycleScope.launch {
+            combine(repository.relockMinutes, repository.mode) { minutes, mode -> minutes to mode }.collect { (minutes, mode) ->
+                // Le réglage ne concerne que l'espace parent : côté enfant, toujours 1 min.
+                relockAfterMs = if (mode == fr.kinwaypoint.app.data.AppMode.PARENT) minutes * 60_000L else 60_000L
+            }
+        }
         // Notification quand une nouvelle version est déposée (parents et enfants).
         runCatching { fr.kinwaypoint.app.ui.scheduleUpdateChecks(applicationContext) }
         lifecycleScope.launch { repository.migrateDefaults() }
@@ -160,7 +166,8 @@ class MainActivity : FragmentActivity() {
 
     override fun onStart() {
         super.onStart()
-        if (stoppedAt > 0L && SystemClock.elapsedRealtime() - stoppedAt > RELOCK_AFTER_MS) {
+        val relock = relockAfterMs
+        if (stoppedAt > 0L && relock > 0L && SystemClock.elapsedRealtime() - stoppedAt > relock) {
             lockSignal++
         }
         stoppedAt = 0L
@@ -173,6 +180,8 @@ class MainActivity : FragmentActivity() {
 
     override fun onStop() {
         stoppedAt = SystemClock.elapsedRealtime()
+        // Heure de sortie mémorisée : au prochain lancement, on sait si le délai est écoulé.
+        repositoryRef?.let { repo -> lifecycleScope.launch { repo.markActive() } }
         super.onStop()
     }
 
