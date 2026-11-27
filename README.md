@@ -96,7 +96,7 @@ Un serveur **Traccar** collecte, stocke et déclenche les alertes.
 - Connexion par **e-mail et mot de passe** : les adresses du serveur sont
   découvertes automatiquement, sinon elles se saisissent dans les réglages avancés.
 - **Carte de chaque membre** sur l'accueil, en trois blocs : en-tête (état en
-  ligne et ancienneté de la position, batterie), position actuelle (lieu ou
+  ligne, puis ancienneté de la position sur sa propre ligne, batterie), position actuelle (lieu ou
   précision, Wi-Fi, sonnerie), activité du jour (pas, à pied, en voiture,
   objectif). Code couleur : vert = normal, orange = position approximative ou
   batterie faible, rouge = position ancienne ou batterie critique, gris = hors

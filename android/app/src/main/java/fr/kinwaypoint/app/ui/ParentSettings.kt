@@ -365,7 +365,7 @@ fun ParentSettingsScreen(
                     onChange = { toggle(fr.kinwaypoint.app.net.AlertRule.OVERSPEED, it) },
                 )
                 if (rules?.contains("overspeed") == true) {
-                    androidx.compose.material3.Slider(
+                    KwSlider(
                         value = speedLimit,
                         onValueChange = { speedLimit = (Math.round(it / 10f) * 10f) },
                         onValueChangeFinished = {
@@ -409,7 +409,7 @@ fun ParentSettingsScreen(
                         "Distance de déclenchement : ${radius.toInt()} m",
                         style = MaterialTheme.typography.bodyMedium,
                     )
-                    androidx.compose.material3.Slider(
+                    KwSlider(
                         value = radius,
                         onValueChange = { radius = (Math.round(it / 50f) * 50).toFloat() },
                         onValueChangeFinished = { applyProximity(true, radius.toInt()) },
@@ -656,7 +656,7 @@ fun ParentSettingsScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("${formatSteps(goal.toInt())} pas par jour", style = MaterialTheme.typography.headlineSmall)
-                    androidx.compose.material3.Slider(
+                    KwSlider(
                         value = goal,
                         onValueChange = { goal = (Math.round(it / 500f) * 500f) },
                         valueRange = 2000f..20000f,
@@ -956,6 +956,7 @@ private fun cadenceLabel(c: fr.kinwaypoint.app.net.Cadence): String {
 }
 
 /** Réglage des cadences d'un membre : trois préréglages ou des valeurs sur mesure. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun CadenceDialog(member: Member, onDismiss: () -> Unit, onSave: (fr.kinwaypoint.app.net.Cadence) -> Unit) {
     val start = member.cadence ?: fr.kinwaypoint.app.net.Cadence.BALANCED
@@ -971,21 +972,22 @@ private fun CadenceDialog(member: Member, onDismiss: () -> Unit, onSave: (fr.kin
         title = { Text("Fréquence de ${member.name}") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // FlowRow : une gélule qui ne tient pas passe à la ligne au lieu d'être écrasée.
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(
                         "Économe" to fr.kinwaypoint.app.net.Cadence.ECO,
                         "Équilibré" to fr.kinwaypoint.app.net.Cadence.BALANCED,
                         "Précis" to fr.kinwaypoint.app.net.Cadence.PRECISE,
                     ).forEach { (label, preset) ->
-                        androidx.compose.material3.FilterChip(selected = current == preset, onClick = { apply(preset) }, label = { Text(label) })
+                        androidx.compose.material3.FilterChip(selected = current == preset, onClick = { apply(preset) }, label = { Text(label, maxLines = 1, softWrap = false) })
                     }
                 }
                 Text("En temps normal : toutes les ${normalMin.toInt()} min", style = MaterialTheme.typography.bodyMedium)
-                androidx.compose.material3.Slider(value = normalMin, onValueChange = { normalMin = it.toInt().toFloat() }, valueRange = 1f..30f)
+                KwSlider(value = normalMin, onValueChange = { normalMin = it.toInt().toFloat() }, valueRange = 1f..30f)
                 Text("En déplacement : toutes les ${movingSec.toInt()} s", style = MaterialTheme.typography.bodyMedium)
-                androidx.compose.material3.Slider(value = movingSec, onValueChange = { movingSec = (Math.round(it / 5f) * 5f).coerceAtLeast(5f) }, valueRange = 5f..120f)
+                KwSlider(value = movingSec, onValueChange = { movingSec = (Math.round(it / 5f) * 5f).coerceAtLeast(5f) }, valueRange = 5f..120f)
                 Text("À l'arrêt : toutes les ${stillMin.toInt()} min", style = MaterialTheme.typography.bodyMedium)
-                androidx.compose.material3.Slider(value = stillMin, onValueChange = { stillMin = it.toInt().toFloat() }, valueRange = 5f..60f)
+                KwSlider(value = stillMin, onValueChange = { stillMin = it.toInt().toFloat() }, valueRange = 5f..60f)
                 Text(
                     "Appliqué dès que le téléphone se réveille (quelques secondes, ou à son prochain envoi). " +
                         "Il faut que son appli soit à jour et configurée avec l'accès famille.",
