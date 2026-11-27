@@ -514,6 +514,9 @@ fun ParentHomeScreen(
     )
 
     val sosIds = alarms.filter { it.id > acknowledgedAlarmId }.map { it.deviceId }.toSet()
+    // Membres désactivés dans Paramètres → Famille : absents de l'accueil et de la carte.
+    // Un SOS en cours les fait réapparaître, pour ne jamais masquer une alerte.
+    val shownMembers = members.filter { !it.hidden || it.id in sosIds }
 
     listeningTo?.let { child ->
         ListenScreen(api = api, token = config.token, member = child, photo = photos[child.id], onBack = { listeningTo = null })
@@ -608,7 +611,7 @@ fun ParentHomeScreen(
             traces = todayTraces,
             ownDeviceId = ownDeviceId,
             onOpenHistory = { historyFocus = null; historyOpen = true },
-            members = members,
+            members = shownMembers,
             photos = photos,
             focusId = mapFocus,
             permissions = permissions,
@@ -811,11 +814,11 @@ fun ParentHomeScreen(
                 }
             }
 
-            if (members.isNotEmpty()) {
+            if (shownMembers.isNotEmpty()) {
                 item { Text("Membres", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 4.dp)) }
             }
 
-            items(members, key = { it.id }) { member ->
+            items(shownMembers, key = { it.id }) { member ->
                 MemberCard(
                     member = member,
                     onShowMap = { openMap(member.id) },
@@ -865,6 +868,20 @@ fun ParentHomeScreen(
                     },
                     onDelete = { deleting = member },
                 )
+            }
+
+            // Membres désactivés : discret rappel, pour ne pas les croire disparus.
+            val hiddenCount = members.count { it.id !in shownMembers.map { m -> m.id } }
+            if (hiddenCount > 0) {
+                item {
+                    Text(
+                        if (hiddenCount == 1) "1 membre désactivé · Paramètres → Famille" else "$hiddenCount membres désactivés · Paramètres → Famille",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Muted,
+                        modifier = Modifier.fillMaxWidth().clip(CircleShape).clickable { settingsOpen = true }.padding(vertical = 8.dp),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    )
+                }
             }
 
 

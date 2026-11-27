@@ -437,6 +437,44 @@ fun ParentSettingsScreen(
                 Icon(Icons.Default.PersonAdd, contentDescription = null)
                 Text("  Ajouter un parent")
             }
+            // --- Membres affichés (désactivation provisoire) ------------------------------
+            SectionCard {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("👁️", style = MaterialTheme.typography.titleMedium)
+                    Text("Membres affichés", style = MaterialTheme.typography.titleMedium)
+                }
+                Text(
+                    "Désactive un membre pour le retirer provisoirement de l'accueil et de la carte, pour toute la famille. " +
+                        "Son téléphone continue d'envoyer sa position et ses alertes (SOS, lieux…) arrivent toujours ; " +
+                        "un SOS le fait réapparaître.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Muted,
+                )
+                members.forEach { m ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Avatar(m.name, size = 36.dp, photo = photos[m.id], colorHex = m.color)
+                        Column(Modifier.weight(1f)) {
+                            Text(if (m.id == ownDeviceId) "${m.name} (moi)" else m.name)
+                            Text(if (m.hidden) "Désactivé" else "Affiché", style = MaterialTheme.typography.bodySmall, color = if (m.hidden) Muted else Ok)
+                        }
+                        androidx.compose.material3.Switch(
+                            checked = !m.hidden,
+                            enabled = !busy,
+                            onCheckedChange = { on ->
+                                launchOp {
+                                    withContext(Dispatchers.IO) { api.setHidden(config.token, m.id, hidden = !on) }
+                                    onMembersChanged()
+                                }
+                            },
+                        )
+                    }
+                }
+            }
+
             // --- Ordre d'affichage (glisser-déposer) -------------------------------------
             SectionCard {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {

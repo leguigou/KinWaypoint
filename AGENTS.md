@@ -177,6 +177,10 @@ demande pas de mise à jour. En cas de doute, mettre à jour.
     l'utilisateur ; le mode sonnerie et le filtre sont rétablis à l'arrêt. Les
     touches de volume sont captées par une `MediaSession` active pendant la
     sonnerie (marche écran allumé ; écran éteint, cela dépend du fabricant).
+17. **Membre désactivé** : attribut `kwHidden` de l'appareil (`setHidden`),
+    filtré seulement à l'affichage (accueil, carte) via `shownMembers` ; le
+    suivi, les alertes, l'historique et les réglages gardent la liste complète.
+    Un membre avec un SOS en cours n'est jamais masqué.
 
 ## Git
 

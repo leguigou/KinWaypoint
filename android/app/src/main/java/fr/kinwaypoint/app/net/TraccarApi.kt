@@ -43,6 +43,8 @@ data class Member(
     val order: Int? = null,
     /** Cadences de suivi réglées par les parents, ou null = valeurs par défaut du téléphone. */
     val cadence: Cadence? = null,
+    /** Désactivé par un parent (attribut kwHidden) : masqué de l'accueil et de la carte, suivi inchangé. */
+    val hidden: Boolean = false,
 )
 
 /**
@@ -366,6 +368,7 @@ class TraccarApi(baseUrl: String) {
                 speedLimitKmh = d.optJSONObject("attributes")?.takeIf { it.has("speedLimit") }?.optDouble("speedLimit")?.let { (it * 1.852).toInt() },
                 ghost = d.optJSONObject("attributes")?.optBoolean("kwGhost", false) == true,
                 order = d.optJSONObject("attributes")?.takeIf { it.has("kwOrder") }?.optInt("kwOrder"),
+                hidden = d.optJSONObject("attributes")?.optBoolean("kwHidden", false) == true,
                 cadence = d.optJSONObject("attributes")?.let { a ->
                     val n = a.optInt("kwIntNormal", 0); val m = a.optInt("kwIntMoving", 0); val s = a.optInt("kwIntStill", 0)
                     if (n > 0 && m > 0 && s > 0) Cadence(n, m, s) else null
@@ -598,6 +601,14 @@ class TraccarApi(baseUrl: String) {
     /** Rang d'affichage d'un membre (attribut kwOrder), partagé par toute la famille. */
     fun setOrder(token: String, id: Long, order: Int) {
         updateAttributes(token, id) { attrs -> attrs.put("kwOrder", order) }
+    }
+
+    /**
+     * Désactive (masque) un membre pour toute la famille : attribut kwHidden.
+     * Son téléphone continue d'envoyer ses positions et les alertes restent actives.
+     */
+    fun setHidden(token: String, id: Long, hidden: Boolean) {
+        updateAttributes(token, id) { attrs -> if (hidden) attrs.put("kwHidden", true) else attrs.remove("kwHidden") }
     }
 
     fun markAsParent(token: String, id: Long) {

@@ -125,6 +125,9 @@ Un serveur **Traccar** collecte, stocke et déclenche les alertes.
   limite de vitesse.
 - **Ordre d'affichage des membres** par glisser-déposer (Paramètres → Famille),
   partagé par toute la famille : liste, carte, historique.
+- **Désactiver un membre** provisoirement (Paramètres → Famille → Membres
+  affichés) : il disparaît de l'accueil et de la carte pour toute la famille.
+  Son suivi et ses alertes continuent ; un SOS le fait réapparaître.
 - Verrouillage par **PIN** ou **empreinte**, délai de reverrouillage réglable
   (1 min → jamais). **Modifier le code PIN parent** : Paramètres → Sécurité.
 - **Mise à jour depuis l'application** : notification quand une version sort,
