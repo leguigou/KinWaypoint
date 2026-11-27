@@ -48,6 +48,8 @@ APK_CODE = os.environ.get("KW_APK_CODE", "azerty")
 # e-mail et un mot de passe à saisir (route publique /apk/server.json).
 TRACCAR_API_URL = os.environ.get("KW_TRACCAR_API_URL", "").rstrip("/")
 TRACCAR_TRACK_URL = os.environ.get("KW_TRACCAR_TRACK_URL", "").rstrip("/")
+# Relais de l'« écoute en direct » (wss://…/audio) : facultatif.
+AUDIO_RELAY_URL = os.environ.get("KW_AUDIO_RELAY_URL", "").rstrip("/")
 COOKIE_NAME = "kwapk"
 COOKIE_DAYS = 30
 # Une consommation n'est pas instantanément fatale : on tolère quelques
@@ -390,7 +392,12 @@ class Handler(BaseHTTPRequestHandler):
             if not TRACCAR_API_URL:
                 self.reply(404, {"error": "KW_TRACCAR_API_URL non configuree"})
                 return
-            self.reply(200, {"version": 1, "apiUrl": TRACCAR_API_URL, "trackUrl": TRACCAR_TRACK_URL})
+            self.reply(200, {
+                "version": 1,
+                "apiUrl": TRACCAR_API_URL,
+                "trackUrl": TRACCAR_TRACK_URL,
+                "audioRelayUrl": AUDIO_RELAY_URL,
+            })
             return
 
         # --- Mise à jour depuis l'appli : PUBLIC (sans code), et uniquement la

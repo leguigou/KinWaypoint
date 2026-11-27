@@ -153,8 +153,7 @@ fun WeeklyScreen(
                         // Distance de la semaine par mode de déplacement.
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             StatTile("🚶", formatDistance(travel.foot), "à pied", Modifier.weight(1f))
-                            if (travel.bike >= 50) StatTile("🚲", formatDistance(travel.bike), "à vélo", Modifier.weight(1f))
-                            StatTile("🚗", formatDistance(travel.vehicle), "en véhicule", Modifier.weight(1f))
+                            StatTile("🚗", formatDistance(travel.vehicle), "en voiture", Modifier.weight(1f))
                         }
 
                         SectionCard {

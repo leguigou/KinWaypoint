@@ -12,6 +12,10 @@ data class PermissionSnapshot(
     val batteryOptimized: Boolean = true,
     /** Activité physique (podomètre), Android 10+. */
     val activityRecognition: Boolean = true,
+    /** Micro (écoute en direct par un parent). */
+    val microphone: Boolean = false,
+    /** « Afficher par-dessus les autres applis » : ouvre l'écran d'écoute sans toucher le téléphone. */
+    val overlay: Boolean = false,
 )
 
 /** Actions qui demandent l'activité Android (autorisations, réglages, carte). */
@@ -28,6 +32,10 @@ class PlatformActions(
     val authenticate: (onSuccess: () -> Unit) -> Unit,
     /** Ouvre la galerie de photos ; l'image choisie (ou null) est rendue au callback. */
     val pickImage: (onResult: (android.net.Uri?) -> Unit) -> Unit,
+    /** Demande l'accès au micro (écoute en direct par un parent). */
+    val requestMicrophone: () -> Unit = {},
+    /** Ouvre le réglage « Afficher par-dessus les autres applis ». */
+    val openOverlaySettings: () -> Unit = {},
 )
 
 fun formatTime(millis: Long): String =

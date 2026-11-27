@@ -630,6 +630,11 @@ class TrackingService : Service(), LocationListener {
             Log.i(TAG, "commande reçue : faire sonner")
             RingAlarm.start(applicationContext)
         }
+        // Écoute en direct demandée par un parent (toujours visible sur ce téléphone).
+        body.lines().firstNotNullOfOrNull { fr.kinwaypoint.app.net.AudioRelay.parse(it) }?.let { request ->
+            Log.i(TAG, "commande reçue : écoute en direct")
+            ListenService.request(applicationContext, request.room, request.secret)
+        }
     }
 
     private fun onSendSuccess(fix: LocationFix) {

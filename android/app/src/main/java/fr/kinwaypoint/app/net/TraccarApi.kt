@@ -536,6 +536,20 @@ class TraccarApi(baseUrl: String) {
         return locateNow(token, deviceId)
     }
 
+    /**
+     * Écoute en direct : la commande (salle + secret) attend sur le serveur, puis
+     * le téléphone est réveillé par Firebase ; la réponse à sa position la lui
+     * transmet. false si le réveil immédiat est impossible.
+     */
+    fun startListen(token: String, deviceId: Long, room: String, secret: String): Boolean {
+        sendCommand(
+            token,
+            JSONObject().put("deviceId", deviceId).put("type", "custom")
+                .put("attributes", JSONObject().put("data", AudioRelay.command(room, secret))),
+        )
+        return locateNow(token, deviceId)
+    }
+
     /** Demande une position tout de suite (réveil Firebase). false si le téléphone n'est pas joignable ainsi. */
     fun locateNow(token: String, deviceId: Long): Boolean = runCatching {
         sendCommand(token, JSONObject().put("deviceId", deviceId).put("type", "positionSingle"))

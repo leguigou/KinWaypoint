@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.Hearing
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material.icons.filled.BatteryFull
@@ -333,6 +334,7 @@ fun ParentHomeScreen(
     var mapOpen by remember { mutableStateOf(false) }
     var mapFocus by remember { mutableStateOf<Long?>(null) }
     var renaming by remember { mutableStateOf<Member?>(null) }
+    var listeningTo by remember { mutableStateOf<Member?>(null) }
     var deleting by remember { mutableStateOf<Member?>(null) }
 
     fun openMap(focus: Long?) {
@@ -462,6 +464,11 @@ fun ParentHomeScreen(
     )
 
     val sosIds = alarms.filter { it.id > acknowledgedAlarmId }.map { it.deviceId }.toSet()
+
+    listeningTo?.let { child ->
+        ListenScreen(api = api, token = config.token, member = child, photo = photos[child.id], onBack = { listeningTo = null })
+        return
+    }
 
     if (weeklyOpen) {
         WeeklyScreen(
@@ -763,6 +770,11 @@ fun ParentHomeScreen(
                             ).show()
                         }
                     },
+                    onListen = if (!member.isParent && member.id != ownDeviceId) {
+                        { listeningTo = member }
+                    } else {
+                        null
+                    },
                     onLocate = {
                         scope.launch {
                             val ok = withContext(Dispatchers.IO) { api.locateNow(config.token, member.id) }
@@ -880,6 +892,8 @@ private fun MemberCard(
     onShowHistory: () -> Unit = {},
     onRing: () -> Unit = {},
     onLocate: () -> Unit = {},
+    /** Écoute en direct (enfants uniquement), null = pas proposée. */
+    onListen: (() -> Unit)? = null,
     isMe: Boolean = false,
     /** Lieu où se trouve le membre (maison, école…), ou null. */
     place: fr.kinwaypoint.app.net.Place? = null,
@@ -927,6 +941,13 @@ private fun MemberCard(
                             text = { Text("Voir sur la carte") },
                             leadingIcon = { Icon(Icons.Default.Map, contentDescription = null) },
                             onClick = { menuOpen = false; onShowMap() },
+                        )
+                    }
+                    onListen?.let { listen ->
+                        DropdownMenuItem(
+                            text = { Text("Écouter en direct") },
+                            leadingIcon = { Icon(Icons.Default.Hearing, contentDescription = null) },
+                            onClick = { menuOpen = false; listen() },
                         )
                     }
                     DropdownMenuItem(

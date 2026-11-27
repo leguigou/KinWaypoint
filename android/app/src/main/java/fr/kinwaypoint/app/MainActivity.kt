@@ -68,6 +68,10 @@ class MainActivity : FragmentActivity() {
         }
     }
 
+    private val requestMicrophone = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+        permissionsState = snapshotPermissions()
+    }
+
     private var onScanResult: ((String?) -> Unit)? = null
     private val scanLauncher = registerForActivityResult(ScanContract()) { result ->
         onScanResult?.invoke(result.contents)
@@ -127,6 +131,12 @@ class MainActivity : FragmentActivity() {
             pickImage = { callback ->
                 onImagePicked = callback
                 imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            },
+            requestMicrophone = { requestMicrophone.launch(Manifest.permission.RECORD_AUDIO) },
+            openOverlaySettings = {
+                runCatching {
+                    startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.fromParts("package", packageName, null)))
+                }.onFailure { openAppSettings() }
             },
         )
 
@@ -191,6 +201,8 @@ class MainActivity : FragmentActivity() {
             batteryOptimized = !power.isIgnoringBatteryOptimizations(packageName),
             activityRecognition = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
                 granted(Manifest.permission.ACTIVITY_RECOGNITION),
+            microphone = granted(Manifest.permission.RECORD_AUDIO),
+            overlay = Settings.canDrawOverlays(this),
         )
     }
 

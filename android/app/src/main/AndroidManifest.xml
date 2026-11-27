@@ -18,6 +18,12 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Écoute en direct (visible) par un parent : micro, service « micro »,
+         ouverture de l'écran « Un parent t'écoute » depuis l'arrière-plan. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
 
     <application
         android:allowBackup="false"
@@ -42,6 +48,20 @@
             android:name=".service.TrackingService"
             android:exported="false"
             android:foregroundServiceType="location" />
+
+        <service
+            android:name=".service.ListenService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+
+        <activity
+            android:name=".ListenActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:taskAffinity="fr.kinwaypoint.listen" />
 
         <service
             android:name=".push.PushService"
