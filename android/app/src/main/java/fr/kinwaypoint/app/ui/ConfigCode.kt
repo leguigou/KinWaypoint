@@ -74,7 +74,12 @@ fun ConfigCodeDialog(
                             parent = null,
                             label = null,
                         )
-                    } ?: RemoteConfig.fetch(value)
+                    } ?: if (RemoteConfig.looksLikeInviteCode(value)) {
+                        // Code d'invitation à 8 chiffres : échangé contre la configuration.
+                        RemoteConfig.redeemInvite(FAMILY_HUB, value)
+                    } else {
+                        RemoteConfig.fetch(value)
+                    }
                 }
             }
             busy = false
@@ -98,23 +103,24 @@ fun ConfigCodeDialog(
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
         icon = { IconBadge(Icons.Default.Link, MaterialTheme.colorScheme.primary) },
-        title = { Text("Code de configuration") },
+        title = { Text("Code d'invitation") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
-                    "Colle le lien reçu, ou scanne le QR code qui le contient. L'appli se remplit toute seule.",
+                    "Tape le code à 8 chiffres reçu d'un parent (valable 1 h), ou scanne un QR code. L'appli se remplit toute seule.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = Muted,
                 )
                 OutlinedTextField(
                     value = link,
                     onValueChange = { link = it.trim(); error = null },
-                    label = { Text("Lien de configuration") },
-                    placeholder = { Text("https://…?token=…") },
+                    label = { Text("Code d'invitation") },
+                    placeholder = { Text("8 chiffres (ou lien https://…)") },
                     singleLine = true,
                     shape = MaterialTheme.shapes.small,
                     enabled = !busy,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                    // Pavé numérique : le cas courant est un code de 8 chiffres (un lien se colle).
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     trailingIcon = {
                         IconButton(onClick = { clipboard.getText()?.text?.trim()?.let { link = it; error = null } }) {
                             Icon(Icons.Default.ContentPaste, contentDescription = "Coller")
@@ -150,7 +156,7 @@ fun ConfigCodeDialog(
         },
         confirmButton = {
             TextButton(
-                enabled = !busy && (RemoteConfig.looksLikeLink(link) || SetupPayload.decode(link) != null),
+                enabled = !busy && (RemoteConfig.looksLikeInviteCode(link) || RemoteConfig.looksLikeLink(link) || SetupPayload.decode(link) != null),
                 onClick = { submit(link) },
             ) { Text("Valider") }
         },

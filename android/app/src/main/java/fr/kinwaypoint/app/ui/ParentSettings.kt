@@ -569,7 +569,7 @@ fun ParentSettingsScreen(
     }
 
     if (addingParent) {
-        AddParentDialog(api = api, token = config.token, members = members, onDismiss = { addingParent = false })
+        AddParentDialog(api = api, config = config, members = members, onDismiss = { addingParent = false })
     }
 
     goalFor?.let { member ->
@@ -700,55 +700,29 @@ private fun CategoryRow(icon: ImageVector, tint: androidx.compose.ui.graphics.Co
 }
 
 /**
- * Ajout d'un autre parent : l'appli crée son compte (non administrateur) avec
- * un mot de passe provisoire, puis lui partage toute la famille. Les
- * identifiants ne sont affichés qu'une fois.
+ * Ajout d'un autre parent, à distance : l'appli crée son compte (non
+ * administrateur, adresse et mot de passe cachés que personne n'a besoin de
+ * connaître), lui partage la famille, obtient sa clé de connexion (1 an) et la
+ * dépose sur le serveur familial derrière un code d'invitation de 8 chiffres
+ * (1 h, usage unique).
  */
 @Composable
-private fun AddParentDialog(api: TraccarApi, token: String, members: List<Member>, onDismiss: () -> Unit) {
-    val context = LocalContext.current
+private fun AddParentDialog(api: TraccarApi, config: ParentConfig, members: List<Member>, onDismiss: () -> Unit) {
     val scope = rememberCoroutineScope()
     var name by remember { mutableStateOf("") }
-    var email by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    var created by remember { mutableStateOf<fr.kinwaypoint.app.net.NewParentAccount?>(null) }
-    val emailOk = email.trim().matches(Regex("[^@\\s]+@[^@\\s]+\\.[^@\\s]+"))
+    var invite by remember { mutableStateOf<fr.kinwaypoint.app.net.RemoteConfig.Invite?>(null) }
 
-    val account = created
-    if (account != null) {
+    val current = invite
+    if (current != null) {
         AlertDialog(
             onDismissRequest = {},
-            title = { Text("Compte de $name créé") },
+            title = { Text("Invitation de $name") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Note ces identifiants maintenant : le mot de passe ne sera plus affiché.", style = MaterialTheme.typography.bodyMedium)
-                    SectionCard(container = SoftGreen) {
-                        Text("E-mail", style = MaterialTheme.typography.labelMedium, color = Muted)
-                        Text(account.email, style = MaterialTheme.typography.titleMedium)
-                        Text("Mot de passe provisoire", style = MaterialTheme.typography.labelMedium, color = Muted)
-                        Text(
-                            account.password,
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                        )
-                    }
-                    OutlinedButton(
-                        onClick = {
-                            val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
-                            clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("KinWaypoint", "${account.email}\n${account.password}"))
-                            Toast.makeText(context, "Identifiants copiés", Toast.LENGTH_SHORT).show()
-                        },
-                        shape = CircleShape,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text("Copier") }
-                    Text(
-                        "Sur son téléphone : installer KinWaypoint, choisir « Parent », créer son code PIN, puis se connecter " +
-                            "avec cet e-mail et ce mot de passe. Il voit déjà toute la famille. Transmets le mot de passe en privé " +
-                            "(de vive voix ou par message direct) ; il pourra le changer depuis l'interface web Traccar.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Muted,
-                    )
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Son compte est créé et voit déjà toute la famille.", style = MaterialTheme.typography.bodyMedium)
+                    InviteCodeCard(current, name)
                 }
             },
             confirmButton = { TextButton(onClick = onDismiss) { Text("Terminé") } },
@@ -762,25 +736,17 @@ private fun AddParentDialog(api: TraccarApi, token: String, members: List<Member
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
-                    "Son compte voit toute la famille (enfants, lieux, alertes). Il n'est pas administrateur : " +
-                        "ton mode fantôme peut donc te cacher de lui.",
+                    "Tu obtiens un code de 8 chiffres, valable 1 h, à lui transmettre. Sur son téléphone, il installe " +
+                        "KinWaypoint puis touche « J'ai un code d'invitation ». Son compte voit toute la famille ; il n'est " +
+                        "pas administrateur, ton mode fantôme peut donc te cacher de lui.",
                     style = MaterialTheme.typography.bodySmall,
                     color = Muted,
                 )
                 OutlinedTextField(
                     value = name,
-                    onValueChange = { name = it.take(40) },
+                    onValueChange = { name = it.take(40); error = null },
                     label = { Text("Prénom") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                OutlinedTextField(
-                    value = email,
-                    onValueChange = { email = it.take(120); error = null },
-                    label = { Text("Adresse e-mail") },
-                    singleLine = true,
-                    isError = email.isNotBlank() && !emailOk,
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Email),
                     modifier = Modifier.fillMaxWidth(),
                 )
                 error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Danger) }
@@ -789,25 +755,41 @@ private fun AddParentDialog(api: TraccarApi, token: String, members: List<Member
         },
         confirmButton = {
             TextButton(
-                enabled = !busy && name.isNotBlank() && emailOk,
+                enabled = !busy && name.isNotBlank(),
                 onClick = {
                     busy = true
                     scope.launch {
                         withContext(Dispatchers.IO) {
                             runCatching {
-                                val newAccount = api.createParentAccount(token, name, email)
-                                // Accès immédiat à toute la famille (hors parents en mode fantôme).
+                                // Adresse interne : le parent ne s'en sert jamais (connexion par la clé).
+                                val slug = java.text.Normalizer.normalize(name.trim().lowercase(), java.text.Normalizer.Form.NFD)
+                                    .replace(Regex("[^a-z0-9]"), "").take(20).ifBlank { "parent" }
+                                val suffix = java.util.UUID.randomUUID().toString().take(6)
+                                val account = api.createParentAccount(config.token, name, "$slug.$suffix@kinwaypoint.local")
                                 runCatching {
-                                    api.shareFamilyWithParents(token, members.filter { !it.ghost }.map { it.id }, api.places(token).map { it.id })
+                                    api.shareFamilyWithParents(config.token, members.filter { !it.ghost }.map { it.id }, api.places(config.token).map { it.id })
                                 }
-                                newAccount
+                                val parentKey = api.login(account.email, account.password)
+                                val apiUrl = TraccarApi.normalize(config.apiUrl).toString().trimEnd('/')
+                                val invitation = org.json.JSONObject()
+                                    .put("mode", "parent")
+                                    .put("label", "Compte de ${name.trim()}")
+                                    .put(
+                                        "parent",
+                                        org.json.JSONObject()
+                                            .put("apiUrl", apiUrl)
+                                            .put("trackUrl", config.trackUrl.ifBlank { guessTrackUrl(apiUrl) })
+                                            .put("email", account.email)
+                                            .put("token", parentKey),
+                                    )
+                                fr.kinwaypoint.app.net.RemoteConfig.createInvite(FAMILY_HUB, config.token, invitation)
                             }
-                        }.onSuccess { created = it }
-                            .onFailure { error = it.message ?: "Création impossible" }
+                        }.onSuccess { invite = it }
+                            .onFailure { error = it.message ?: "Invitation impossible" }
                         busy = false
                     }
                 },
-            ) { Text("Créer le compte") }
+            ) { Text("Créer l'invitation") }
         },
         dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("Annuler") } },
     )

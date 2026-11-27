@@ -377,7 +377,7 @@ fun ChildSettingsScreen(
             ) {
                 Icon(Icons.Default.Link, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.size(8.dp))
-                Text("J'ai un code de configuration")
+                Text("J'ai un code d'invitation")
             }
 
             SectionCard {

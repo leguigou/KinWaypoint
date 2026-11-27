@@ -8,6 +8,8 @@ import kotlinx.coroutines.flow.first
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.MediaType.Companion.toMediaType
 import org.json.JSONObject
 import java.time.OffsetDateTime
 import java.util.concurrent.TimeUnit
@@ -39,7 +41,12 @@ data class RemoteConfig(
         val apiUrl: String,
         val trackUrl: String?,
         val email: String?,
+        /** Clé de connexion Traccar (code d'invitation) : connecté sans mot de passe. */
+        val token: String? = null,
     )
+
+    /** Code d'invitation créé sur le serveur familial : 8 chiffres, valable jusqu'à expiresAt. */
+    data class Invite(val code: String, val expiresAt: Long)
 
     companion object {
         const val SUPPORTED_VERSION = 1
@@ -51,6 +58,57 @@ data class RemoteConfig(
             .followRedirects(true)
             .followSslRedirects(false) // jamais de redirection HTTPS → HTTP
             .build()
+
+        /** 8 chiffres (espaces tolérés) : un code d'invitation. */
+        fun looksLikeInviteCode(text: String?): Boolean = text?.filter { !it.isWhitespace() }?.matches(Regex("\\d{8}")) == true
+
+        /** « 48210937 » → « 4821 0937 ». */
+        fun formatInviteCode(code: String) = code.chunked(4).joinToString(" ")
+
+        /**
+         * Dépose une configuration sur le serveur familial et obtient un code
+         * d'invitation (8 chiffres, 1 h, usage unique). Le serveur vérifie la
+         * connexion Traccar du parent (jeton) ; inviter un parent exige un
+         * compte administrateur.
+         */
+        fun createInvite(hub: String, traccarToken: String, config: JSONObject): Invite {
+            require(hub.startsWith("https://")) { "Serveur familial non configuré dans cette version de l'appli" }
+            val body = JSONObject().put("config", config).toString()
+                .toRequestBody("application/json".toMediaType())
+            val request = Request.Builder().url("${hub.trimEnd('/')}/apk/invite")
+                .header("Authorization", "Bearer $traccarToken")
+                .post(body).build()
+            http.newCall(request).execute().use { response ->
+                val text = response.body?.string().orEmpty()
+                val json = runCatching { JSONObject(text) }.getOrNull()
+                when {
+                    response.code == 401 -> error("Connexion refusée par le serveur familial : reconnecte-toi.")
+                    response.code == 403 -> error("Seul un compte administrateur peut inviter un parent.")
+                    response.code == 404 -> error("Le serveur familial ne connaît pas encore les codes d'invitation (à mettre à jour).")
+                    !response.isSuccessful || json == null -> error("Serveur familial en erreur (HTTP ${response.code})")
+                }
+                val expires = runCatching { OffsetDateTime.parse(json!!.getString("expiresAt")).toInstant().toEpochMilli() }
+                    .getOrDefault(System.currentTimeMillis() + 3_600_000L)
+                return Invite(json!!.getString("code"), expires)
+            }
+        }
+
+        /** Échange un code d'invitation contre la configuration (une seule fois). */
+        fun redeemInvite(hub: String, code: String): RemoteConfig {
+            require(hub.startsWith("https://")) { "Serveur familial non configuré dans cette version de l'appli" }
+            val digits = code.filter { it.isDigit() }
+            val body = JSONObject().put("code", digits).toString().toRequestBody("application/json".toMediaType())
+            val request = Request.Builder().url("${hub.trimEnd('/')}/apk/invite/redeem").post(body).build()
+            val text = http.newCall(request).execute().use { response ->
+                when (response.code) {
+                    404 -> error("Code invalide, expiré ou déjà utilisé.")
+                    429 -> error("Trop d'essais : réessaie dans quelques minutes.")
+                }
+                if (!response.isSuccessful) error("Serveur familial en erreur (HTTP ${response.code})")
+                response.body?.string().orEmpty()
+            }
+            return parse(text)
+        }
 
         /** Le texte collé ou scanné ressemble-t-il à un lien de configuration ? */
         fun looksLikeLink(text: String?): Boolean = text?.trim()?.startsWith("https://", ignoreCase = true) == true
@@ -121,6 +179,7 @@ data class RemoteConfig(
                     apiUrl = httpsUrl(p.optString("apiUrl"), "parent.apiUrl"),
                     trackUrl = p.optString("trackUrl").takeIf { it.isNotBlank() }?.let { httpsUrl(it, "parent.trackUrl") },
                     email = p.optString("email").trim().takeIf { it.isNotBlank() },
+                    token = p.optString("token").trim().takeIf { it.length >= 20 },
                 )
             }
 
@@ -160,6 +219,7 @@ data class RemoteConfig(
                     apiUrl = p.apiUrl,
                     trackUrl = p.trackUrl ?: current.trackUrl,
                     email = p.email ?: current.email,
+                    token = p.token ?: current.token,
                 ),
             )
         }
@@ -168,4 +228,4 @@ data class RemoteConfig(
 
 /** Réglages parent pré-remplis, pour l'écran de connexion. */
 fun ParentConfig.withRemote(p: RemoteConfig.Parent) =
-    copy(apiUrl = p.apiUrl, trackUrl = p.trackUrl ?: trackUrl, email = p.email ?: email)
+    copy(apiUrl = p.apiUrl, trackUrl = p.trackUrl ?: trackUrl, email = p.email ?: email, token = p.token ?: token)

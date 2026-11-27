@@ -325,7 +325,7 @@ private fun ModeSelectScreen(onChoose: (AppMode) -> Unit, onConfigCode: () -> Un
         FilledTonalButton(onClick = onConfigCode, shape = CircleShape, modifier = Modifier.fillMaxWidth().height(52.dp)) {
             Icon(Icons.Default.Link, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.size(8.dp))
-            Text("J'ai un code de configuration")
+            Text("J'ai un code d'invitation")
         }
         Spacer(Modifier.height(8.dp))
         Text(

@@ -250,7 +250,7 @@ fun ParentLoginScreen(
                     TextButton(onClick = { showConfigCode = true }) {
                         Icon(Icons.Default.Link, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.size(8.dp))
-                        Text("J'ai un code de configuration")
+                        Text("J'ai un code d'invitation")
                     }
                 }
             }
@@ -264,24 +264,42 @@ fun ParentLoginScreen(
         ParentConfigCode(
             actions = actions,
             onDismiss = { showConfigCode = false },
-            onFilled = { a, t, e ->
+            onFilled = { p ->
                 showConfigCode = false
-                apiUrl = a
-                t?.let { trackUrl = it }
-                e?.let { email = it }
+                if (p.token != null) {
+                    // Code d'invitation : clé de connexion fournie, pas de mot de passe à saisir.
+                    val normalized = TraccarApi.normalize(p.apiUrl).toString()
+                    scope.launch {
+                        repository.saveParent(
+                            current.copy(
+                                apiUrl = normalized,
+                                trackUrl = p.trackUrl ?: guessTrackUrl(normalized),
+                                email = p.email.orEmpty(),
+                                token = p.token,
+                            ),
+                        )
+                    }
+                } else {
+                    apiUrl = p.apiUrl
+                    p.trackUrl?.let { trackUrl = it }
+                    p.email?.let { email = it }
+                }
             },
         )
     }
 }
 
-/** Champs de connexion pré-remplis par un code de configuration (le mot de passe reste à saisir). */
+/**
+ * Code d'invitation (connexion directe, clé fournie) ou ancien code de
+ * configuration (champs pré-remplis, mot de passe à saisir).
+ */
 @Composable
-private fun ParentConfigCode(actions: PlatformActions, onFilled: (apiUrl: String, trackUrl: String?, email: String?) -> Unit, onDismiss: () -> Unit) {
+private fun ParentConfigCode(actions: PlatformActions, onFilled: (fr.kinwaypoint.app.net.RemoteConfig.Parent) -> Unit, onDismiss: () -> Unit) {
     ConfigCodeDialog(
         actions = actions,
         expected = fr.kinwaypoint.app.data.AppMode.PARENT,
         onDismiss = onDismiss,
-        onResult = { cfg -> cfg.parent?.let { onFilled(it.apiUrl, it.trackUrl, it.email) } },
+        onResult = { cfg -> cfg.parent?.let(onFilled) },
     )
 }
 
@@ -870,7 +888,7 @@ fun ParentHomeScreen(
         )
     }
 
-    qrFor?.let { (name, payload) -> SetupQrDialog(name, payload, onDismiss = { qrFor = null }) }
+    qrFor?.let { (name, payload) -> SetupQrDialog(name, payload, onDismiss = { qrFor = null }, inviteToken = config.token) }
 
     renaming?.let { member ->
         var name by remember(member.id) { mutableStateOf(member.name) }
