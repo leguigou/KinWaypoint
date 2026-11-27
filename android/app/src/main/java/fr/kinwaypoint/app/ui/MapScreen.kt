@@ -629,7 +629,7 @@ private fun EntryCard(
 
             // 4. Objectif de pas (barre vide si le podomètre n'a encore rien donné).
             val goal = member?.stepGoal ?: fr.kinwaypoint.app.net.DEFAULT_STEP_GOAL
-            StepGoalBar(position?.steps ?: 0, goal, color)
+            StepGoalBar(position?.stepsToday() ?: 0, goal, color)
         }
             // 5. Le bouton reste en bas, à la même place sur toutes les fiches.
             Spacer(Modifier.height(10.dp))

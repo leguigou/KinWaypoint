@@ -752,7 +752,10 @@ class TrackingService : Service(), LocationListener {
             alarm = alarm,
             fixAgeSeconds = sosNow?.let { ((it - fixTime) / 1000L).coerceAtLeast(0L) },
             ringer = readRinger(),
-            steps = stepCounter.stepsToday,
+            steps = stepCounter.stepsToday.also { today ->
+                // Minuit passé sans un pas : l'écran repasse à 0 (le capteur ne dit rien tant qu'on ne marche pas).
+                if (today != null) TrackingStatus.update { it.copy(steps = today) }
+            },
             activity = analyzer.activity(System.currentTimeMillis()).code,
             kmh = analyzer.speedKmh(System.currentTimeMillis())?.let { Math.round(it * 10) / 10.0 },
             wifi = readWifiName(),

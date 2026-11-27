@@ -157,7 +157,9 @@ demande pas de mise à jour. En cas de doute, mettre à jour.
 10. **Podomètre** : `TYPE_STEP_COUNTER` ne donne rien tant qu'on ne marche
     pas. La valeur du jour est relue dans les préférences (`stepsToday`) pour
     que chaque position parte avec ses pas ; côté parent, une position sans pas
-    garde ceux de la précédente du même jour (`keepSteps`).
+    garde ceux de la précédente du même jour (`keepSteps`). À l'affichage,
+    toujours `MemberPosition.stepsToday()` : une position d'hier compte 0 pas
+    après minuit (téléphone resté muet depuis la veille).
 11. **Autres parents** : comptes créés par l'appli d'un administrateur
     (`createParentAccount`), jamais administrateurs. Le partage de la famille
     (`shareFamilyWithParents` : appareils hors mode fantôme et lieux) tourne

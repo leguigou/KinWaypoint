@@ -1165,7 +1165,8 @@ private fun MemberCard(
         }
 
         // --- Activité du jour : pas, à pied, en voiture, objectif ------------------
-        val steps = position?.steps
+        // Après minuit, les pas d'une position d'hier repartent à 0.
+        val steps = position?.stepsToday()
         if (steps != null || travel != null) {
             Text(
                 "ACTIVITÉ DU JOUR",

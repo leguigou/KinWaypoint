@@ -114,3 +114,17 @@ suspend fun discoverServer(hub: String = FAMILY_HUB): ServerInfo? = kotlinx.coro
         }
     }.getOrNull()
 }
+
+
+/**
+ * Pas d'aujourd'hui portés par une position : ceux d'une position d'hier ne
+ * comptent plus après minuit (0), même si le téléphone n'a rien envoyé depuis.
+ * null = podomètre inconnu.
+ */
+fun fr.kinwaypoint.app.net.MemberPosition.stepsToday(now: Long = System.currentTimeMillis()): Int? {
+    val s = steps ?: return null
+    val zone = java.time.ZoneId.systemDefault()
+    val fixDay = java.time.Instant.ofEpochMilli(fixTime).atZone(zone).toLocalDate()
+    val today = java.time.Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
+    return if (fixDay == today) s else 0
+}
