@@ -64,7 +64,9 @@ jobs:
           HUB_VARIABLE: ${{ vars.KW_FAMILY_HUB }}
         run: |
           # Diagnostic sans jamais afficher la valeur.
-          echo "KW_FAMILY_HUB : secret ${HUB_SECRET:+présent}${HUB_SECRET:-absent}, variable ${HUB_VARIABLE:+présente}${HUB_VARIABLE:-absente}"
+          SRC_SECRET=absent; [ -n "$HUB_SECRET" ] && SRC_SECRET=présent
+          SRC_VARIABLE=absente; [ -n "$HUB_VARIABLE" ] && SRC_VARIABLE=présente
+          echo "KW_FAMILY_HUB : secret $SRC_SECRET, variable $SRC_VARIABLE"
           HUB="${HUB_SECRET:-$HUB_VARIABLE}"
           # Nettoyage : espaces, retours à la ligne, guillemets, « / » final ; https:// ajouté si oublié.
           HUB="$(printf '%s' "$HUB" | tr -d '[:space:]"'"'"'')"
