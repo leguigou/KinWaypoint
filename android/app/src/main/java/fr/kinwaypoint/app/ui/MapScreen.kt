@@ -202,6 +202,9 @@ fun FamilyMapScreen(
         initialPage = entries.indexOfFirst { it.id == focusId }.coerceAtLeast(0),
     ) { entries.size }
     val selectedId = entries.getOrNull(pagerState.currentPage)?.id
+    // Dès que l'utilisateur bouge la carte (doigt, fiche glissée, avatar touché),
+    // on ne recadre plus automatiquement.
+    var userMoved by remember { mutableStateOf(false) }
 
     // Toucher un avatar → sa fiche passe au premier plan.
     LaunchedEffect(state.map) {
@@ -260,9 +263,6 @@ fun FamilyMapScreen(
         st.setTraces(mapTraces, colors)
     }
 
-    // Dès que l'utilisateur bouge la carte (doigt, fiche glissée, avatar touché),
-    // on ne recadre plus automatiquement.
-    var userMoved by remember { mutableStateOf(false) }
     LaunchedEffect(state.map) {
         state.map?.addOnCameraMoveStartedListener { reason ->
             if (reason == org.maplibre.android.maps.MapLibreMap.OnCameraMoveStartedListener.REASON_API_GESTURE) userMoved = true
