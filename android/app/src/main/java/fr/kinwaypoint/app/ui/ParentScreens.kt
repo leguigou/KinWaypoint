@@ -23,6 +23,8 @@ import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.Vibration
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.filled.Hearing
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.ui.platform.LocalContext
@@ -427,9 +429,19 @@ fun ParentHomeScreen(
 
     // Les enfants se voient entre eux : appareils d'enfants liés au compte lecteur
     // (une fois par ouverture, sans effet si c'est déjà fait).
-    LaunchedEffect(members.filter { !it.isParent }.map { it.id }, places.map { it.id }) {
+    // Notifications du serveur en français et à l'heure de ce téléphone (une fois par session).
+    LaunchedEffect(config.token) {
+        withContext(Dispatchers.IO) { runCatching { api.ensureUserPreferences(config.token) } }
+    }
+
+    LaunchedEffect(members.filter { !it.isParent }.map { it.id }, places.map { it.id }, proximityConfig, ownDeviceId) {
         if (members.isEmpty()) return@LaunchedEffect
         withContext(Dispatchers.IO) {
+            // Alerte de proximité : un enfant ajouté après coup est lié lui aussi.
+            if (proximityConfig.enabled && ownDeviceId != 0L) {
+                val children = members.filter { !it.isParent && it.id != ownDeviceId }.map { it.id }
+                runCatching { api.setProximity(config.token, children, ownDeviceId, proximityConfig.radiusMeters) }
+            }
             runCatching { api.shareChildrenWithEachOther(config.token, members) }
             // Chaque lieu s'applique à tous les appareils (y compris un enfant ajouté après le lieu).
             places.filter { it.alerts }.forEach { place -> runCatching { api.linkPlace(config.token, place.id, members.map { it.id }) } }
@@ -535,6 +547,17 @@ fun ParentHomeScreen(
         FamilyMapScreen(
             places = places,
             sosIds = sosIds,
+            onLocate = { id ->
+                val who = members.firstOrNull { it.id == id }?.name ?: "ce membre"
+                scope.launch {
+                    val ok = withContext(Dispatchers.IO) { api.locateNow(config.token, id) }
+                    android.widget.Toast.makeText(
+                        trackingContext,
+                        if (ok) "Position demandée à $who…" else "Téléphone de $who pas joignable tout de suite : il répondra à son prochain envoi.",
+                        android.widget.Toast.LENGTH_SHORT,
+                    ).show()
+                }
+            },
             onDismissSos = { deviceId ->
                 // Ferme toutes les alertes SOS en cours de ce membre.
                 alarms.filter { it.deviceId == deviceId }.maxOfOrNull { it.id }?.let { id ->
@@ -787,6 +810,8 @@ fun ParentHomeScreen(
                     },
                     isMe = member.id == ownDeviceId,
                     place = member.position?.let { placeAt(it.latitude, it.longitude, places) },
+                    placeSince = member.position?.let { placeAt(it.latitude, it.longitude, places) }
+                        ?.let { p -> todayTraces[member.id]?.let { inPlaceSince(it, p) } },
                     travel = todayTraces[member.id]?.let { travelSplit(it) },
                     photo = photos[member.id],
                     onChangePhoto = { changePhoto(member) },
@@ -897,6 +922,8 @@ private fun MemberCard(
     isMe: Boolean = false,
     /** Lieu où se trouve le membre (maison, école…), ou null. */
     place: fr.kinwaypoint.app.net.Place? = null,
+    /** Arrivée dans ce lieu (pour « Maison · 2 h 26 »), ou null si inconnue. */
+    placeSince: Long? = null,
     /** Distance du jour par mode de déplacement. */
     travel: TravelSplit? = null,
     onChangePhoto: () -> Unit = {},
@@ -1002,7 +1029,10 @@ private fun MemberCard(
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             // Dans un lieu : gélule « 🏠 Maison » à la couleur du lieu, en premier.
-            place?.let { StatusPill("${placeEmoji(it.icon)} ${it.name}", parseHex(it.color) ?: MaterialTheme.colorScheme.primary, icon = null, showDot = false) }
+            place?.let {
+                val since = placeSince?.let { t -> " · " + shortDuration(System.currentTimeMillis() - t) }.orEmpty()
+                StatusPill("${placeEmoji(it.icon)} ${it.name}$since", parseHex(it.color) ?: MaterialTheme.colorScheme.primary, icon = null, showDot = false)
+            }
             StatusPill(if (member.online) "En ligne" else "Hors ligne", if (member.online) Ok else Idle)
             battery?.let {
                 StatusPill(
@@ -1014,6 +1044,11 @@ private fun MemberCard(
                     },
                     icon = if (charging) Icons.Default.BatteryChargingFull else Icons.Default.BatteryFull,
                 )
+            }
+            // Sonnerie coupée : utile avant d'appeler.
+            when (position?.ringer) {
+                "silent" -> StatusPill("Silencieux", Warning, icon = Icons.AutoMirrored.Filled.VolumeOff)
+                "vibrate" -> StatusPill("Vibreur", Muted, icon = Icons.Default.Vibration)
             }
             position?.takeIf { it.accuracy > 0 }?.let {
                 StatusPill("± ${it.accuracy.toInt()} m", Muted, icon = Icons.Default.GpsFixed)

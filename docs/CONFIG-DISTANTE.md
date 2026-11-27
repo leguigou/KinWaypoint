@@ -44,7 +44,7 @@ Accept: application/json
   "child": {
     "serverUrl": "https://track.exemple.fr",
     "deviceId": "kw7h3kq9x2mzp4rt8vbn6cye5wd3",
-    "intervalSeconds": 60
+    "intervalSeconds": 300
   }
 }
 ```
@@ -74,7 +74,7 @@ Accept: application/json
 | `expiresAt` | non | Date ISO 8601. Passée : le code est refusé (« a expiré ») |
 | `child.serverUrl` | oui (section enfant) | Adresse d'envoi des positions (port 5055 derrière Traefik), **https obligatoire** |
 | `child.deviceId` | oui (section enfant) | Identifiant de l'appareil dans Traccar, **12 caractères minimum** (c'est le secret d'envoi) |
-| `child.intervalSeconds` | non | Intervalle en mouvement, ramené entre 15 et 3600 |
+| `child.intervalSeconds` | non | Intervalle normal (300 = 5 min par défaut), ramené entre 15 et 3600 |
 | `parent.apiUrl` | oui (section parent) | Adresse de l'interface / API Traccar (port 8082), **https obligatoire** |
 | `parent.trackUrl` | non | Adresse d'envoi, utilisée dans les QR codes « Ajouter un enfant » |
 | `parent.email` | non | Pré-remplit l'e-mail de connexion |
@@ -114,7 +114,7 @@ TOKEN=$(openssl rand -hex 24)
 mkdir -p "/srv/kw-config/$TOKEN"
 cat > "/srv/kw-config/$TOKEN/config.json" <<'JSON'
 { "version": 1, "mode": "child", "label": "Téléphone de test",
-  "child": { "serverUrl": "https://track.exemple.fr", "deviceId": "kw…", "intervalSeconds": 60 } }
+  "child": { "serverUrl": "https://track.exemple.fr", "deviceId": "kw…", "intervalSeconds": 300 } }
 JSON
 echo "https://config.exemple.fr/$TOKEN/config.json"
 ```
@@ -142,7 +142,7 @@ curl -s -X POST https://famille.deloffre.fr/config/api/codes \
   -H "X-Admin-Token: $KW_ADMIN_TOKEN" -H 'content-type: application/json' \
   -d '{"mode":"child","label":"Téléphone de Léa",
        "child":{"serverUrl":"https://ingest.deloffre.fr",
-                "deviceId":"<identifiant Traccar>","intervalSeconds":60}}'
+                "deviceId":"<identifiant Traccar>","intervalSeconds":300}}'
 ```
 
 Le jeton fait 256 bits (`secrets.token_urlsafe(32)`), la durée de vie est de

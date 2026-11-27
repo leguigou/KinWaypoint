@@ -15,6 +15,9 @@ import kotlinx.coroutines.flow.map
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "kinwaypoint")
 
+/** Cadence normale d'envoi des positions (s) : 5 min. */
+const val DEFAULT_INTERVAL_SECONDS = 300
+
 /** Rôle de l'appareil, choisi au premier lancement. */
 enum class AppMode { UNSET, CHILD, PARENT }
 
@@ -25,7 +28,8 @@ enum class AppMode { UNSET, CHILD, PARENT }
 data class TrackingConfig(
     val serverUrl: String = "",
     val deviceId: String = "",
-    val intervalSeconds: Int = 60,
+    /** Cadence normale : 5 min. En mouvement détecté : 15 s ; à l'arrêt : 10 min. */
+    val intervalSeconds: Int = DEFAULT_INTERVAL_SECONDS,
     val enabled: Boolean = false,
     /** Mode enfant : adresse de l'API, pour voir les parents (« Voir mes parents »). */
     val apiUrl: String = "",
@@ -99,6 +103,8 @@ class SettingsRepository(private val context: Context) {
         val PROXIMITY_RADIUS = intPreferencesKey("proximity_alert_radius")
 
         val ALLOW_LISTEN = booleanPreferencesKey("allow_remote_listen")
+
+        val DEFAULTS_VERSION = intPreferencesKey("defaults_version")
     }
 
     val mode: Flow<AppMode> = context.dataStore.data.map { prefs ->
@@ -109,7 +115,7 @@ class SettingsRepository(private val context: Context) {
         TrackingConfig(
             serverUrl = prefs[Keys.SERVER].orEmpty(),
             deviceId = prefs[Keys.DEVICE].orEmpty(),
-            intervalSeconds = prefs[Keys.INTERVAL]?.toIntOrNull() ?: 60,
+            intervalSeconds = prefs[Keys.INTERVAL]?.toIntOrNull() ?: DEFAULT_INTERVAL_SECONDS,
             enabled = prefs[Keys.ENABLED] ?: false,
             apiUrl = prefs[Keys.VIEW_API].orEmpty(),
             viewerToken = prefs[Keys.VIEW_TOKEN].orEmpty(),
@@ -171,6 +177,19 @@ class SettingsRepository(private val context: Context) {
         context.dataStore.edit { prefs ->
             prefs[Keys.PROXIMITY_ON] = config.enabled
             prefs[Keys.PROXIMITY_RADIUS] = config.radiusMeters
+        }
+    }
+
+    /**
+     * Mise à niveau des valeurs par défaut, une seule fois : l'ancien intervalle par
+     * défaut (60 s) devient 5 min. Une valeur choisie différente est conservée.
+     */
+    suspend fun migrateDefaults() {
+        context.dataStore.edit { prefs ->
+            if ((prefs[Keys.DEFAULTS_VERSION] ?: 0) < 1) {
+                if (prefs[Keys.INTERVAL] == "60") prefs[Keys.INTERVAL] = DEFAULT_INTERVAL_SECONDS.toString()
+                prefs[Keys.DEFAULTS_VERSION] = 1
+            }
         }
     }
 

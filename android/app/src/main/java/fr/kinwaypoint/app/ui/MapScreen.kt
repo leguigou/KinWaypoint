@@ -50,6 +50,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -119,6 +120,8 @@ fun FamilyMapScreen(
     traces: Map<Long, List<TracePoint>> = emptyMap(),
     ownDeviceId: Long = 0L,
     onOpenHistory: (() -> Unit)? = null,
+    /** Demander la position d'un membre tout de suite (bouton actualiser). Null : pas de bouton. */
+    onLocate: ((Long) -> Unit)? = null,
     title: String = "Ma famille",
     places: List<fr.kinwaypoint.app.net.Place> = emptyList(),
     /** Membres avec un SOS en cours (non acquitté). */
@@ -139,7 +142,9 @@ fun FamilyMapScreen(
         members.filter { it.id != ownDeviceId || ownDeviceId == 0L }.forEach { m ->
             m.position?.let { add(MapEntry(m.id, m.name, it.latitude, it.longitude, m, m.color)) }
         }
-        me?.let { add(MapEntry(ME_ID, "Moi", it.latitude, it.longitude, null, ownMember?.color)) }
+        val myPoint = me?.let { it.latitude to it.longitude }
+            ?: ownMember?.position?.let { it.latitude to it.longitude }
+        myPoint?.let { (lat, lon) -> add(MapEntry(ME_ID, "Moi", lat, lon, null, ownMember?.color)) }
     }
     val currentEntries by rememberUpdatedState(entries)
 
@@ -164,8 +169,6 @@ fun FamilyMapScreen(
             place != null -> place.name + (inPlaceSince(mapTraces[e.id].orEmpty(), place)?.let { " · " + shortDuration(clock - it) } ?: "")
             // En route vers un lieu : temps d'arrivée estimé.
             etas[e.id] != null -> etas[e.id]!!.let { "→ ${it.place.name} ~${it.minutes} min" }
-            // En déplacement rapide : la vitesse au-dessus de l'avatar.
-            e.member?.position?.activity == "vehicle" -> e.member?.position?.kmh?.let { "${it.toInt()} km/h" }
             else -> null
         }
     }
@@ -198,9 +201,20 @@ fun FamilyMapScreen(
     // Marge appliquée à la caméra : un centrage sur une personne la place au milieu de la zone visible.
     val screenHeightPx = with(density) { androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp.roundToPx() }
 
+    // Son propre appareil est affiché sous « Moi » : on y ramène la demande de focus.
+    val focus = if (focusId != null && focusId == ownDeviceId && ownDeviceId != 0L) ME_ID else focusId
     val pagerState = rememberPagerState(
-        initialPage = entries.indexOfFirst { it.id == focusId }.coerceAtLeast(0),
+        initialPage = entries.indexOfFirst { it.id == focus }.coerceAtLeast(0),
     ) { entries.size }
+    // « Moi » arrive parfois après coup (position GPS) : la fiche demandée passe alors devant.
+    var focusShown by remember { mutableStateOf(false) }
+    LaunchedEffect(entries.map { it.id }) {
+        if (focusShown || focus == null) return@LaunchedEffect
+        val index = entries.indexOfFirst { it.id == focus }
+        if (index < 0) return@LaunchedEffect
+        if (pagerState.currentPage != index) pagerState.scrollToPage(index)
+        focusShown = true
+    }
     val selectedId = entries.getOrNull(pagerState.currentPage)?.id
     // Dès que l'utilisateur bouge la carte (doigt, fiche glissée, avatar touché),
     // on ne recadre plus automatiquement.
@@ -220,7 +234,9 @@ fun FamilyMapScreen(
     }
 
     // Images des avatars (photo ou initiale), régénérées quand une photo, une couleur ou un statut change.
-    val markerKey = entries.map { listOf(it.id, it.name, it.member?.online, it.colorHex, labels[it.id]) } to photos.values.map { it.generationId }
+    val markerKey = entries.map {
+        listOf(it.id, it.name, it.member?.online, it.colorHex, labels[it.id], statusBadges(it.member?.position), speedText(it.member?.position))
+    } to photos.values.map { it.generationId }
     LaunchedEffect(state.style, markerKey) {
         val st = state.style ?: return@LaunchedEffect
         st.safely { entries.forEach { e ->
@@ -238,6 +254,8 @@ fun FamilyMapScreen(
                 label = labels[e.id],
                 sos = e.id in sosIds,
                 badge = activityEmoji(e.member?.position?.activity),
+                sideBadges = statusBadges(e.member?.position),
+                badgeText = speedText(e.member?.position),
             )
             addImage("avatar-${e.id}", bitmap)
         } }
@@ -284,7 +302,7 @@ fun FamilyMapScreen(
             }
         }
         if (userMoved || entries.isEmpty()) return@LaunchedEffect
-        val target = entries.firstOrNull { it.id == focusId }
+        val target = entries.firstOrNull { it.id == focus }
         runCatching {
             if (target != null) {
                 m.animateCamera(CameraUpdateFactory.newLatLngZoom(target.latLng, 16.0), 500)
@@ -405,6 +423,7 @@ fun FamilyMapScreen(
                     me = me,
                     actions = actions,
                     arrival = etas[entry.id],
+                    onLocate = if (!entry.isMe && entry.member != null) onLocate?.let { f -> { f(entry.id) } } else null,
                     onNeededHeight = { px ->
                         val old = neededHeights[entry.id]
                         if (old == null || kotlin.math.abs(old - px) > 2) neededHeights[entry.id] = px
@@ -428,6 +447,7 @@ private fun EntryCard(
     me: Location?,
     actions: PlatformActions,
     arrival: Eta.Arrival? = null,
+    onLocate: (() -> Unit)? = null,
     /** Hauteur (px) dont la fiche a besoin pour tout afficher sans défiler. */
     onNeededHeight: (Int) -> Unit = {},
 ) {
@@ -476,6 +496,11 @@ private fun EntryCard(
                         style = MaterialTheme.typography.bodySmall,
                         color = Muted,
                     )
+                }
+                onLocate?.let { locate ->
+                    FilledTonalIconButton(onClick = locate) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Demander sa position maintenant")
+                    }
                 }
             }
             // Pastilles sur plusieurs lignes si besoin (statut, batterie, distance, tracé).

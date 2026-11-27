@@ -94,6 +94,9 @@ class MainActivity : FragmentActivity() {
         // Initialisation de la carte, une fois, avant tout affichage.
         MapLibre.getInstance(applicationContext)
         val repository = SettingsRepository(applicationContext)
+        // Notification quand une nouvelle version est déposée (parents et enfants).
+        runCatching { fr.kinwaypoint.app.ui.scheduleUpdateChecks(applicationContext) }
+        lifecycleScope.launch { repository.migrateDefaults() }
 
         // Notifications poussées : on récupère le jeton FCM, puis on le déclare
         // au serveur dès que le parent est connecté (attribut notificationTokens

@@ -134,6 +134,7 @@ fun ParentSettingsScreen(
     var ghost by remember { mutableStateOf<Boolean?>(null) } // null = inconnu (chargement)
     var busy by remember { mutableStateOf(false) }
     var colorFor by remember { mutableStateOf<Member?>(null) }
+    var customColorFor by remember { mutableStateOf<Member?>(null) }
     var goalFor by remember { mutableStateOf<Member?>(null) }
     var rules by remember { mutableStateOf<Set<String>?>(null) } // null = chargement
     val children = members.filter { !it.isParent }
@@ -291,27 +292,45 @@ fun ParentSettingsScreen(
             }
 
             // --- Alerte de proximité -------------------------------------------------
+            // Calculée par le serveur (Traccar) : chaque enfant est lié au téléphone
+            // du parent ; la notification arrive même appli fermée.
+            var radius by remember(proximity.radiusMeters) { mutableStateOf(proximity.radiusMeters.toFloat()) }
+            val proximityChildren = children.filter { it.id != ownDeviceId }.map { it.id }
+            fun applyProximity(enabled: Boolean, meters: Int) = launchOp {
+                withContext(Dispatchers.IO) {
+                    api.setAlertRule(config.token, fr.kinwaypoint.app.net.AlertRule.PROXIMITY, enabled)
+                    api.setProximity(config.token, proximityChildren, ownDeviceId, if (enabled) meters else 0)
+                }
+                onProximityChange(proximity.copy(enabled = enabled, radiusMeters = meters))
+            }
             SectionCard {
                 ToggleRow(
                     icon = Icons.Default.MyLocation,
                     title = "Alerte de proximité",
-                    detail = "Prévenir quand un enfant redevient proche de toi après s'être éloigné.",
+                    detail = if (sharing) {
+                        "Prévenir quand un enfant revient près de toi après s'être éloigné."
+                    } else {
+                        "Active d'abord « Partager ma position » : le serveur compare la position de ton téléphone à celle des enfants."
+                    },
                     checked = proximity.enabled,
-                    enabled = !busy,
-                    onChange = { onProximityChange(proximity.copy(enabled = it)) },
+                    enabled = !busy && (sharing || proximity.enabled),
+                    onChange = { on -> applyProximity(on, proximity.radiusMeters) },
                 )
                 if (proximity.enabled) {
                     Text(
-                        "Distance de déclenchement : ${proximity.radiusMeters} m",
+                        "Distance de déclenchement : ${radius.toInt()} m",
                         style = MaterialTheme.typography.bodyMedium,
                     )
                     androidx.compose.material3.Slider(
-                        value = proximity.radiusMeters.toFloat(),
-                        onValueChange = { onProximityChange(proximity.copy(radiusMeters = Math.round(it / 50f) * 50)) },
+                        value = radius,
+                        onValueChange = { radius = (Math.round(it / 50f) * 50).toFloat() },
+                        onValueChangeFinished = { applyProximity(true, radius.toInt()) },
                         valueRange = 100f..1000f,
+                        enabled = !busy,
                     )
                     Text(
-                        "Calculé sur ton téléphone : l'appli doit rester active (ouverte ou en tâche de fond). Ce n'est pas un suivi permanent en arrière-plan.",
+                        "Calculé par le serveur : la notification arrive même appli fermée et téléphone en veille. " +
+                            "Elle part quand un enfant passe de plus loin à plus près que cette distance.",
                         style = MaterialTheme.typography.bodySmall,
                         color = Muted,
                     )
@@ -472,9 +491,29 @@ fun ParentSettingsScreen(
                             if (selected) Icon(Icons.Default.Check, contentDescription = null, tint = Color.White)
                         }
                     }
+                    // Couleur personnalisée : ouvre le sélecteur complet.
+                    val custom = parseHex(member.color)?.takeIf { member.color?.uppercase() !in ProfilePalette }
+                    CustomColorSwatch(custom = custom, size = 44.dp) {
+                        colorFor = null
+                        customColorFor = member
+                    }
                 }
             },
             confirmButton = { TextButton(onClick = { colorFor = null }) { Text("Fermer") } },
+        )
+    }
+    customColorFor?.let { member ->
+        ColorPickerDialog(
+            initial = profileColor(member.name, member.color),
+            title = "Couleur de ${member.name}",
+            onDismiss = { customColorFor = null },
+            onPick = { hex ->
+                customColorFor = null
+                launchOp {
+                    withContext(Dispatchers.IO) { api.setColor(config.token, member.id, hex) }
+                    onMembersChanged()
+                }
+            },
         )
     }
 }

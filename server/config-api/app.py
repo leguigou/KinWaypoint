@@ -627,7 +627,7 @@ class Handler(BaseHTTPRequestHandler):
             payload["child"] = {
                 "serverUrl": child["serverUrl"],
                 "deviceId": child["deviceId"],
-                "intervalSeconds": int(child.get("intervalSeconds", 60)),
+                "intervalSeconds": int(child.get("intervalSeconds", 300)),
             }
         else:
             section = {"apiUrl": parent["apiUrl"]}

@@ -91,6 +91,7 @@ fun PlacesScreen(
     var deleting by remember { mutableStateOf<Place?>(null) }
     var editingId by remember { mutableStateOf(0L) } // 0 = nouveau lieu
     var color by remember { mutableStateOf("#5B5BD6") }
+    var pickingColor by remember { mutableStateOf(false) }
     var alerts by remember { mutableStateOf(true) }
 
     fun startAdd() {
@@ -216,6 +217,18 @@ fun PlacesScreen(
                                         .clickable { color = hex },
                                 )
                             }
+                            CustomColorSwatch(
+                                custom = parseHex(color)?.takeIf { color.uppercase() !in ProfilePalette },
+                                size = 36.dp,
+                            ) { pickingColor = true }
+                        }
+                        if (pickingColor) {
+                            ColorPickerDialog(
+                                initial = parseHex(color) ?: MaterialTheme.colorScheme.primary,
+                                title = "Couleur du lieu",
+                                onDismiss = { pickingColor = false },
+                                onPick = { hex -> color = hex; pickingColor = false },
+                            )
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
