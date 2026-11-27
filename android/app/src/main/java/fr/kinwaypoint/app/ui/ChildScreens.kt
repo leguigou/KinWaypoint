@@ -414,7 +414,8 @@ fun ChildSettingsScreen(
                         Text("Écoute en direct par un parent", style = MaterialTheme.typography.titleMedium)
                         Text(
                             "Un parent peut écouter le micro de ce téléphone. C'est toujours visible ici " +
-                                "(écran « Un parent t'écoute » et notification). Rien n'est enregistré.",
+                                "(écran « Un parent t'écoute » et notification permanente). Rien n'est enregistré. " +
+                                "Deux autorisations sont indispensables : le micro, et « afficher par-dessus les autres applis ».",
                             style = MaterialTheme.typography.bodySmall,
                             color = Muted,
                         )
@@ -424,22 +425,25 @@ fun ChildSettingsScreen(
                         onCheckedChange = { on -> scope.launch { repository.setAllowListen(on) } },
                     )
                 }
-                if (allowListen && !permissions.microphone) {
-                    FilledTonalButton(onClick = actions.requestMicrophone, shape = CircleShape, modifier = Modifier.fillMaxWidth()) {
-                        Text("Autoriser le micro")
-                    }
-                }
-                if (allowListen && !permissions.overlay) {
-                    Text(
-                        "Pour que l'écoute démarre sans toucher le téléphone, autorise « Afficher par-dessus les autres applis ». " +
-                            "Sinon, l'enfant devra toucher une notification.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Muted,
-                    )
-                    OutlinedButton(onClick = actions.openOverlaySettings, shape = CircleShape, modifier = Modifier.fillMaxWidth()) {
-                        Text("Autoriser l'affichage par-dessus")
-                    }
-                }
+            }
+            // Autorisations indispensables tant qu'elles manquent : l'avertissement
+            // et le bouton restent affichés pour ne pas les oublier à la configuration.
+            if (allowListen && !permissions.microphone) {
+                PermissionRow(
+                    "Micro à autoriser (indispensable)",
+                    "Sans accès au micro, l'écoute en direct ne peut pas fonctionner.",
+                    "Autoriser le micro",
+                    actions.requestMicrophone,
+                )
+            }
+            if (allowListen && !permissions.overlay) {
+                PermissionRow(
+                    "Affichage par-dessus à autoriser (indispensable)",
+                    "Sans cette autorisation, l'écoute ne démarre pas toute seule : l'enfant devrait toucher une " +
+                        "notification. Avec, l'écran « Un parent t'écoute » s'ouvre et le micro démarre sans qu'il touche le téléphone.",
+                    "Autoriser l'affichage par-dessus",
+                    actions.openOverlaySettings,
+                )
             }
 
             SectionCard {
