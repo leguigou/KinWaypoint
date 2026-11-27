@@ -871,6 +871,11 @@ fun ParentHomeScreen(
                 }
             }
 
+            // Position partagée mais localisation du téléphone éteinte : bien visible, en haut.
+            if (tracking.enabled && !permissions.locationEnabled) {
+                item { LocationOffBanner(actions) }
+            }
+
             error?.let { message ->
                 item { InfoCard(title = "Actualisation impossible", detail = message, container = SoftOrange, icon = Icons.Default.CloudOff, tint = Warning) }
             }

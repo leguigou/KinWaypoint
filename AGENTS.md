@@ -112,6 +112,10 @@ demande pas de mise à jour. En cas de doute, mettre à jour.
   « Corriger »), affiché par `CheckupRow` + `CheckupDialog` en tête des
   réglages enfant et parent. Toute nouvelle autorisation ou condition de bon
   fonctionnement s'y ajoute (et dans `permissionSteps` pour la liaison).
+  Ne pas confondre l'autorisation de localisation (`fineLocation`) et
+  l'interrupteur général du téléphone (`locationEnabled`,
+  `LocationManagerCompat.isLocationEnabled`, suivi en direct par
+  `PROVIDERS_CHANGED_ACTION`) : les deux sont vérifiés.
 - QR code : `QrScanActivity` (portrait, cadre central = seule zone lue,
   `framingRectSize`), appelée par `PlatformActions.scanQr`. Ne pas revenir à
   l'écran zxing par défaut (paysage).

@@ -38,6 +38,7 @@ import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.LocationOff
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Map
@@ -154,6 +155,7 @@ fun ChildHomeScreen(
 
             // Nouvelle version : bandeau visible aussi par l'enfant (téléchargement et installation).
             UpdateBanner()
+            if (config.isValid && !permissions.locationEnabled) LocationOffBanner(actions)
 
             if (!config.isValid) {
                 // Pas encore relié : un seul bouton, le parent scanne ou tape le code.
@@ -868,5 +870,37 @@ private fun ChildCategoryRow(icon: ImageVector, tint: Color, title: String, summ
             Text(summary, style = MaterialTheme.typography.bodySmall, color = Muted, maxLines = 1)
         }
         Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = Muted)
+    }
+}
+
+
+/**
+ * Bandeau bien visible quand l'interrupteur « Localisation » du téléphone est
+ * éteint : plus aucune position ne part. « Activer » ouvre le réglage Android.
+ */
+@Composable
+fun LocationOffBanner(actions: PlatformActions, who: String = "ta position") {
+    SectionCard(container = SoftRed) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            IconBadge(Icons.Default.LocationOff, Danger, size = 44.dp)
+            Column(Modifier.weight(1f)) {
+                Text("Localisation désactivée", style = MaterialTheme.typography.titleMedium, color = Danger)
+                Text(
+                    "La localisation du téléphone est éteinte : $who n'est plus envoyée à la famille.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = AppTheme.colors.onSoftWarning.copy(alpha = 0.85f),
+                )
+            }
+        }
+        Button(
+            onClick = actions.openLocationSettings,
+            modifier = Modifier.fillMaxWidth().height(48.dp),
+            shape = CircleShape,
+            colors = ButtonDefaults.buttonColors(containerColor = Danger, contentColor = Color.White),
+        ) {
+            Icon(Icons.Default.MyLocation, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.size(8.dp))
+            Text("Activer la localisation", fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+        }
     }
 }

@@ -270,6 +270,11 @@ internal class PermissionStep(
 )
 
 internal fun permissionSteps(p: PermissionSnapshot, a: PlatformActions): List<PermissionStep> = listOf(
+    PermissionStep(
+        Icons.Default.LocationOn, "Localisation du téléphone activée",
+        "L'interrupteur « Localisation » d'Android : éteint, plus aucune position.",
+        p.locationEnabled, true, "Activer la localisation", a.openLocationSettings,
+    ),
     PermissionStep(Icons.Default.LocationOn, "Localisation", "Indispensable au suivi.", p.fineLocation, true, "Autoriser la localisation", a.requestLocation, askedAtRuntime = true),
     PermissionStep(
         Icons.Default.MyLocation, "Localisation « Toujours »", "Choisis « Toujours autoriser » : le suivi continue écran éteint.",

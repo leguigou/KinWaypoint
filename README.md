@@ -173,8 +173,12 @@ Un serveur **Traccar** collecte, stocke et déclenche les alertes.
   (téléchargement et installation en deux touches).
 - Carte de la famille : l'enfant s'y voit, avec ses frères et sœurs et les
   parents qui partagent leur position.
+- **Localisation éteinte** : bandeau rouge sur l'accueil (enfant, et parent qui
+  partage sa position) avec un bouton « Activer la localisation » qui ouvre le
+  réglage Android.
 - **Check-up du téléphone** (réglages, en tête) : tout ce qu'il faut pour un
-  suivi fiable, au vert ou à corriger d'un bouton — liaison, suivi actif,
+  suivi fiable, au vert ou à corriger d'un bouton — localisation du téléphone
+  allumée, liaison, suivi actif,
   dernier envoi, accès famille, localisation « Toujours », activité,
   notifications, batterie, et en facultatif micro / affichage par-dessus /
   « Ne pas déranger ».

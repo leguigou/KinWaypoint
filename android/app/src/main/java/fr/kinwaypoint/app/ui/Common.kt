@@ -20,6 +20,8 @@ data class PermissionSnapshot(
     val dndAccess: Boolean = true,
     /** Envoi de SMS (SMS de secours au SOS) ; vrai sur un appareil sans téléphonie. */
     val sms: Boolean = true,
+    /** Interrupteur « Localisation » du téléphone (différent de l'autorisation donnée à l'appli). */
+    val locationEnabled: Boolean = true,
 )
 
 /** Actions qui demandent l'activité Android (autorisations, réglages, carte). */
@@ -42,6 +44,8 @@ class PlatformActions(
     val openOverlaySettings: () -> Unit = {},
     /** Ouvre le réglage « Accès Ne pas déranger ». */
     val openDndSettings: () -> Unit = {},
+    /** Ouvre le réglage Android qui allume la localisation du téléphone. */
+    val openLocationSettings: () -> Unit = {},
     /** Demande l'envoi de SMS (SMS de secours aux parents au moment d'un SOS). */
     val requestSms: () -> Unit = {},
     /** Demande la localisation « Toujours autoriser » (Android ouvre sa page dédiée). */

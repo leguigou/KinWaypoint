@@ -153,6 +153,10 @@ class MainActivity : FragmentActivity() {
             },
             requestMicrophone = { requestMicrophone.launch(Manifest.permission.RECORD_AUDIO) },
             requestSms = { requestSms.launch(Manifest.permission.SEND_SMS) },
+            openLocationSettings = {
+                runCatching { startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)) }
+                    .onFailure { openAppSettings() }
+            },
             requestBackgroundLocation = {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     runCatching { requestBackground.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION) }
@@ -196,9 +200,30 @@ class MainActivity : FragmentActivity() {
         stoppedAt = 0L
     }
 
+    // Localisation allumée / éteinte pendant que l'appli est ouverte (volet rapide) :
+    // le bandeau de l'accueil et le check-up suivent aussitôt.
+    private val locationToggle = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            permissionsState = snapshotPermissions()
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         permissionsState = snapshotPermissions()
+        runCatching {
+            ContextCompat.registerReceiver(
+                this,
+                locationToggle,
+                android.content.IntentFilter(android.location.LocationManager.PROVIDERS_CHANGED_ACTION),
+                ContextCompat.RECEIVER_NOT_EXPORTED,
+            )
+        }
+    }
+
+    override fun onPause() {
+        runCatching { unregisterReceiver(locationToggle) }
+        super.onPause()
     }
 
     override fun onStop() {
@@ -240,6 +265,11 @@ class MainActivity : FragmentActivity() {
             overlay = Settings.canDrawOverlays(this),
             dndAccess = getSystemService(android.app.NotificationManager::class.java).isNotificationPolicyAccessGranted,
             sms = !fr.kinwaypoint.app.service.SosSms.hasTelephony(this) || granted(Manifest.permission.SEND_SMS),
+            locationEnabled = runCatching {
+                androidx.core.location.LocationManagerCompat.isLocationEnabled(
+                    getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager,
+                )
+            }.getOrDefault(true),
         )
     }
 
