@@ -31,7 +31,9 @@ Un serveur **Traccar** collecte, stocke et déclenche les alertes.
 - Fiches glissantes par personne :
   - lieu actuel et durée (« 🏠 Maison · 2 h 26 ») ;
   - batterie et état de charge ;
-  - sonnerie (silencieux / vibreur) et Wi-Fi ;
+  - sonnerie (silencieux / vibreur) ;
+  - **Wi-Fi** : coupé, activé sans connexion, ou connecté avec le nom du réseau
+    (ex. « Wi-Fi · Maison-5G ») ;
   - distance ;
   - heure d'arrivée estimée vers un lieu.
 - **Ancienneté et précision** de chaque position en couleur (vert / orange /
@@ -46,11 +48,17 @@ Un serveur **Traccar** collecte, stocke et déclenche les alertes.
   - toutes les **10 min** à l'arrêt, GPS coupé. L'arrêt est détecté par le
     podomètre et l'accéléromètre, et la position est figée pour ne pas
     enregistrer le « tremblement » du GPS.
+- **Fréquence réglable à distance**, par personne (Paramètres → Famille →
+  Fréquence de suivi) : Économe, Équilibré (par défaut), Précis, ou réglage
+  libre des trois délais. Le téléphone l'applique à son prochain envoi.
 - File locale en cas de coupure réseau ; reprise après redémarrage du téléphone.
 
 ### Lieux et alertes
 - Lieux (maison, école…) avec icône, couleur, rayon, **personnes concernées**
   et **horaires** (ex. lun–ven 08:00–17:00, créneaux passant minuit).
+- **Wi-Fi d'un lieu** (optionnel) : quand le téléphone est connecté à ce réseau,
+  la personne est affichée dans le lieu (« 🏠 Maison · Wi-Fi »), même si le GPS
+  est imprécis à l'intérieur.
 - **Fiche par lieu** : dernier passage, nombre de visites et temps cumulé, par
   personne, sur 7 ou 30 jours.
 - **Lieux fréquents suggérés** à partir des 14 derniers jours (« Maison ? »,
@@ -75,8 +83,10 @@ Un serveur **Traccar** collecte, stocke et déclenche les alertes.
 ### Sécurité de l'enfant
 - **SOS** par appui long (3 s) : part immédiatement, même sans réseau (file
   d'attente persistante).
-- **Faire sonner** le téléphone à distance (même en silencieux) et **demander
-  sa position** tout de suite.
+- **Faire sonner** le téléphone à distance et **demander sa position** tout de
+  suite. La sonnerie passe même en silencieux ; en « Ne pas déranger » aussi si
+  l'autorisation « Accès Ne pas déranger » est accordée (réglages enfant →
+  Suivi). Elle s'arrête par une **touche de volume** ou le bouton « Arrêter ».
 - **Écoute en direct visible** : un parent peut écouter le micro du téléphone
   de l'enfant. L'enfant voit un écran « Un parent t'écoute » et une
   notification permanente ; rien n'est enregistré (voir
@@ -85,12 +95,23 @@ Un serveur **Traccar** collecte, stocke et déclenche les alertes.
 ### Côté parent
 - Connexion par **e-mail et mot de passe** : les adresses du serveur sont
   découvertes automatiquement, sinon elles se saisissent dans les réglages avancés.
-- Ajout d'un enfant : l'application crée l'appareil et affiche un **QR code** à
-  scanner sur le téléphone de l'enfant.
+- Ajout d'un enfant : l'application crée l'appareil puis propose, au choix, un
+  **QR code** à scanner sur place ou un **code d'invitation** de 8 chiffres à
+  transmettre à distance.
+- **Ajout d'un autre parent, à distance** (Paramètres → Famille) : saisir son
+  prénom suffit. L'application crée son compte (non administrateur), lui partage
+  toute la famille et affiche un **code d'invitation** de 8 chiffres. Sur son
+  téléphone : « J'ai un code d'invitation », les 8 chiffres, et c'est tout (ni
+  adresse, ni e-mail, ni mot de passe). Chaque ajout suivant (enfant, lieu) lui
+  est partagé automatiquement.
+- **Codes d'invitation** : valables 1 h, à usage unique, essais limités ; à ne
+  transmettre qu'à la bonne personne.
 - Partage de sa propre position (optionnel) et **mode fantôme** (invisible des
   enfants et des autres parents).
 - Couleurs de profil (palette ou sélecteur libre), photos, objectifs de pas,
   limite de vitesse.
+- **Ordre d'affichage des membres** par glisser-déposer (Paramètres → Famille),
+  partagé par toute la famille : liste, carte, historique.
 - Verrouillage par **PIN** ou **empreinte**, délai de reverrouillage réglable
   (1 min → jamais).
 - **Mise à jour depuis l'application** : notification quand une version sort,
@@ -263,6 +284,7 @@ chemin `/apk`. Définis un code d'accès propre à ton instance (`KW_APK_CODE`).
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | compose | notifications Telegram (optionnel) |
 | `KW_TRACCAR_API_URL`, `KW_TRACCAR_TRACK_URL` | config-api | adresses annoncées à l'application (`server.json`) |
 | `KW_AUDIO_RELAY_URL` | config-api | adresse `wss://` du relais audio |
+| `KW_TRACCAR_INTERNAL_URL` | config-api | facultatif : adresse interne de Traccar pour vérifier la connexion des parents qui créent un code d'invitation (sinon `KW_TRACCAR_API_URL`) |
 | `KW_APK_CODE`, `KW_ADMIN_TOKEN` | config-api | code d'accès au dépôt d'APK (à changer), jeton de dépôt |
 | `KW_APK_BASE_URL`, `KW_BASE_URL` | config-api | adresses publiques du dépôt et des codes (facultatif : déduites des requêtes sinon) |
 
@@ -308,7 +330,8 @@ Secrets GitHub nécessaires :
    Famille) → prénom → un QR code s'affiche.
    Le compte Traccar du parent doit pouvoir créer des appareils.
 3. **Téléphone enfant** : installer l'APK, choisir « Enfant » (même PIN), puis
-   Réglages (cadenas) → **Suivi** → « Scanner le QR code » → démarrer le suivi.
+   Réglages (cadenas) → **Suivi** → « Scanner le QR code » (ou, à distance,
+   « J'ai un code d'invitation » et les 8 chiffres) → démarrer le suivi.
 4. Sur le téléphone de l'enfant, accorder :
    - la localisation **« Toujours autoriser »** ;
    - l'activité physique (podomètre) ;
@@ -321,6 +344,9 @@ Secrets GitHub nécessaires :
    réseau.
 5. Créer les lieux (Paramètres → **Lieux**) et activer les alertes voulues
    (Paramètres → **Alertes**).
+6. **Deuxième parent** : Paramètres → Famille → « Ajouter un parent » (prénom)
+   → transmettre le code d'invitation. Sur son téléphone : installer l'APK,
+   « J'ai un code d'invitation », taper les 8 chiffres, créer son PIN.
 
 Le QR code contient le secret d'envoi de l'appareil : le garder comme un mot de
 passe. Voir aussi [Configuration à distance](docs/CONFIG-DISTANTE.md) et
@@ -338,6 +364,10 @@ passe. Voir aussi [Configuration à distance](docs/CONFIG-DISTANTE.md) et
 - Interface / API (8082) : jamais exposée sans authentification. L'application
   ne conserve qu'un jeton (valable 1 an), jamais le mot de passe.
 - Les enfants voient la famille via un compte **en lecture seule** dédié.
+- Codes d'invitation : 8 chiffres, 1 h, usage unique, 10 essais ratés par
+  connexion et 200 au total par tranche de 10 min ; création réservée à un
+  parent connecté (administrateur pour inviter un parent). Pendant 1 h, le code
+  vaut accès à la famille : le transmettre en privé.
 - PIN stocké sous forme d'empreinte (PBKDF2 salé), blocage progressif après
   5 essais.
 - Écoute en direct : toujours visible sur le téléphone de l'enfant, sans
@@ -361,13 +391,15 @@ fréquents et les cercles de Findmykids servent de référence fonctionnelle.
 | ✅ Fait | Couper le partage parent retire aussi l'accès des enfants |
 | ✅ Fait | Relecture d'un trajet avec lecture, pause et curseur horaire |
 | ✅ Fait | Horaires et personnes concernés par lieu, suggestion des lieux fréquents |
+| ✅ Fait | Fréquence de suivi réglable à distance, état du Wi-Fi et Wi-Fi des lieux |
+| ✅ Fait | Sonnerie arrêtée par une touche de volume, forcée en « Ne pas déranger » |
 
 | Difficulté | À ajouter ou à renforcer | Point de départ |
 |---|---|---|
 | **Facile à moyenne** | Rechercher une adresse pour créer un lieu | Géocodage (de préférence auto-hébergé) dans l'écran des lieux |
 | **Moyenne** | Afficher les coupures GPS pendant la relecture d'un trajet | Repérer les trous entre points horodatés |
 | **Complexe** | Améliorer l'heure d'arrivée : moteur d'itinéraires, mode de déplacement, positions périmées | Faire évoluer l'estimation actuelle, puis mesurer les écarts sur des trajets réels |
-| **Complexe** | Plusieurs cercles, invitations avec rôles et révocation | Repenser les permissions serveur et la séparation des cercles ; le mode parent privé doit rester disponible |
+| **Complexe** | Plusieurs cercles, rôles et révocation d'un parent | L'ajout d'un parent existe (un seul cercle) ; reste la séparation des cercles et le retrait d'un compte depuis l'appli |
 
 En continu : mesurer la consommation de batterie et la fiabilité du suivi et
 des notifications sur les modèles Android réellement utilisés.
@@ -396,6 +428,8 @@ des chantiers distincts, hors du périmètre actuel.
    `attributes::jsonb->>'batteryLevel'` pour lire la batterie en SQL.
 6. **Traccar refuse les mises à jour partielles** (PUT) : relire l'objet
    complet, le modifier, le renvoyer.
+7. **Nom du Wi-Fi** : Android ne le donne qu'avec la localisation accordée et
+   activée ; sinon seul l'état (activé / coupé) remonte.
 
 ---
 

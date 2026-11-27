@@ -23,6 +23,8 @@ import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.WifiOff
+import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.filled.Hearing
@@ -160,7 +162,7 @@ fun ParentLoginScreen(
 
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(24.dp),
+            modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(start = 24.dp, top = 24.dp, end = 24.dp, bottom = 40.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Spacer(Modifier.height(24.dp))
@@ -250,7 +252,7 @@ fun ParentLoginScreen(
                     TextButton(onClick = { showConfigCode = true }) {
                         Icon(Icons.Default.Link, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.size(8.dp))
-                        Text("J'ai un code de configuration")
+                        Text("J'ai un code d'invitation")
                     }
                 }
             }
@@ -264,24 +266,42 @@ fun ParentLoginScreen(
         ParentConfigCode(
             actions = actions,
             onDismiss = { showConfigCode = false },
-            onFilled = { a, t, e ->
+            onFilled = { p ->
                 showConfigCode = false
-                apiUrl = a
-                t?.let { trackUrl = it }
-                e?.let { email = it }
+                if (p.token != null) {
+                    // Code d'invitation : clé de connexion fournie, pas de mot de passe à saisir.
+                    val normalized = TraccarApi.normalize(p.apiUrl).toString()
+                    scope.launch {
+                        repository.saveParent(
+                            current.copy(
+                                apiUrl = normalized,
+                                trackUrl = p.trackUrl ?: guessTrackUrl(normalized),
+                                email = p.email.orEmpty(),
+                                token = p.token,
+                            ),
+                        )
+                    }
+                } else {
+                    apiUrl = p.apiUrl
+                    p.trackUrl?.let { trackUrl = it }
+                    p.email?.let { email = it }
+                }
             },
         )
     }
 }
 
-/** Champs de connexion pré-remplis par un code de configuration (le mot de passe reste à saisir). */
+/**
+ * Code d'invitation (connexion directe, clé fournie) ou ancien code de
+ * configuration (champs pré-remplis, mot de passe à saisir).
+ */
 @Composable
-private fun ParentConfigCode(actions: PlatformActions, onFilled: (apiUrl: String, trackUrl: String?, email: String?) -> Unit, onDismiss: () -> Unit) {
+private fun ParentConfigCode(actions: PlatformActions, onFilled: (fr.kinwaypoint.app.net.RemoteConfig.Parent) -> Unit, onDismiss: () -> Unit) {
     ConfigCodeDialog(
         actions = actions,
         expected = fr.kinwaypoint.app.data.AppMode.PARENT,
         onDismiss = onDismiss,
-        onResult = { cfg -> cfg.parent?.let { onFilled(it.apiUrl, it.trackUrl, it.email) } },
+        onResult = { cfg -> cfg.parent?.let(onFilled) },
     )
 }
 
@@ -448,6 +468,8 @@ fun ParentHomeScreen(
                 runCatching { api.setProximity(config.token, children, ownDeviceId, proximityConfig.radiusMeters) }
             }
             runCatching { api.shareChildrenWithEachOther(config.token, members) }
+            // Les autres parents voient toute la famille (appareils hors mode fantôme, et lieux).
+            runCatching { api.shareFamilyWithParents(config.token, members.filter { !it.ghost }.map { it.id }, places.map { it.id }) }
             // Chaque lieu s'applique à tous les appareils (y compris un enfant ajouté après le lieu).
             places.filter { it.alerts }.forEach { place ->
                 // Un parent en mode fantôme n'est rattaché à aucun lieu (ses arrivées trahiraient sa position).
@@ -593,7 +615,7 @@ fun ParentHomeScreen(
             modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
             // Marge sous le dernier bouton (« Ajouter un enfant ») : il ne colle plus au bas de l'écran.
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 32.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 40.dp),
         ) {
             item {
                 Row(
@@ -825,8 +847,8 @@ fun ParentHomeScreen(
                         }
                     },
                     isMe = member.id == ownDeviceId,
-                    place = member.position?.let { placeAt(it.latitude, it.longitude, places) },
-                    placeSince = member.position?.let { placeAt(it.latitude, it.longitude, places) }
+                    place = placeFor(member.position, places),
+                    placeSince = placeFor(member.position, places)
                         ?.let { p -> todayTraces[member.id]?.let { inPlaceSince(it, p) } },
                     travel = todayTraces[member.id]?.let { travelSplit(it) },
                     photo = photos[member.id],
@@ -868,7 +890,7 @@ fun ParentHomeScreen(
         )
     }
 
-    qrFor?.let { (name, payload) -> SetupQrDialog(name, payload, onDismiss = { qrFor = null }) }
+    qrFor?.let { (name, payload) -> SetupQrDialog(name, payload, onDismiss = { qrFor = null }, inviteToken = config.token) }
 
     renaming?.let { member ->
         var name by remember(member.id) { mutableStateOf(member.name) }
@@ -1010,7 +1032,8 @@ private fun MemberCard(
             // Dans un lieu : gélule « 🏠 Maison » à la couleur du lieu, en premier.
             place?.let {
                 val since = placeSince?.let { t -> " · " + shortDuration(System.currentTimeMillis() - t) }.orEmpty()
-                StatusPill("${placeEmoji(it.icon)} ${it.name}$since", parseHex(it.color) ?: MaterialTheme.colorScheme.primary, icon = null, showDot = false)
+                val viaWifi = if (inPlaceByWifi(position, it)) " · Wi-Fi" else ""
+                StatusPill("${placeEmoji(it.icon)} ${it.name}$since$viaWifi", parseHex(it.color) ?: MaterialTheme.colorScheme.primary, icon = null, showDot = false)
             }
             StatusPill(if (member.online) "En ligne" else "Hors ligne", if (member.online) Ok else Idle)
             // Ancienneté de la position : vert < 15 min, orange < 1 h, rouge au-delà.
@@ -1025,6 +1048,12 @@ private fun MemberCard(
                     },
                     icon = if (charging) Icons.Default.BatteryChargingFull else Icons.Default.BatteryFull,
                 )
+            }
+            // Wi-Fi : réseau connecté, activé sans réseau, ou coupé.
+            when {
+                position?.wifi != null -> StatusPill(position.wifi, MaterialTheme.colorScheme.primary, icon = Icons.Default.Wifi)
+                position?.wifiOn == true -> StatusPill("Wi-Fi activé", Muted, icon = Icons.Default.Wifi)
+                position?.wifiOn == false -> StatusPill("Wi-Fi coupé", Idle, icon = Icons.Default.WifiOff)
             }
             // Sonnerie coupée : utile avant d'appeler.
             when (position?.ringer) {

@@ -31,7 +31,8 @@ import threading
 import time
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, unquote
+from urllib.parse import parse_qs, quote, unquote
+import urllib.request
 
 DATA_DIR = os.environ.get("KW_DATA_DIR", "/data")
 PORT = int(os.environ.get("KW_PORT", "8080"))
@@ -74,6 +75,87 @@ PREVIEW_BOTS = (
 MAX_APK_BYTES = 200 * 1024 * 1024
 
 LOCK = threading.Lock()
+
+
+# --- Codes d'invitation ------------------------------------------------------------
+# Un parent connecté dépose une configuration (comme un code de configuration) ;
+# elle est rendue UNE fois, pendant 1 h, contre un code de 8 chiffres. Essais
+# limités pour rendre impossible de deviner un code.
+TRACCAR_CHECK_URL = (os.environ.get("KW_TRACCAR_INTERNAL_URL", "") or TRACCAR_API_URL).rstrip("/")
+INVITES = os.path.join(DATA_DIR, "invites.json")
+INVITE_TTL_SECONDS = 3600
+INVITE_LOCK = threading.Lock()
+FAILURE_WINDOW = 600          # 10 min
+FAILURES_PER_IP = 10
+FAILURES_GLOBAL = 200
+_failures = {}                # ip -> [horodatages]
+_global_failures = []
+
+
+def traccar_user(token):
+    """Compte Traccar correspondant au jeton, ou None (jeton invalide, serveur injoignable)."""
+    if not TRACCAR_CHECK_URL or not token:
+        return None
+    try:
+        req = urllib.request.Request(
+            f"{TRACCAR_CHECK_URL}/api/session?token={quote(token, safe='')}",
+            headers={"Accept": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=10) as response:
+            return json.loads(response.read(65536))
+    except Exception:
+        return None
+
+
+def client_ip(handler):
+    """IP du client : dernière entrée de X-Forwarded-For (ajoutée par Traefik, non falsifiable)."""
+    forwarded = handler.headers.get("X-Forwarded-For", "")
+    if forwarded.strip():
+        return forwarded.split(",")[-1].strip()
+    return handler.client_address[0]
+
+
+def too_many_failures(ip):
+    cutoff = time.time() - FAILURE_WINDOW
+    _failures[ip] = [t for t in _failures.get(ip, []) if t > cutoff]
+    _global_failures[:] = [t for t in _global_failures if t > cutoff]
+    return len(_failures[ip]) >= FAILURES_PER_IP or len(_global_failures) >= FAILURES_GLOBAL
+
+
+def record_failure(ip):
+    _failures.setdefault(ip, []).append(time.time())
+    _global_failures.append(time.time())
+
+
+def load_invites():
+    try:
+        with open(INVITES, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        data = {}
+    limit = time.time()
+    return {code: entry for code, entry in data.items() if entry.get("expires", 0) > limit}
+
+
+def save_invites(data):
+    save_json(INVITES, data)
+
+
+def valid_invite_config(config, user):
+    """Configuration acceptée pour une invitation (même format que les codes de configuration)."""
+    if not isinstance(config, dict):
+        return "configuration absente"
+    mode = config.get("mode")
+    if mode == "child":
+        return None if valid_child(config.get("child")) else "configuration enfant invalide"
+    if mode == "parent":
+        if not user.get("administrator"):
+            return "seul un compte administrateur peut inviter un parent"
+        parent = config.get("parent")
+        if not valid_parent(parent) or len(str((parent or {}).get("token", ""))) < 20:
+            return "configuration parent invalide"
+        return None
+    return "mode doit valoir 'child' ou 'parent'"
 
 
 def request_origin(handler):
@@ -613,6 +695,61 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     # ------------------------------------------------------------------- POST
+    def read_json(self, limit=16384):
+        length = int(self.headers.get("Content-Length", 0) or 0)
+        if length > limit:
+            raise ValueError("corps trop volumineux")
+        return json.loads(self.rfile.read(length) or b"{}")
+
+    def create_invite(self):
+        """POST /apk/invite (Authorization: Bearer <jeton Traccar>) : {config} -> {code, expiresAt}."""
+        auth = self.headers.get("Authorization", "")
+        user = traccar_user(auth[7:].strip() if auth.startswith("Bearer ") else "")
+        if not user:
+            self.reply(401, {"error": "connexion Traccar requise"})
+            return
+        try:
+            body = self.read_json()
+        except (ValueError, json.JSONDecodeError):
+            self.reply(400, {"error": "corps JSON invalide"})
+            return
+        config = body.get("config")
+        problem = valid_invite_config(config, user)
+        if problem:
+            self.reply(403 if "administrateur" in problem else 400, {"error": problem})
+            return
+        expires = time.time() + INVITE_TTL_SECONDS
+        with INVITE_LOCK:
+            invites = load_invites()
+            code = f"{secrets.randbelow(10 ** 8):08d}"
+            while code in invites:
+                code = f"{secrets.randbelow(10 ** 8):08d}"
+            invites[code] = {"config": dict(config, version=1), "expires": expires, "by": user.get("id")}
+            save_invites(invites)
+        self.log_message(f"invitation creee mode={config.get('mode')} par compte {user.get('id')}")
+        self.reply(201, {"code": code, "expiresAt": iso(datetime.fromtimestamp(expires, timezone.utc))})
+
+    def redeem_invite(self):
+        """POST /apk/invite/redeem : {code} -> configuration, une seule fois."""
+        ip = client_ip(self)
+        with INVITE_LOCK:
+            if too_many_failures(ip):
+                self.reply(429, {"error": "trop d'essais, reessaie dans quelques minutes"})
+                return
+            try:
+                code = re.sub(r"\D", "", str(self.read_json(1024).get("code", "")))
+            except (ValueError, json.JSONDecodeError, AttributeError):
+                code = ""
+            invites = load_invites()
+            entry = invites.pop(code, None) if len(code) == 8 else None
+            if entry is None:
+                record_failure(ip)
+                self.reply(404, {"error": "code invalide, expire ou deja utilise"})
+                return
+            save_invites(invites)
+        self.log_message(f"invitation utilisee mode={entry['config'].get('mode')}")
+        self.reply(200, entry["config"])
+
     def do_POST(self):
         path = self.path.split("?")[0].rstrip("/")
 
@@ -626,6 +763,14 @@ class Handler(BaseHTTPRequestHandler):
                 self.reply(403, {"error": "interdit"})
                 return
             self.upload_apk()
+            return
+
+        if path == "/apk/invite":
+            self.create_invite()
+            return
+
+        if path == "/apk/invite/redeem":
+            self.redeem_invite()
             return
 
         if path != "/api/codes":

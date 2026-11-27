@@ -159,3 +159,28 @@ Le jeton fait 256 bits (`secrets.token_urlsafe(32)`), la durée de vie est de
 
 Conséquence pratique : ne pas envoyer ces liens par messagerie sans cette
 protection, et préférer un copier-coller direct.
+
+
+## Codes d'invitation (8 chiffres)
+
+Version courte du code de configuration, pensée pour être dictée ou envoyée par
+SMS : l'appli d'un parent dépose une configuration (même format JSON que
+ci-dessus) sur le serveur familial, qui la rend **une seule fois** contre un
+code de 8 chiffres, pendant **1 heure**.
+
+| Route | Rôle |
+|---|---|
+| `POST /apk/invite` | Crée un code. En-tête `Authorization: Bearer <jeton Traccar du parent>` ; corps `{"config": {…}}` ; réponse `{"code": "48210937", "expiresAt": "…"}` |
+| `POST /apk/invite/redeem` | Échange un code : corps `{"code": "4821 0937"}` ; réponse = la configuration, puis le code est effacé |
+
+- Le serveur vérifie le jeton auprès de Traccar (`/api/session?token=`, via
+  `KW_TRACCAR_INTERNAL_URL` ou `KW_TRACCAR_API_URL`). Inviter un **parent**
+  exige un compte **administrateur** ; un enfant peut être invité par tout parent.
+- Section `parent` d'une invitation : `token` (clé de connexion Traccar de
+  1 an, obtenue par l'appli pour le nouveau compte) remplace le mot de passe ;
+  l'appli se connecte directement.
+- Essais limités : 10 codes faux par connexion et 200 au total par tranche de
+  10 minutes (réponse `429`). L'adresse du client est la dernière entrée de
+  `X-Forwarded-For` (ajoutée par Traefik).
+- Codes conservés dans `invites.json` (dossier `KW_DATA_DIR`), effacés à
+  l'usage ou à l'expiration.

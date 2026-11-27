@@ -39,7 +39,33 @@ data class Member(
     val speedLimitKmh: Int? = null,
     /** Parent en mode fantôme : invisible des enfants et des autres parents. */
     val ghost: Boolean = false,
+    /** Rang d'affichage choisi par les parents (glisser-déposer), ou null = ordre alphabétique. */
+    val order: Int? = null,
+    /** Cadences de suivi réglées par les parents, ou null = valeurs par défaut du téléphone. */
+    val cadence: Cadence? = null,
 )
+
+/**
+ * Cadences d'envoi des positions (secondes) : normale, en mouvement (déplacement
+ * détecté), à l'arrêt (GPS coupé). Plus c'est fréquent, plus la batterie s'use.
+ */
+data class Cadence(val normal: Int, val moving: Int, val still: Int) {
+    companion object {
+        val ECO = Cadence(600, 60, 1200)
+        val BALANCED = Cadence(300, 15, 600)
+        val PRECISE = Cadence(60, 10, 300)
+    }
+
+    fun presetName(): String? = when (this) {
+        ECO -> "Économe"
+        BALANCED -> "Équilibré"
+        PRECISE -> "Précis"
+        else -> null
+    }
+}
+
+/** Compte parent créé depuis l'appli : identifiants à transmettre (mot de passe affiché une fois). */
+data class NewParentAccount(val email: String, val password: String)
 
 /** Résultat du mode fantôme : comptes administrateurs qui voient encore tout sur le serveur. */
 data class GhostResult(val adminsStillSeeing: Int)
@@ -70,6 +96,8 @@ data class MemberPosition(
     val ringer: String? = null,
     /** Nom du Wi-Fi connecté, ou null. */
     val wifi: String? = null,
+    /** Wi-Fi activé sur le téléphone (même non connecté), ou null si inconnu. */
+    val wifiOn: Boolean? = null,
     /** Pas du jour (podomètre du téléphone), ou null. */
     val steps: Int? = null,
     /** Activité estimée par le téléphone : still, walking, bike, vehicle. */
@@ -95,6 +123,8 @@ data class Place(
     val childIds: List<Long>? = null,
     /** Horaires des alertes ; null = tout le temps. */
     val schedule: PlaceSchedule? = null,
+    /** Nom du Wi-Fi de ce lieu (ex. la box de la maison) : connecté = présent, même si le GPS est imprécis. */
+    val ssid: String? = null,
 )
 
 /** Appareils concernés par les alertes d'un lieu, parmi ceux donnés. */
@@ -264,7 +294,7 @@ class TraccarApi(baseUrl: String) {
         return (0 until devices.length()).map { i ->
             val d = devices.getJSONObject(i)
             parseMember(d, byDevice[d.getLong("id")])
-        }.sortedBy { it.name.lowercase() }
+        }.sortedWith(compareBy<Member>({ it.order ?: Int.MAX_VALUE }, { it.name.lowercase() }))
     }
 
     /** Message reçu en direct : nouvelles positions, statut des appareils, événements. */
@@ -311,6 +341,7 @@ class TraccarApi(baseUrl: String) {
                 charging = attrs?.takeIf { it.has("charge") }?.optBoolean("charge"),
                 ringer = attrs?.optString("ringer")?.takeIf { it.isNotBlank() },
                 wifi = attrs?.optString("ssid")?.takeIf { it.isNotBlank() },
+                wifiOn = attrs?.takeIf { it.has("wifiOn") }?.let { a -> a.optBoolean("wifiOn") || a.optString("wifiOn") == "true" },
                 steps = attrs?.takeIf { it.has("steps") }?.optDouble("steps")?.toInt(),
                 activity = attrs?.optString("activity")?.takeIf { it.isNotBlank() }
                     ?: activityFromSpeed(p.optDouble("speed", 0.0) * 1.852),
@@ -334,6 +365,11 @@ class TraccarApi(baseUrl: String) {
                 stepGoal = d.optJSONObject("attributes")?.optInt("kwStepGoal", DEFAULT_STEP_GOAL)?.takeIf { it > 0 } ?: DEFAULT_STEP_GOAL,
                 speedLimitKmh = d.optJSONObject("attributes")?.takeIf { it.has("speedLimit") }?.optDouble("speedLimit")?.let { (it * 1.852).toInt() },
                 ghost = d.optJSONObject("attributes")?.optBoolean("kwGhost", false) == true,
+                order = d.optJSONObject("attributes")?.takeIf { it.has("kwOrder") }?.optInt("kwOrder"),
+                cadence = d.optJSONObject("attributes")?.let { a ->
+                    val n = a.optInt("kwIntNormal", 0); val m = a.optInt("kwIntMoving", 0); val s = a.optInt("kwIntStill", 0)
+                    if (n > 0 && m > 0 && s > 0) Cadence(n, m, s) else null
+                },
             )
     }
 
@@ -487,6 +523,83 @@ class TraccarApi(baseUrl: String) {
         return GhostResult(admins)
     }
 
+    /**
+     * Crée le compte d'un autre parent : non administrateur (le mode fantôme peut
+     * alors le masquer côté serveur), en français, avec un mot de passe
+     * provisoire lisible. Réservé à un compte administrateur.
+     */
+    fun createParentAccount(token: String, name: String, email: String): NewParentAccount {
+        val password = readablePassword()
+        val body = JSONObject()
+            .put("name", name.trim())
+            .put("email", email.trim())
+            .put("password", password)
+            .put("administrator", false)
+            .put("attributes", JSONObject()
+                .put("kwRole", "parent")
+                .put("language", "fr")
+                .put("timezone", java.util.TimeZone.getDefault().id))
+        val request = Request.Builder().url(url("api/users"))
+            .post(body.toString().toRequestBody("application/json".toMediaType()))
+        authorized(token, request).use { response ->
+            when {
+                response.code == 400 && response.body?.string().orEmpty().contains("unique", ignoreCase = true) ->
+                    error("Un compte existe déjà avec cet e-mail.")
+                response.code == 400 || response.code == 403 ->
+                    error("Création refusée : seul un compte administrateur peut créer un compte parent.")
+                else -> check(response)
+            }
+        }
+        return NewParentAccount(email.trim(), password)
+    }
+
+    /**
+     * Partage toute la famille avec les autres parents (comptes non
+     * administrateurs, hors compte lecteur des enfants) : appareils et lieux.
+     * Lancé par l'appli d'un administrateur à chaque changement ; sans droits
+     * administrateur, la liste des comptes est refusée et rien n'est fait.
+     * Liens déjà présents : ignorés.
+     */
+    fun shareFamilyWithParents(token: String, deviceIds: List<Long>, placeIds: List<Long>) {
+        val sessionUrl = url("api/session").newBuilder().addQueryParameter("token", token).build()
+        val me = getObject(token, sessionUrl).getLong("id")
+        val users = getArray(token, url("api/users"))
+        (0 until users.length()).map { users.getJSONObject(it) }
+            .filter {
+                it.getLong("id") != me && !it.optBoolean("administrator") &&
+                    it.optJSONObject("attributes")?.optString("kwRole") != "children-viewer"
+            }
+            .forEach { parent ->
+                val userId = parent.getLong("id")
+                fun link(key: String, id: Long) {
+                    val body = JSONObject().put("userId", userId).put(key, id).toString()
+                        .toRequestBody("application/json".toMediaType())
+                    runCatching { authorized(token, Request.Builder().url(url("api/permissions")).post(body)).close() }
+                }
+                deviceIds.forEach { link("deviceId", it) }
+                placeIds.forEach { link("geofenceId", it) }
+            }
+    }
+
+    /** Mot de passe provisoire lisible : 3 groupes de 4 caractères sans ambiguïté (ex. kh7m-p3wa-x9td). */
+    private fun readablePassword(): String {
+        val alphabet = "abcdefghjkmnpqrstuvwxyz23456789"
+        val random = java.security.SecureRandom()
+        return (1..3).joinToString("-") { (1..4).map { alphabet[random.nextInt(alphabet.length)] }.joinToString("") }
+    }
+
+    /** Cadences de suivi d'un membre : appliquées par son téléphone à son prochain réveil. */
+    fun setCadence(token: String, id: Long, cadence: Cadence) {
+        updateAttributes(token, id) { attrs ->
+            attrs.put("kwIntNormal", cadence.normal).put("kwIntMoving", cadence.moving).put("kwIntStill", cadence.still)
+        }
+    }
+
+    /** Rang d'affichage d'un membre (attribut kwOrder), partagé par toute la famille. */
+    fun setOrder(token: String, id: Long, order: Int) {
+        updateAttributes(token, id) { attrs -> attrs.put("kwOrder", order) }
+    }
+
     fun markAsParent(token: String, id: Long) {
         updateAttributes(token, id) { attrs -> attrs.put("kwRole", "parent") }
     }
@@ -519,6 +632,7 @@ class TraccarApi(baseUrl: String) {
                 alerts = g.optJSONObject("attributes")?.let { if (it.has("kwAlerts")) it.optBoolean("kwAlerts") else true } ?: true,
                 childIds = g.optJSONObject("attributes")?.optString("kwChildren")?.takeIf { it.isNotBlank() }
                     ?.split(",")?.mapNotNull { it.trim().toLongOrNull() },
+                ssid = g.optJSONObject("attributes")?.optString("kwSsid")?.trim()?.takeIf { it.isNotBlank() },
                 schedule = g.optJSONObject("attributes")?.let { a ->
                     val days = a.optString("kwDays").split(",").mapNotNull { it.trim().toIntOrNull() }.filter { it in 1..7 }.toSet()
                     if (days.isEmpty() || g.optLong("calendarId", 0L) == 0L) null
@@ -554,6 +668,7 @@ class TraccarApi(baseUrl: String) {
         val attrs = g.optJSONObject("attributes") ?: JSONObject()
         attrs.put("kwIcon", place.icon).put("kwColor", place.color).put("kwAlerts", place.alerts)
         if (place.childIds.isNullOrEmpty()) attrs.remove("kwChildren") else attrs.put("kwChildren", place.childIds.joinToString(","))
+        if (place.ssid.isNullOrBlank()) attrs.remove("kwSsid") else attrs.put("kwSsid", place.ssid.trim())
         val oldCalendar = g.optLong("calendarId", 0L)
         val schedule = place.schedule?.takeIf { place.alerts && it.days.isNotEmpty() }
         val calendarId = if (schedule != null) {
@@ -653,8 +768,21 @@ class TraccarApi(baseUrl: String) {
      * impossible (téléphone pas encore inscrit) : il sonnera à son prochain envoi.
      */
     fun ring(token: String, deviceId: Long): Boolean {
-        sendCommand(token, JSONObject().put("deviceId", deviceId).put("type", "custom").put("attributes", JSONObject().put("data", "ring")))
+        // Demande posée sur l'appareil (kwRing) : lue par le téléphone à son réveil.
+        // Traccar envoie TOUTES les commandes par Firebase dès que le téléphone a un
+        // jeton Firebase, sans leur contenu : une commande « ring » seule n'arrivait jamais.
+        updateAttributes(token, deviceId) { attrs -> attrs.put("kwRing", System.currentTimeMillis()) }
+        // Serveur sans Firebase : la commande attend dans la file et part avec la prochaine position.
+        runCatching { sendCommand(token, JSONObject().put("deviceId", deviceId).put("type", "custom").put("attributes", JSONObject().put("data", "ring"))) }
         return locateNow(token, deviceId)
+    }
+
+    /** Demandes en attente pour CET appareil (sonnerie, écoute), lues dans ses attributs. */
+    fun pendingActions(token: String, uniqueId: String): JSONObject? {
+        val devices = getArray(token, url("api/devices"))
+        return (0 until devices.length()).map { devices.getJSONObject(it) }
+            .firstOrNull { it.optString("uniqueId") == uniqueId }
+            ?.optJSONObject("attributes")
     }
 
     /**
@@ -663,11 +791,17 @@ class TraccarApi(baseUrl: String) {
      * transmet. false si le réveil immédiat est impossible.
      */
     fun startListen(token: String, deviceId: Long, room: String, secret: String): Boolean {
-        sendCommand(
-            token,
-            JSONObject().put("deviceId", deviceId).put("type", "custom")
-                .put("attributes", JSONObject().put("data", AudioRelay.command(room, secret))),
-        )
+        val command = AudioRelay.command(room, secret)
+        // Même raison que pour la sonnerie : la demande passe par l'attribut kwListen
+        // (horodatée, ignorée après 2 min), la commande en file sert de secours.
+        updateAttributes(token, deviceId) { attrs -> attrs.put("kwListen", command) }
+        runCatching {
+            sendCommand(
+                token,
+                JSONObject().put("deviceId", deviceId).put("type", "custom")
+                    .put("attributes", JSONObject().put("data", command)),
+            )
+        }
         return locateNow(token, deviceId)
     }
 

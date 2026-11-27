@@ -88,7 +88,7 @@ fun EventsScreen(
                         icon = Icons.Default.NotificationsNone,
                     )
                 }
-                else -> LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                else -> LazyColumn(contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 40.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     byDay.forEach { (day, dayEvents) ->
                         item(key = "day-$day") {
                             Text(

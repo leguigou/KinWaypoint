@@ -16,6 +16,8 @@ data class PermissionSnapshot(
     val microphone: Boolean = false,
     /** « Afficher par-dessus les autres applis » : ouvre l'écran d'écoute sans toucher le téléphone. */
     val overlay: Boolean = false,
+    /** Accès « Ne pas déranger » : « Faire sonner » passe outre le mode Ne pas déranger. */
+    val dndAccess: Boolean = true,
 )
 
 /** Actions qui demandent l'activité Android (autorisations, réglages, carte). */
@@ -36,6 +38,8 @@ class PlatformActions(
     val requestMicrophone: () -> Unit = {},
     /** Ouvre le réglage « Afficher par-dessus les autres applis ». */
     val openOverlaySettings: () -> Unit = {},
+    /** Ouvre le réglage « Accès Ne pas déranger ». */
+    val openDndSettings: () -> Unit = {},
 )
 
 fun formatTime(millis: Long): String =

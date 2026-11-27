@@ -6,6 +6,12 @@ import android.net.Uri
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.Row
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.KeyboardOptions
@@ -134,13 +140,68 @@ private fun qrBitmap(text: String, size: Int = 720): Bitmap {
 
 /** Affiche le QR code de configuration d'un enfant. */
 @Composable
-fun SetupQrDialog(name: String, payload: SetupPayload, onDismiss: () -> Unit) {
+fun SetupQrDialog(name: String, payload: SetupPayload, onDismiss: () -> Unit, inviteToken: String? = null) {
     val bitmap = remember(payload) { qrBitmap(payload.encode()).asImageBitmap() }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    // Deux façons de configurer le téléphone de l'enfant : QR code (sur place) ou code d'invitation (à distance).
+    var useCode by remember { mutableStateOf(false) }
+    var invite by remember { mutableStateOf<fr.kinwaypoint.app.net.RemoteConfig.Invite?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Configurer le téléphone de $name") },
         text = {
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (inviteToken != null) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        androidx.compose.material3.FilterChip(selected = !useCode, onClick = { useCode = false }, label = { Text("QR code") })
+                        androidx.compose.material3.FilterChip(selected = useCode, onClick = { useCode = true }, label = { Text("Code d'invitation") })
+                    }
+                }
+                if (useCode && inviteToken != null) {
+                    val current = invite
+                    if (current != null) {
+                        InviteCodeCard(current, name)
+                    } else {
+                        Text(
+                            "Pratique si le téléphone n'est pas à côté de toi : un code de 8 chiffres, valable 1 h, à taper " +
+                                "dans « J'ai un code d'invitation » sur son téléphone.",
+                            fontSize = 13.sp,
+                            color = Muted,
+                        )
+                        Button(
+                            enabled = !busy,
+                            shape = CircleShape,
+                            onClick = {
+                                busy = true
+                                error = null
+                                scope.launch {
+                                    val config = org.json.JSONObject()
+                                        .put("mode", "child")
+                                        .put("label", name)
+                                        .put(
+                                            "child",
+                                            org.json.JSONObject()
+                                                .put("serverUrl", payload.serverUrl)
+                                                .put("deviceId", payload.deviceId)
+                                                .apply {
+                                                    payload.intervalSeconds?.let { put("intervalSeconds", it) }
+                                                    payload.apiUrl?.let { put("apiUrl", it) }
+                                                    payload.viewerToken?.let { put("viewerToken", it) }
+                                                },
+                                        )
+                                    withContext(Dispatchers.IO) {
+                                        runCatching { fr.kinwaypoint.app.net.RemoteConfig.createInvite(FAMILY_HUB, inviteToken, config) }
+                                    }.onSuccess { invite = it }.onFailure { error = it.message ?: "Création du code impossible" }
+                                    busy = false
+                                }
+                            },
+                        ) { Text("Créer un code d'invitation") }
+                        error?.let { Text(it, fontSize = 12.sp, color = Danger) }
+                    }
+                    return@Column
+                }
                 Image(bitmap = bitmap, contentDescription = "QR code de configuration", modifier = Modifier.size(260.dp))
                 Text(
                     "Sur son téléphone : mode Enfant → Réglages parent → « Scanner le QR code ».",
@@ -227,4 +288,63 @@ fun AddChildDialog(
         },
         dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("Annuler") } },
     )
+}
+
+/**
+ * Code d'invitation à transmettre : 8 chiffres bien lisibles, compte à rebours,
+ * boutons Copier et Partager (SMS, messagerie…). Usage unique, 1 h.
+ */
+@Composable
+fun InviteCodeCard(invite: fr.kinwaypoint.app.net.RemoteConfig.Invite, name: String) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var now by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(invite.code) {
+        while (now < invite.expiresAt) { kotlinx.coroutines.delay(1000); now = System.currentTimeMillis() }
+    }
+    val remaining = ((invite.expiresAt - now) / 1000).coerceAtLeast(0)
+    val formatted = fr.kinwaypoint.app.net.RemoteConfig.formatInviteCode(invite.code)
+    val message = "Ton code d'invitation KinWaypoint : $formatted (valable 1 h). " +
+        "Installe l'appli, puis touche « J'ai un code d'invitation » et tape ce code."
+    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        SectionCard(container = SoftGreen) {
+            Text("Code d'invitation pour $name", style = MaterialTheme.typography.labelLarge, color = Muted)
+            Text(
+                formatted,
+                style = MaterialTheme.typography.displaySmall,
+                fontFamily = FontFamily.Monospace,
+                color = if (remaining > 0) MaterialTheme.colorScheme.onSurface else Muted,
+            )
+            Text(
+                if (remaining > 0) "Valable encore ${remaining / 60} min ${"%02d".format(remaining % 60)} s · une seule utilisation"
+                else "Code expiré : crées-en un nouveau.",
+                style = MaterialTheme.typography.bodySmall,
+                color = if (remaining > 0) Muted else Danger,
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            OutlinedButton(
+                onClick = {
+                    context.getSystemService(android.content.ClipboardManager::class.java)
+                        ?.setPrimaryClip(android.content.ClipData.newPlainText("KinWaypoint", invite.code))
+                    android.widget.Toast.makeText(context, "Code copié", android.widget.Toast.LENGTH_SHORT).show()
+                },
+                shape = CircleShape,
+            ) { Text("Copier") }
+            Button(
+                onClick = {
+                    val send = android.content.Intent(android.content.Intent.ACTION_SEND)
+                        .setType("text/plain")
+                        .putExtra(android.content.Intent.EXTRA_TEXT, message)
+                    context.startActivity(android.content.Intent.createChooser(send, "Envoyer le code"))
+                },
+                shape = CircleShape,
+            ) { Text("Partager") }
+        }
+        Text(
+            "Sur son téléphone : installer KinWaypoint, puis « J'ai un code d'invitation » et taper ces 8 chiffres. " +
+                "Transmets-le seulement à la bonne personne.",
+            style = MaterialTheme.typography.bodySmall,
+            color = Muted,
+        )
+    }
 }

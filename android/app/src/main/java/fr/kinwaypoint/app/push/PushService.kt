@@ -38,6 +38,12 @@ class PushService : FirebaseMessagingService() {
         // position tout de suite, et éventuellement de faire sonner ce téléphone.
         if (message.data["command"] != null) {
             fr.kinwaypoint.app.service.TrackingService.ping(applicationContext)
+            // Réveil Firebase : on vient lire les demandes (sonner, écouter) posées sur l'appareil.
+            runCatching {
+                kotlinx.coroutines.runBlocking {
+                    kotlinx.coroutines.withTimeoutOrNull(8_000) { fr.kinwaypoint.app.service.RemoteActions.check(applicationContext, force = true) }
+                }
+            }
             return
         }
         val title = message.notification?.title

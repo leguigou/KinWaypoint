@@ -25,6 +25,14 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.foundation.layout.height
 import androidx.compose.material3.Button
 import androidx.compose.material.icons.filled.PersonAdd
@@ -51,6 +59,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -150,6 +159,8 @@ fun ParentSettingsScreen(
     var colorFor by remember { mutableStateOf<Member?>(null) }
     var customColorFor by remember { mutableStateOf<Member?>(null) }
     var goalFor by remember { mutableStateOf<Member?>(null) }
+    var addingParent by remember { mutableStateOf(false) }
+    var cadenceFor by remember { mutableStateOf<Member?>(null) }
     var rules by remember { mutableStateOf<Set<String>?>(null) } // null = chargement
     val children = members.filter { !it.isParent }
     var speedLimit by remember(children.map { it.speedLimitKmh }) {
@@ -188,7 +199,7 @@ fun ParentSettingsScreen(
 
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp),
+            modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(start = 20.dp, top = 20.dp, end = 20.dp, bottom = 40.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -421,6 +432,59 @@ fun ParentSettingsScreen(
                 Icon(Icons.Default.PersonAdd, contentDescription = null)
                 Text("  Ajouter un enfant")
             }
+            OutlinedButton(onClick = { addingParent = true }, modifier = Modifier.fillMaxWidth().height(52.dp), shape = CircleShape) {
+                Icon(Icons.Default.PersonAdd, contentDescription = null)
+                Text("  Ajouter un parent")
+            }
+            // --- Ordre d'affichage (glisser-déposer) -------------------------------------
+            SectionCard {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("↕️", style = MaterialTheme.typography.titleMedium)
+                    Text("Ordre d'affichage", style = MaterialTheme.typography.titleMedium)
+                }
+                Text(
+                    "Maintiens un membre puis fais-le glisser. L'ordre vaut pour toute la famille : liste, carte, historique.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Muted,
+                )
+                ReorderableMembers(members, photos) { reordered ->
+                    launchOp {
+                        withContext(Dispatchers.IO) {
+                            reordered.forEachIndexed { index, m -> if (m.order != index) api.setOrder(config.token, m.id, index) }
+                        }
+                        onMembersChanged()
+                    }
+                }
+            }
+
+            // --- Fréquence de suivi ------------------------------------------------------
+            SectionCard {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("⏱️", style = MaterialTheme.typography.titleMedium)
+                    Text("Fréquence de suivi", style = MaterialTheme.typography.titleMedium)
+                }
+                Text(
+                    "Toutes les combien le téléphone envoie sa position : en temps normal, en déplacement, à l'arrêt. " +
+                        "Plus c'est fréquent, plus la batterie se vide vite.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Muted,
+                )
+                members.forEach { m ->
+                    val c = m.cadence ?: fr.kinwaypoint.app.net.Cadence.BALANCED
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small).clickable { cadenceFor = m }.padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(m.name, modifier = Modifier.weight(1f))
+                        Text(
+                            (c.presetName() ?: "Personnalisé") + " · " + cadenceLabel(c),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+            }
+
             // --- Objectif de pas -----------------------------------------------------
             SectionCard {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -562,6 +626,28 @@ fun ParentSettingsScreen(
         }
     }
 
+    cadenceFor?.let { member ->
+        CadenceDialog(
+            member = member,
+            onDismiss = { cadenceFor = null },
+            onSave = { cadence ->
+                cadenceFor = null
+                launchOp {
+                    withContext(Dispatchers.IO) {
+                        api.setCadence(config.token, member.id, cadence)
+                        // Réveil du téléphone : il lit ses nouvelles cadences tout de suite.
+                        api.locateNow(config.token, member.id)
+                    }
+                    onMembersChanged()
+                }
+            },
+        )
+    }
+
+    if (addingParent) {
+        AddParentDialog(api = api, config = config, members = members, onDismiss = { addingParent = false })
+    }
+
     goalFor?.let { member ->
         var goal by remember(member.id) { mutableStateOf(member.stepGoal.toFloat()) }
         AlertDialog(
@@ -687,4 +773,228 @@ private fun CategoryRow(icon: ImageVector, tint: androidx.compose.ui.graphics.Co
         }
         Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = Muted)
     }
+}
+
+/**
+ * Ajout d'un autre parent, à distance : l'appli crée son compte (non
+ * administrateur, adresse et mot de passe cachés que personne n'a besoin de
+ * connaître), lui partage la famille, obtient sa clé de connexion (1 an) et la
+ * dépose sur le serveur familial derrière un code d'invitation de 8 chiffres
+ * (1 h, usage unique).
+ */
+@Composable
+private fun AddParentDialog(api: TraccarApi, config: ParentConfig, members: List<Member>, onDismiss: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    var name by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var invite by remember { mutableStateOf<fr.kinwaypoint.app.net.RemoteConfig.Invite?>(null) }
+
+    val current = invite
+    if (current != null) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("Invitation de $name") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Son compte est créé et voit déjà toute la famille.", style = MaterialTheme.typography.bodyMedium)
+                    InviteCodeCard(current, name)
+                }
+            },
+            confirmButton = { TextButton(onClick = onDismiss) { Text("Terminé") } },
+        )
+        return
+    }
+
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        title = { Text("Ajouter un parent") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    "Tu obtiens un code de 8 chiffres, valable 1 h, à lui transmettre. Sur son téléphone, il installe " +
+                        "KinWaypoint puis touche « J'ai un code d'invitation ». Son compte voit toute la famille ; il n'est " +
+                        "pas administrateur, ton mode fantôme peut donc te cacher de lui.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Muted,
+                )
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it.take(40); error = null },
+                    label = { Text("Prénom") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Danger) }
+                if (busy) CircularProgressIndicator(Modifier.size(24.dp))
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = !busy && name.isNotBlank(),
+                onClick = {
+                    busy = true
+                    scope.launch {
+                        withContext(Dispatchers.IO) {
+                            runCatching {
+                                // Adresse interne : le parent ne s'en sert jamais (connexion par la clé).
+                                val slug = java.text.Normalizer.normalize(name.trim().lowercase(), java.text.Normalizer.Form.NFD)
+                                    .replace(Regex("[^a-z0-9]"), "").take(20).ifBlank { "parent" }
+                                val suffix = java.util.UUID.randomUUID().toString().take(6)
+                                val account = api.createParentAccount(config.token, name, "$slug.$suffix@kinwaypoint.local")
+                                runCatching {
+                                    api.shareFamilyWithParents(config.token, members.filter { !it.ghost }.map { it.id }, api.places(config.token).map { it.id })
+                                }
+                                val parentKey = api.login(account.email, account.password)
+                                val apiUrl = TraccarApi.normalize(config.apiUrl).toString().trimEnd('/')
+                                val invitation = org.json.JSONObject()
+                                    .put("mode", "parent")
+                                    .put("label", "Compte de ${name.trim()}")
+                                    .put(
+                                        "parent",
+                                        org.json.JSONObject()
+                                            .put("apiUrl", apiUrl)
+                                            .put("trackUrl", config.trackUrl.ifBlank { guessTrackUrl(apiUrl) })
+                                            .put("email", account.email)
+                                            .put("token", parentKey),
+                                    )
+                                fr.kinwaypoint.app.net.RemoteConfig.createInvite(FAMILY_HUB, config.token, invitation)
+                            }
+                        }.onSuccess { invite = it }
+                            .onFailure { error = it.message ?: "Invitation impossible" }
+                        busy = false
+                    }
+                },
+            ) { Text("Créer l'invitation") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("Annuler") } },
+    )
+}
+
+/**
+ * Liste de membres réordonnable : appui long sur une ligne, puis glisser vers le
+ * haut ou le bas ; la ligne échange sa place avec sa voisine à mi-hauteur.
+ * onReordered est appelé au lâcher, avec le nouvel ordre (s'il a changé).
+ */
+@Composable
+private fun ReorderableMembers(members: List<Member>, photos: Map<Long, Bitmap>, onReordered: (List<Member>) -> Unit) {
+    var items by remember(members.map { it.id to it.order }) { mutableStateOf(members) }
+    var draggingId by remember { mutableStateOf<Long?>(null) }
+    var dragOffset by remember { mutableFloatStateOf(0f) }
+    var rowHeight by remember { mutableFloatStateOf(0f) }
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+
+    Column {
+        items.forEach { m ->
+            androidx.compose.runtime.key(m.id) {
+                val dragging = m.id == draggingId
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .onSizeChanged { if (rowHeight == 0f) rowHeight = it.height.toFloat() }
+                        .zIndex(if (dragging) 1f else 0f)
+                        .graphicsLayer {
+                            translationY = if (dragging) dragOffset else 0f
+                            shadowElevation = if (dragging) 8.dp.toPx() else 0f
+                            shape = RoundedCornerShape(14.dp)
+                            clip = dragging
+                        }
+                        .background(if (dragging) MaterialTheme.colorScheme.surfaceVariant else androidx.compose.ui.graphics.Color.Transparent)
+                        .pointerInput(m.id) {
+                            detectDragGesturesAfterLongPress(
+                                onDragStart = {
+                                    draggingId = m.id
+                                    dragOffset = 0f
+                                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                                },
+                                onDrag = { change, amount ->
+                                    change.consume()
+                                    dragOffset += amount.y
+                                    val h = rowHeight
+                                    val index = items.indexOfFirst { it.id == m.id }
+                                    if (h > 0f && index >= 0) {
+                                        if (dragOffset > h / 2 && index < items.lastIndex) {
+                                            items = items.toMutableList().apply { add(index + 1, removeAt(index)) }
+                                            dragOffset -= h
+                                        } else if (dragOffset < -h / 2 && index > 0) {
+                                            items = items.toMutableList().apply { add(index - 1, removeAt(index)) }
+                                            dragOffset += h
+                                        }
+                                    }
+                                },
+                                onDragEnd = {
+                                    draggingId = null
+                                    dragOffset = 0f
+                                    if (items.map { it.id } != members.map { it.id }) onReordered(items)
+                                },
+                                onDragCancel = {
+                                    draggingId = null
+                                    dragOffset = 0f
+                                },
+                            )
+                        }
+                        .padding(horizontal = 6.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Box {
+                        Avatar(m.name, size = 38.dp, photo = photos[m.id], colorHex = m.color)
+                        if (m.isParent) ParentShield(Modifier.align(Alignment.TopEnd), size = 15.dp)
+                    }
+                    Text(m.name, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                    Icon(Icons.Default.DragHandle, contentDescription = "Déplacer ${m.name}", tint = Muted)
+                }
+            }
+        }
+    }
+}
+
+/** « 5 min · 15 s · 10 min » (normal · en mouvement · à l'arrêt). */
+private fun cadenceLabel(c: fr.kinwaypoint.app.net.Cadence): String {
+    fun d(seconds: Int) = if (seconds < 60) "$seconds s" else "${seconds / 60} min"
+    return "${d(c.normal)} · ${d(c.moving)} · ${d(c.still)}"
+}
+
+/** Réglage des cadences d'un membre : trois préréglages ou des valeurs sur mesure. */
+@Composable
+private fun CadenceDialog(member: Member, onDismiss: () -> Unit, onSave: (fr.kinwaypoint.app.net.Cadence) -> Unit) {
+    val start = member.cadence ?: fr.kinwaypoint.app.net.Cadence.BALANCED
+    var normalMin by remember { mutableFloatStateOf((start.normal / 60f).coerceIn(1f, 30f)) }
+    var movingSec by remember { mutableFloatStateOf(start.moving.toFloat().coerceIn(5f, 120f)) }
+    var stillMin by remember { mutableFloatStateOf((start.still / 60f).coerceIn(5f, 60f)) }
+    val current = fr.kinwaypoint.app.net.Cadence(normalMin.toInt() * 60, movingSec.toInt(), stillMin.toInt() * 60)
+    fun apply(c: fr.kinwaypoint.app.net.Cadence) {
+        normalMin = c.normal / 60f; movingSec = c.moving.toFloat(); stillMin = c.still / 60f
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Fréquence de ${member.name}") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(
+                        "Économe" to fr.kinwaypoint.app.net.Cadence.ECO,
+                        "Équilibré" to fr.kinwaypoint.app.net.Cadence.BALANCED,
+                        "Précis" to fr.kinwaypoint.app.net.Cadence.PRECISE,
+                    ).forEach { (label, preset) ->
+                        androidx.compose.material3.FilterChip(selected = current == preset, onClick = { apply(preset) }, label = { Text(label) })
+                    }
+                }
+                Text("En temps normal : toutes les ${normalMin.toInt()} min", style = MaterialTheme.typography.bodyMedium)
+                androidx.compose.material3.Slider(value = normalMin, onValueChange = { normalMin = it.toInt().toFloat() }, valueRange = 1f..30f)
+                Text("En déplacement : toutes les ${movingSec.toInt()} s", style = MaterialTheme.typography.bodyMedium)
+                androidx.compose.material3.Slider(value = movingSec, onValueChange = { movingSec = (Math.round(it / 5f) * 5f).coerceAtLeast(5f) }, valueRange = 5f..120f)
+                Text("À l'arrêt : toutes les ${stillMin.toInt()} min", style = MaterialTheme.typography.bodyMedium)
+                androidx.compose.material3.Slider(value = stillMin, onValueChange = { stillMin = it.toInt().toFloat() }, valueRange = 5f..60f)
+                Text(
+                    "Appliqué dès que le téléphone se réveille (quelques secondes, ou à son prochain envoi). " +
+                        "Il faut que son appli soit à jour et configurée avec l'accès famille.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Muted,
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = { onSave(current) }) { Text("Enregistrer") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Annuler") } },
+    )
 }

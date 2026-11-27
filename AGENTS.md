@@ -37,7 +37,7 @@ demande pas de mise à jour. En cas de doute, mettre à jour.
 | `android/app/src/test/` | Tests unitaires JVM (lancés par la CI) |
 | `docker-compose.yml` | Traccar 6.17 + TimescaleDB + relais audio (déployé par Dokploy) |
 | `server/traccar/templates/fr/` | Textes des notifications (Velocity), montés dans Traccar |
-| `server/config-api/` | Dépôt d'APK, `server.json`, codes de configuration (Python, sans dépendance) |
+| `server/config-api/` | Dépôt d'APK, `server.json`, codes de configuration et d'invitation (Python, sans dépendance) |
 | `server/audio-relay/` | Relais WebSocket de l'écoute en direct (Python, `websockets`) |
 | `.github/workflows/android.yml` | Tests, compilation, signature, publication |
 | `docs/` | Documentation détaillée |
@@ -87,6 +87,15 @@ demande pas de mise à jour. En cas de doute, mettre à jour.
   rattrapées (`runCatching`) : une erreur réseau ne doit jamais fermer l'appli.
 - Les traces GPS affichées ou mesurées passent par `cleanTrace` (bruit GPS à
   l'arrêt) ; distances par mode via `travelSplit` (à pied / en voiture).
+- Ordre des membres : attribut `kwOrder` des appareils, appliqué une seule fois
+  dans `TraccarApi.members()` (puis ordre alphabétique) ; les écrans ne retrient
+  pas la liste.
+- Écrans défilants : marge basse d'au moins 40 dp (`contentPadding` ou
+  `padding(bottom = …)`) ; un écran hors `Scaffold` ajoute
+  `navigationBarsPadding()` (appli en plein écran, `targetSdk` 35), sinon les
+  derniers boutons passent sous la barre de navigation.
+- Lieu affiché d'une personne : toujours via `placeFor` (Wi-Fi du lieu d'abord,
+  puis position).
 
 ## Pièges connus
 
@@ -118,6 +127,36 @@ demande pas de mise à jour. En cas de doute, mettre à jour.
     pas. La valeur du jour est relue dans les préférences (`stepsToday`) pour
     que chaque position parte avec ses pas ; côté parent, une position sans pas
     garde ceux de la précédente du même jour (`keepSteps`).
+11. **Autres parents** : comptes créés par l'appli d'un administrateur
+    (`createParentAccount`), jamais administrateurs. Le partage de la famille
+    (`shareFamilyWithParents` : appareils hors mode fantôme et lieux) tourne
+    dans la synchro de l'accueil ; il ne fait rien depuis un compte non
+    administrateur (liste des comptes refusée).
+12. **Codes d'invitation** : même format que les codes de configuration
+    (`RemoteConfig`), déposés par `POST /apk/invite` (jeton Traccar vérifié par
+    le serveur) et rendus une fois par `POST /apk/invite/redeem`. Une invitation
+    parent contient la clé de connexion (`parent.token`) du compte créé, jamais
+    de mot de passe. Toute modification de ces routes se teste en local avec un
+    faux Traccar (essais limités, usage unique, administrateur pour un parent).
+13. **Commandes Traccar et Firebase** : dès qu'un appareil a un jeton
+    `notificationTokens` et que `COMMAND_CLIENT_SERVICE_ACCOUNT` est défini,
+    Traccar envoie TOUTES les commandes par Firebase avec leur seul type (sans
+    `data`) et ne les met jamais en file. Les demandes avec contenu (sonner,
+    écoute en direct) passent donc par des attributs de l'appareil (`kwRing`,
+    `kwListen`) que le téléphone lit au réveil Firebase et après chaque envoi
+    (`RemoteActions`) ; la commande `custom` ne sert que de secours sans Firebase.
+14. **Fréquence de suivi à distance** : attributs `kwIntNormal`, `kwIntMoving`,
+    `kwIntStill` (secondes) de l'appareil, lus par `RemoteActions` et appliqués
+    par `TrackingService.reload()`. Il faut un accès famille configuré sur le
+    téléphone (jeton parent ou lecteur), sinon rien n'est lu.
+15. **Wi-Fi** : `wifiOn` (activé ou non) et `ssid` (nom, seulement si la
+    localisation est accordée et activée). `FixQueue` en version 4 (colonne
+    `wifi_on`) : toute nouvelle colonne passe par une montée de version.
+16. **Sonnerie** (`RingAlarm`) : forcer le son en « Ne pas déranger » exige
+    l'autorisation `ACCESS_NOTIFICATION_POLICY` accordée à la main par
+    l'utilisateur ; le mode sonnerie et le filtre sont rétablis à l'arrêt. Les
+    touches de volume sont captées par une `MediaSession` active pendant la
+    sonnerie (marche écran allumé ; écran éteint, cela dépend du fabricant).
 
 ## Git
 

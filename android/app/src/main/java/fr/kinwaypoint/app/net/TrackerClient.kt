@@ -51,6 +51,8 @@ class TrackerClient {
                 fix.steps?.let { add("steps", it.toString()) }
                 fix.activity?.let { add("activity", it) }
                 fix.kmh?.let { add("kmh", String.format(Locale.US, "%.1f", it)) }
+                // Wi-Fi activé ou coupé (« wifiOn » : pas un nom réservé du protocole OsmAnd).
+                fix.wifiOn?.let { add("wifiOn", it.toString()) }
             }
             .build()
 

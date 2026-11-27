@@ -334,15 +334,14 @@ fun HistoryScreen(
                         valueRange = 0f..((last - first) / 1000f).coerceAtLeast(1f),
                         modifier = Modifier.weight(1f),
                     )
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text(
-                            java.time.Instant.ofEpochMilli(shownAt).atZone(zone).format(DateTimeFormatter.ofPattern("HH:mm")),
-                            style = MaterialTheme.typography.titleSmall,
-                        )
-                        replayPoint?.speedKmh?.takeIf { it >= 1 }?.let { kmh ->
-                            Text("${if (kmh > 15) "🚗" else "🚶"} ${kmh.toInt()} km/h", style = MaterialTheme.typography.labelSmall, color = Muted)
-                        }
-                    }
+                    // Largeur fixe : la barre ne bouge pas quand l'heure change pendant la lecture.
+                    Text(
+                        java.time.Instant.ofEpochMilli(shownAt).atZone(zone).format(DateTimeFormatter.ofPattern("HH:mm")),
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 1,
+                        textAlign = TextAlign.End,
+                        modifier = Modifier.width(52.dp),
+                    )
                     if (replayAt != null) {
                         IconButton(onClick = { playing = false; replayAt = null }) {
                             Icon(Icons.Default.Close, contentDescription = "Fermer la lecture")
@@ -368,7 +367,7 @@ fun HistoryScreen(
                     )
                     else -> LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 40.dp),
                         verticalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
                         items(rows, key = { "${it.memberId}-${it.start}-${it is HistoryRow.Stop}" }) { row ->

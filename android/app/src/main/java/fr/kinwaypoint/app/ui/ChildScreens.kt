@@ -136,7 +136,7 @@ fun ChildHomeScreen(
 
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp),
+            modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(start = 20.dp, top = 20.dp, end = 20.dp, bottom = 40.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -275,8 +275,9 @@ fun ChildSettingsScreen(
 
     fun save(enabled: Boolean, then: () -> Unit = {}) {
         scope.launch {
+            // copy : les cadences en mouvement / à l'arrêt réglées par les parents sont conservées.
             repository.save(
-                TrackingConfig(
+                config.copy(
                     serverUrl = serverUrl,
                     deviceId = deviceId,
                     intervalSeconds = (interval.toIntOrNull() ?: fr.kinwaypoint.app.data.DEFAULT_INTERVAL_SECONDS).coerceIn(15, 3600),
@@ -291,7 +292,7 @@ fun ChildSettingsScreen(
 
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp),
+            modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(start = 20.dp, top = 20.dp, end = 20.dp, bottom = 40.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -377,7 +378,7 @@ fun ChildSettingsScreen(
             ) {
                 Icon(Icons.Default.Link, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.size(8.dp))
-                Text("J'ai un code de configuration")
+                Text("J'ai un code d'invitation")
             }
 
             SectionCard {
@@ -405,7 +406,12 @@ fun ChildSettingsScreen(
                     value = interval,
                     onValueChange = { interval = it.filter(Char::isDigit).take(4) },
                     label = { Text("Intervalle normal (secondes)") },
-                    supportingText = { Text("15 à 3600 (300 = 5 min, conseillé). En mouvement : toutes les 15 s ; à l'arrêt : toutes les 10 min.") },
+                    supportingText = {
+                        Text(
+                            "15 à 3600 (300 = 5 min, conseillé). Les parents peuvent régler toutes les cadences à distance " +
+                                "(Paramètres → Famille → Fréquence de suivi) : leur réglage l'emporte.",
+                        )
+                    },
                     singleLine = true,
                     shape = MaterialTheme.shapes.small,
                     modifier = Modifier.fillMaxWidth(),
@@ -781,6 +787,14 @@ fun PermissionWarnings(permissions: PermissionSnapshot, actions: PlatformActions
             "Compte les pas du jour et détecte la marche pour un suivi plus précis.",
             "Autoriser",
             actions.requestLocation,
+        )
+    }
+    if (permissions.fineLocation && !permissions.dndAccess) {
+        PermissionRow(
+            "Sonner même en « Ne pas déranger »",
+            "Pour que « Faire sonner » s'entende aussi en mode Ne pas déranger : autorise KinWaypoint dans « Accès Ne pas déranger ».",
+            "Autoriser",
+            actions.openDndSettings,
         )
     }
     if (permissions.batteryOptimized) {

@@ -28,4 +28,6 @@ data class LocationFix(
     val activity: String? = null,
     /** Vitesse lissée sur les 2 dernières minutes, en km/h. */
     val kmh: Double? = null,
+    /** Wi-Fi du téléphone activé (connecté ou non), ou null si inconnu. */
+    val wifiOn: Boolean? = null,
 )

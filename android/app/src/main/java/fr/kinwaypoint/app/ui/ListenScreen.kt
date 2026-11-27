@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CallEnd
@@ -155,7 +156,7 @@ fun ListenScreen(api: TraccarApi, token: String, member: Member, photo: Bitmap?,
     }
 
     Box(
-        Modifier.fillMaxSize().background(Brush.verticalGradient(AppTheme.colors.heroGradient)).statusBarsPadding().padding(28.dp),
+        Modifier.fillMaxSize().background(Brush.verticalGradient(AppTheme.colors.heroGradient)).statusBarsPadding().navigationBarsPadding().padding(28.dp),
         contentAlignment = Alignment.Center,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(18.dp)) {
