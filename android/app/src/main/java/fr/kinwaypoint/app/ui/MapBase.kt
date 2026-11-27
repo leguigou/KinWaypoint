@@ -253,7 +253,8 @@ internal inline fun Style.safely(block: Style.() -> Unit) {
 /** Lignes des tracés : une par personne, dans sa couleur. */
 internal fun Style.setTraces(traces: Map<Long, List<TracePoint>>, colors: Map<Long, Int>) {
     safely {
-        val features = traces.mapNotNull { (id, points) ->
+        val features = traces.mapNotNull { (id, rawPoints) ->
+            val points = cleanTrace(rawPoints)
             if (points.size < 2) return@mapNotNull null
             Feature.fromGeometry(LineString.fromLngLats(points.map { Point.fromLngLat(it.longitude, it.latitude) })).apply {
                 addStringProperty("color", hex(colors[id] ?: 0xFF5B5BD6.toInt()))
@@ -289,31 +290,49 @@ internal data class TravelSplit(val foot: Float = 0f, val vehicle: Float = 0f) {
 
 /**
  * Répartit la distance d'un tracé entre « à pied » et « en voiture ».
- * Chaque tronçon entre deux points est classé selon l'activité détectée par le
- * téléphone, sinon selon sa vitesse (> 15 km/h : voiture, comme l'icône 🚗 ;
- * en dessous : à pied, vélo et trottinette compris).
- * Ignorés : les petits écarts dus au bruit GPS à l'arrêt, les sauts aberrants
- * (> 250 km/h) et les longs trous lents (téléphone éteint, pas de mesure).
+ * On part du tracé **nettoyé** (cleanTrace) : le bruit GPS autour d'un point
+ * fixe est déjà écarté, donc un téléphone immobile ne cumule pas de distance.
+ * Chaque tronçon restant est classé « voiture » au-dessus de 15 km/h (comme
+ * l'icône 🚗), « à pied » en dessous (vélo et trottinette compris). Les sauts
+ * aberrants (> 250 km/h) sont ignorés.
  */
 internal fun travelSplit(points: List<TracePoint>): TravelSplit {
     var foot = 0.0
     var vehicle = 0.0
     val result = FloatArray(1)
-    points.sortedBy { it.time }.zipWithNext().forEach { (a, b) ->
+    cleanTrace(points).zipWithNext().forEach { (a, b) ->
         val seconds = (b.time - a.time) / 1000.0
         if (seconds <= 0) return@forEach
         Location.distanceBetween(a.latitude, a.longitude, b.latitude, b.longitude, result)
         val d = result[0].toDouble()
-        if (d < maxOf(a.accuracy, b.accuracy, 10.0)) return@forEach
         val kmh = d / seconds * 3.6
         if (kmh > 250) return@forEach
         val activity = b.activity ?: a.activity
-        val reported = maxOf(a.speedKmh, b.speedKmh)
-        val isVehicle = activity == "vehicle" || kmh > 15 || (activity == null && reported > 15)
-        if (!isVehicle && seconds > 30 * 60) return@forEach
+        val isVehicle = activity == "vehicle" || kmh > 15
         if (isVehicle) vehicle += d else foot += d
     }
     return TravelSplit(foot.toFloat(), vehicle.toFloat())
+}
+
+/**
+ * Tracé « dégraissé » du bruit GPS : on garde un point seulement s'il s'éloigne
+ * nettement du dernier point retenu (au-delà du bruit estimé, plancher 40 m).
+ * Un téléphone immobile dont la position tremble reste donc un point unique, et
+ * ne dessine plus de « pelote » sur place.
+ */
+internal fun cleanTrace(points: List<TracePoint>): List<TracePoint> {
+    if (points.size < 2) return points
+    val sorted = points.sortedBy { it.time }
+    val kept = ArrayList<TracePoint>()
+    kept.add(sorted.first())
+    val result = FloatArray(1)
+    for (p in sorted.drop(1)) {
+        val a = kept.last()
+        Location.distanceBetween(a.latitude, a.longitude, p.latitude, p.longitude, result)
+        val noise = maxOf(40.0, maxOf(a.accuracy, p.accuracy) * 2.5)
+        if (result[0] >= noise) kept.add(p)
+    }
+    return kept
 }
 
 /** « 🚶 2,1 km », « 🚗 14 km » : modes réellement utilisés (≥ 50 m). */

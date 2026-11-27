@@ -27,15 +27,26 @@ class MotionAnalyzer(private val windowMs: Long = 120_000L) {
         while (steps.size > 2 && time - steps.first().time > windowMs) steps.removeFirst()
     }
 
-    /** Vitesse moyenne récente en km/h (null si pas assez de mesures). */
+    /**
+     * Vitesse moyenne récente en km/h (null si pas assez de mesures).
+     *
+     * On mesure le **déplacement net** (du plus ancien au plus récent point), pas
+     * la longueur du zigzag : à l'arrêt, le bruit GPS fait un tracé « sur place »
+     * dont la longueur cumulée est grande alors que le déplacement réel est nul.
+     * En dessous du seuil de bruit, la vitesse est donc zéro (immobile).
+     */
     @Synchronized
     fun speedKmh(now: Long): Double? {
         val recent = fixes.filter { now - it.time <= windowMs }
         if (recent.size < 2) return null
-        val seconds = (recent.last().time - recent.first().time) / 1000.0
+        val first = recent.first()
+        val last = recent.last()
+        val seconds = (last.time - first.time) / 1000.0
         if (seconds < 20) return null
-        val meters = recent.zipWithNext().sumOf { (a, b) -> distance(a, b) }
-        return meters / seconds * 3.6
+        val net = distance(first, last)
+        val noise = maxOf(40.0, maxOf(first.accuracy, last.accuracy).toDouble() * 2.5)
+        if (net < noise) return 0.0
+        return net / seconds * 3.6
     }
 
     /** Pas par minute sur la fenêtre récente. */
