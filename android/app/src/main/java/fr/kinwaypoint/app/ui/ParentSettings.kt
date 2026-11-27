@@ -25,6 +25,9 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.foundation.layout.height
+import androidx.compose.material3.Button
+import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.AccountCircle
@@ -129,6 +132,8 @@ fun ParentSettingsScreen(
     onChangeMode: () -> Unit,
     onOpenPlaces: () -> Unit = {},
     placesCount: Int = 0,
+    /** Ouvre la fenêtre « Ajouter un enfant » (la même que sur l'accueil). */
+    onAddChild: () -> Unit = {},
     proximity: fr.kinwaypoint.app.ui.ProximityConfig = fr.kinwaypoint.app.ui.ProximityConfig(),
     onProximityChange: (fr.kinwaypoint.app.ui.ProximityConfig) -> Unit = {},
 ) {
@@ -412,6 +417,10 @@ fun ParentSettingsScreen(
             }
 
             if (category == "family") {
+            Button(onClick = onAddChild, modifier = Modifier.fillMaxWidth().height(52.dp), shape = CircleShape) {
+                Icon(Icons.Default.PersonAdd, contentDescription = null)
+                Text("  Ajouter un enfant")
+            }
             // --- Objectif de pas -----------------------------------------------------
             SectionCard {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {

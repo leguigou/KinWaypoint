@@ -304,7 +304,8 @@ Secrets GitHub nécessaires :
 
 1. **Téléphone parent** : installer l'APK, choisir « Parent », créer le PIN, se
    connecter avec l'e-mail et le mot de passe Traccar.
-2. **Ajouter un enfant** : « Ajouter un enfant » → prénom → un QR code s'affiche.
+2. **Ajouter un enfant** : « Ajouter un enfant » (accueil, ou Paramètres →
+   Famille) → prénom → un QR code s'affiche.
    Le compte Traccar du parent doit pouvoir créer des appareils.
 3. **Téléphone enfant** : installer l'APK, choisir « Enfant » (même PIN), puis
    Réglages (cadenas) → **Suivi** → « Scanner le QR code » → démarrer le suivi.
