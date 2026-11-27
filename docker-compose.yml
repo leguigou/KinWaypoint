@@ -102,6 +102,18 @@ services:
     mem_limit: 512m
     shm_size: 128m
 
+  # Écoute en direct (visible) : relais audio entre le téléphone de l'enfant et
+  # celui du parent. Ne stocke rien. Domaine Dokploy à router vers le port 8765,
+  # par exemple famille.deloffre.fr chemin /audio (voir docs/ECOUTE-DIRECTE.md).
+  audio-relay:
+    build: ./server/audio-relay
+    restart: unless-stopped
+    environment:
+      - KW_AUDIO_MAX_SECONDS=600
+    expose:
+      - "8765"
+    mem_limit: 64m
+
 volumes:
   tracker-pgdata:
     name: tracker_pgdata

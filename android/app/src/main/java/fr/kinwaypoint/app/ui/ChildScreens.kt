@@ -44,6 +44,8 @@ import androidx.compose.material.icons.filled.PauseCircle
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Hearing
+import androidx.compose.runtime.collectAsState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -153,6 +155,18 @@ fun ChildHomeScreen(
                 )
             } else {
                 StatusCard(status = status, permissions = permissions)
+            }
+
+            // Écoute en direct en cours : l'enfant le voit toujours.
+            val listening by fr.kinwaypoint.app.service.ListenService.active.collectAsState()
+            if (listening) {
+                InfoCard(
+                    title = "🎧 Un parent t'écoute en direct",
+                    detail = "Ton micro est partagé pour ta sécurité. Rien n'est enregistré.",
+                    container = SoftGreen,
+                    icon = androidx.compose.material.icons.Icons.Default.Hearing,
+                    tint = AppTheme.colors.success,
+                )
             }
 
             status.steps?.let { steps ->
@@ -390,6 +404,42 @@ fun ChildSettingsScreen(
                     modifier = Modifier.fillMaxWidth().height(52.dp),
                     shape = CircleShape,
                 ) { Text("Arrêter le suivi") }
+            }
+
+            // --- Écoute en direct par un parent ---------------------------------------
+            val allowListen by repository.allowListen.collectAsState(initial = true)
+            SectionCard {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Écoute en direct par un parent", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "Un parent peut écouter le micro de ce téléphone. C'est toujours visible ici " +
+                                "(écran « Un parent t'écoute » et notification). Rien n'est enregistré.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Muted,
+                        )
+                    }
+                    androidx.compose.material3.Switch(
+                        checked = allowListen,
+                        onCheckedChange = { on -> scope.launch { repository.setAllowListen(on) } },
+                    )
+                }
+                if (allowListen && !permissions.microphone) {
+                    FilledTonalButton(onClick = actions.requestMicrophone, shape = CircleShape, modifier = Modifier.fillMaxWidth()) {
+                        Text("Autoriser le micro")
+                    }
+                }
+                if (allowListen && !permissions.overlay) {
+                    Text(
+                        "Pour que l'écoute démarre sans toucher le téléphone, autorise « Afficher par-dessus les autres applis ». " +
+                            "Sinon, l'enfant devra toucher une notification.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Muted,
+                    )
+                    OutlinedButton(onClick = actions.openOverlaySettings, shape = CircleShape, modifier = Modifier.fillMaxWidth()) {
+                        Text("Autoriser l'affichage par-dessus")
+                    }
+                }
             }
 
             SectionCard {

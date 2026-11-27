@@ -97,6 +97,8 @@ class SettingsRepository(private val context: Context) {
 
         val PROXIMITY_ON = booleanPreferencesKey("proximity_alert_on")
         val PROXIMITY_RADIUS = intPreferencesKey("proximity_alert_radius")
+
+        val ALLOW_LISTEN = booleanPreferencesKey("allow_remote_listen")
     }
 
     val mode: Flow<AppMode> = context.dataStore.data.map { prefs ->
@@ -170,6 +172,13 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.PROXIMITY_ON] = config.enabled
             prefs[Keys.PROXIMITY_RADIUS] = config.radiusMeters
         }
+    }
+
+    /** Mode enfant : un parent peut écouter le micro en direct (toujours visible sur ce téléphone). */
+    val allowListen: Flow<Boolean> = context.dataStore.data.map { prefs -> prefs[Keys.ALLOW_LISTEN] ?: true }
+
+    suspend fun setAllowListen(allowed: Boolean) {
+        context.dataStore.edit { prefs -> prefs[Keys.ALLOW_LISTEN] = allowed }
     }
 
     /** Jeton FCM courant (null tant que Firebase n'a pas répondu). */
