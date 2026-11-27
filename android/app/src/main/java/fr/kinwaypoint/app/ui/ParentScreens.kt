@@ -1079,7 +1079,6 @@ private fun MemberCard(
                 }
                 MemberStatusLine(member.online, position?.fixTime)
             }
-            position?.battery?.let { BatteryBadge(it, position?.charging == true, onClick = onBattery) }
             IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(36.dp)) {
                 Icon(Icons.Default.MoreVert, contentDescription = "Actions pour ${member.name}", tint = Muted)
             }
@@ -1140,18 +1139,22 @@ private fun MemberCard(
                 }
             }
             if (position != null) {
-                Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    // Wi-Fi : réseau connecté, activé sans réseau, ou coupé (gris = information neutre).
-                    when {
-                        position.wifi != null -> InfoChip(Icons.Default.Wifi, position.wifi, MaterialTheme.colorScheme.onSurface, Modifier.weight(1f, fill = false))
-                        position.wifiOn == true -> InfoChip(Icons.Default.Wifi, "Wi-Fi activé, non connecté", Muted)
-                        position.wifiOn == false -> InfoChip(Icons.Default.WifiOff, "Wi-Fi coupé", Muted)
+                // Wi-Fi et sonnerie à gauche, bouton batterie aligné à droite.
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        // Wi-Fi : réseau connecté, activé sans réseau, ou coupé (gris = information neutre).
+                        when {
+                            position.wifi != null -> InfoChip(Icons.Default.Wifi, position.wifi, MaterialTheme.colorScheme.onSurface)
+                            position.wifiOn == true -> InfoChip(Icons.Default.Wifi, "Wi-Fi sans réseau", Muted)
+                            position.wifiOn == false -> InfoChip(Icons.Default.WifiOff, "Wi-Fi coupé", Muted)
+                        }
+                        // Sonnerie coupée : utile avant d'appeler.
+                        when (position.ringer) {
+                            "silent" -> InfoChip(Icons.AutoMirrored.Filled.VolumeOff, "Silencieux", Warning)
+                            "vibrate" -> InfoChip(Icons.Default.Vibration, "Vibreur", Muted)
+                        }
                     }
-                    // Sonnerie coupée : utile avant d'appeler.
-                    when (position.ringer) {
-                        "silent" -> InfoChip(Icons.AutoMirrored.Filled.VolumeOff, "Silencieux", Warning)
-                        "vibrate" -> InfoChip(Icons.Default.Vibration, "Vibreur", Muted)
-                    }
+                    position.battery?.let { BatteryBadge(it, position.charging == true, onClick = onBattery) }
                 }
             }
         }
@@ -1241,27 +1244,26 @@ private fun MemberCard(
 @Composable
 private fun MemberStatusLine(online: Boolean, fixTime: Long?) {
     val stateColor = if (online) Ok else Idle
-    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Box(Modifier.size(8.dp).clip(CircleShape).background(stateColor))
-            Text(
-                if (online) "En ligne" else "Hors ligne",
-                style = MaterialTheme.typography.bodySmall,
-                fontWeight = FontWeight.SemiBold,
-                color = stateColor,
-                maxLines = 1,
-            )
-        }
-        val ageColor = when {
-            fixTime == null -> Muted
-            System.currentTimeMillis() - fixTime < 15 * 60_000L -> Muted
-            else -> Color(freshnessColor(fixTime))
-        }
+    val ageColor = when {
+        fixTime == null -> Muted
+        System.currentTimeMillis() - fixTime < 15 * 60_000L -> Muted
+        else -> Color(freshnessColor(fixTime))
+    }
+    // Une seule ligne, la largeur entière de la carte : « ● Hors ligne · il y a 2 h ».
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Box(Modifier.size(8.dp).clip(CircleShape).background(stateColor))
         Text(
-            fixTime?.let { "Position " + relativeTime(it) } ?: "Aucune position",
+            androidx.compose.ui.text.buildAnnotatedString {
+                pushStyle(androidx.compose.ui.text.SpanStyle(color = stateColor, fontWeight = FontWeight.SemiBold))
+                append(if (online) "En ligne" else "Hors ligne")
+                pop()
+                pushStyle(androidx.compose.ui.text.SpanStyle(color = ageColor))
+                append(" · " + (fixTime?.let { relativeTime(it) } ?: "aucune position"))
+                pop()
+            },
             style = MaterialTheme.typography.bodySmall,
-            color = ageColor,
-            maxLines = 2,
+            maxLines = 1,
+            softWrap = false,
         )
     }
 }
