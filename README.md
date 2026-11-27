@@ -63,6 +63,10 @@ Un serveur **Traccar** collecte, stocke et déclenche les alertes.
 ### Lieux et alertes
 - Lieux (maison, école…) avec icône, couleur, rayon, **personnes concernées**
   et **horaires** (ex. lun–ven 08:00–17:00, créneaux passant minuit).
+- **Pas de fausse sortie de zone** : GPS coupé puis rallumé, ou intérieur sans
+  GPS, le téléphone n'a qu'une position grossière (±500 m à 2 km). Tant qu'elle
+  reste compatible avec la dernière position précise, c'est cette dernière qui
+  est envoyée : ni « départ » ni « nouvelle arrivée » à tort.
 - **Wi-Fi d'un lieu** (optionnel) : quand le téléphone est connecté à ce réseau,
   la personne est affichée dans le lieu (« 🏠 Maison · Wi-Fi »), même si le GPS
   est imprécis à l'intérieur.

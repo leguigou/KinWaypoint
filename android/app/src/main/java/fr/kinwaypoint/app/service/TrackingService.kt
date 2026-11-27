@@ -100,6 +100,10 @@ class TrackingService : Service(), LocationListener {
         private const val STILL_INTERVAL_MS = 10 * 60 * 1000L
         /** Suivi rapproché après un mouvement détecté : une position toutes les 15 s… */
         private const val BOOST_INTERVAL_MS = 15_000L
+        /** Au-delà de cette marge d'erreur (m), une position est « grossière » (antennes, Wi-Fi lointain). */
+        private const val COARSE_ACCURACY_M = 100f
+        /** Une position précise sert de référence pendant 6 h au plus. */
+        private const val RELIABLE_MAX_AGE_MS = 6 * 3600 * 1000L
         /** … pendant 5 min après la dernière preuve de mouvement (pas ou vitesse). */
         private const val BOOST_DURATION_MS = 5 * 60 * 1000L
 
@@ -197,6 +201,8 @@ class TrackingService : Service(), LocationListener {
     /** Point précédent, pour détecter un déplacement entre deux mesures espacées. */
     private var lastSpeedFix: Location? = null
     private var lastQueuedLocation: Location? = null
+    /** Dernière position précise (≤ COARSE_ACCURACY_M) : référence contre les fausses sorties de zone. */
+    private var lastReliable: Location? = null
     private var anchor: Location? = null
     private var anchorSinceElapsed = 0L
     private var sensorManager: SensorManager? = null
@@ -518,7 +524,37 @@ class TrackingService : Service(), LocationListener {
                 speed = 0f
             }
         } ?: candidate
-        enqueue(toSend, alarm = null)
+        enqueue(guardCoarse(toSend), alarm = null)
+    }
+
+    /**
+     * GPS coupé puis rallumé, ou intérieur sans GPS : Android ne donne plus qu'une
+     * position grossière (antennes, ±500 m à 2 km), souvent décalée. Envoyée
+     * telle quelle, elle « sortait » la personne de sa zone (maison, école) puis
+     * l'y faisait « rentrer » au retour du GPS : fausses alertes.
+     *
+     * Si la position grossière reste compatible avec la dernière position précise
+     * (distance ≤ somme des deux marges d'erreur), rien ne prouve un déplacement :
+     * on renvoie les coordonnées précises, avec la précision réelle (grossière).
+     * Une position grossière clairement ailleurs passe telle quelle : vrai départ.
+     */
+    private fun guardCoarse(location: Location): Location {
+        val precise = !location.hasAccuracy() || location.accuracy <= COARSE_ACCURACY_M
+        val reference = lastReliable?.takeIf { location.time - it.time in 0..RELIABLE_MAX_AGE_MS }
+        if (precise) {
+            lastReliable = location
+            return location
+        }
+        if (reference == null) return location
+        val compatible = location.distanceTo(reference) <= location.accuracy + reference.accuracy
+        if (!compatible) return location
+        Log.i(TAG, "position grossière (±${location.accuracy.toInt()} m) compatible avec la dernière précise : coordonnées conservées")
+        return Location(reference).apply {
+            time = location.time
+            elapsedRealtimeNanos = location.elapsedRealtimeNanos
+            accuracy = location.accuracy
+            speed = 0f
+        }
     }
 
     // --- Fréquence adaptative ------------------------------------------------

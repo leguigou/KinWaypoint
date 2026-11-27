@@ -51,6 +51,9 @@ est créé à ce moment-là. Présentation générale et installation du serveur
   - 15 s dès qu'un déplacement est détecté (pas réguliers, ou déplacement net
     entre deux points), pendant 5 min ;
   - 10 min à l'arrêt, GPS coupé.
+- **Position grossière** (GPS coupé, intérieur) : si elle reste compatible
+  avec la dernière position précise, celle-ci est renvoyée (avec la vraie
+  précision), pour éviter les fausses sorties puis rentrées de zone.
 - **Arrêt** : aucun pas et téléphone immobile (accéléromètre, mesures groupées)
   depuis 3 min. À l'arrêt, la position envoyée reste celle du moment de l'arrêt :
   le « tremblement » du GPS ne crée ni faux trajet ni fausse alerte. Le suivi

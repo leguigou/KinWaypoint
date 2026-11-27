@@ -197,6 +197,12 @@ demande pas de mise à jour. En cas de doute, mettre à jour.
     `PushService.alerts`, que l'accueil parent écoute pour s'actualiser aussitôt ;
     contrôle de secours chaque minute même connecté en direct.
 
+20. **Fausses sorties de zone** : `TrackingService.guardCoarse` remplace une
+    position grossière (précision > 100 m) par la dernière position précise
+    (< 6 h) tant que la distance entre les deux reste dans la somme de leurs
+    marges d'erreur ; la précision envoyée reste la vraie. Ne pas envoyer de
+    position grossière brute aux règles de lieux (arrivée / départ).
+
 ## Git
 
 - Travailler sur la branche indiquée par la session ; ne jamais réécrire
