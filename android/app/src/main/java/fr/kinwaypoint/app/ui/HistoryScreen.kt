@@ -243,7 +243,7 @@ fun HistoryScreen(
             ) {
                 FilterChip(selected = focus == null, onClick = { focus = null; highlighted = null }, label = { Text("Tout le monde") })
                 members.forEach { m ->
-                    val length = traces[m.id]?.let { traceLength(it) } ?: 0f
+                    val travel = traces[m.id]?.let { travelSplit(it) }
                     // Pas du jour : le plus grand compteur envoyé ce jour-là.
                     val steps = traces[m.id]?.mapNotNull { it.steps }?.maxOrNull()
                     FilterChip(
@@ -254,7 +254,7 @@ fun HistoryScreen(
                             Text(
                                 listOfNotNull(
                                     nameOf(m),
-                                    length.takeIf { it > 0 }?.let { formatDistance(it) },
+                                    travel?.let { t -> travelParts(t).joinToString(" ") { (e, km) -> "$e $km" } }?.takeIf { it.isNotEmpty() },
                                     steps?.let { "${formatSteps(it)}/${formatSteps(m.stepGoal)} pas" + if (it >= m.stepGoal) " 🎉" else "" },
                                 ).joinToString(" · "),
                             )
