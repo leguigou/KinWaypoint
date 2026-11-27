@@ -50,6 +50,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -975,64 +976,25 @@ private fun MemberCard(
                 IconButton(onClick = { menuOpen = true }) {
                     Icon(Icons.Default.MoreVert, contentDescription = "Actions pour ${member.name}", tint = Muted)
                 }
-                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                    if (position != null) {
-                        DropdownMenuItem(
-                            text = { Text("Voir sur la carte") },
-                            leadingIcon = { Icon(Icons.Default.Map, contentDescription = null) },
-                            onClick = { menuOpen = false; onShowMap() },
-                        )
-                    }
-                    onListen?.let { listen ->
-                        DropdownMenuItem(
-                            text = { Text("Écouter en direct") },
-                            leadingIcon = { Icon(Icons.Default.Hearing, contentDescription = null) },
-                            onClick = { menuOpen = false; listen() },
-                        )
-                    }
-                    DropdownMenuItem(
-                        text = { Text("Faire sonner") },
-                        leadingIcon = { Icon(Icons.Default.NotificationsActive, contentDescription = null) },
-                        onClick = { menuOpen = false; onRing() },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Localiser maintenant") },
-                        leadingIcon = { Icon(Icons.Default.MyLocation, contentDescription = null) },
-                        onClick = { menuOpen = false; onLocate() },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Historique") },
-                        leadingIcon = { Icon(Icons.Default.History, contentDescription = null) },
-                        onClick = { menuOpen = false; onShowHistory() },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Renommer") },
-                        leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
-                        onClick = { menuOpen = false; onRename() },
-                    )
-                    DropdownMenuItem(
-                        text = { Text(if (photo != null || onRemovePhoto != null) "Changer la photo" else "Ajouter une photo") },
-                        leadingIcon = { Icon(Icons.Default.AddAPhoto, contentDescription = null) },
-                        onClick = { menuOpen = false; onChangePhoto() },
-                    )
-                    if (onRemovePhoto != null) {
-                        DropdownMenuItem(
-                            text = { Text("Retirer la photo") },
-                            leadingIcon = { Icon(Icons.Default.HideImage, contentDescription = null) },
-                            onClick = { menuOpen = false; onRemovePhoto() },
-                        )
-                    }
-                    DropdownMenuItem(
-                        text = { Text("QR code de configuration") },
-                        leadingIcon = { Icon(Icons.Default.QrCode, contentDescription = null) },
-                        onClick = { menuOpen = false; onShowQr() },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Supprimer", color = Danger) },
-                        leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = Danger) },
-                        onClick = { menuOpen = false; onDelete() },
-                    )
-                }
+            }
+            // Actions du membre : feuille qui monte du bas, aux couleurs de l'appli.
+            if (menuOpen) {
+                MemberActionsSheet(
+                    member = member,
+                    photo = photo,
+                    isMe = isMe,
+                    onDismiss = { menuOpen = false },
+                    onShowMap = if (position != null) onShowMap else null,
+                    onLocate = onLocate,
+                    onRing = onRing,
+                    onListen = onListen,
+                    onShowHistory = onShowHistory,
+                    onRename = onRename,
+                    onChangePhoto = onChangePhoto,
+                    onRemovePhoto = onRemovePhoto,
+                    onShowQr = onShowQr,
+                    onDelete = onDelete,
+                )
             }
         }
 
@@ -1112,4 +1074,126 @@ private fun fr.kinwaypoint.app.net.MemberPosition.keepSteps(previous: fr.kinwayp
     val sameDay = java.time.Instant.ofEpochMilli(previous.fixTime).atZone(zone).toLocalDate() ==
         java.time.Instant.ofEpochMilli(fixTime).atZone(zone).toLocalDate()
     return if (sameDay) copy(steps = previous.steps) else this
+}
+
+/**
+ * Actions d'un membre, dans une feuille qui monte du bas : en-tête avec
+ * l'avatar, actions rapides en gros boutons ronds colorés, puis les autres
+ * actions dans une carte, et « Supprimer » à part, en rouge.
+ */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun MemberActionsSheet(
+    member: Member,
+    photo: android.graphics.Bitmap?,
+    isMe: Boolean,
+    onDismiss: () -> Unit,
+    onShowMap: (() -> Unit)?,
+    onLocate: () -> Unit,
+    onRing: () -> Unit,
+    onListen: (() -> Unit)?,
+    onShowHistory: () -> Unit,
+    onRename: () -> Unit,
+    onChangePhoto: () -> Unit,
+    onRemovePhoto: (() -> Unit)?,
+    onShowQr: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    val sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    // Chaque action ferme d'abord la feuille.
+    fun run(action: () -> Unit): () -> Unit = { onDismiss(); action() }
+    val primary = MaterialTheme.colorScheme.primary
+    val violet = Color(0xFF8B5CF6)
+
+    androidx.compose.material3.ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.background,
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp),
+        ) {
+            // En-tête : qui est concerné.
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                Box {
+                    Avatar(member.name, size = 56.dp, photo = photo, colorHex = member.color)
+                    if (member.isParent) ParentShield(Modifier.align(Alignment.TopEnd))
+                }
+                Column(Modifier.weight(1f)) {
+                    Text(if (isMe) "${member.name} (moi)" else member.name, style = MaterialTheme.typography.titleLarge)
+                    Text(
+                        member.position?.let { "Vu ${relativeTime(it.fixTime)}" } ?: "Aucune position reçue",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Muted,
+                    )
+                }
+            }
+
+            // Actions rapides.
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                QuickAction(Icons.Default.Map, "Carte", primary, enabled = onShowMap != null) { onShowMap?.let { run(it)() } }
+                QuickAction(Icons.Default.MyLocation, "Localiser", Ok, onClick = run(onLocate))
+                QuickAction(Icons.Default.NotificationsActive, "Sonner", Warning, onClick = run(onRing))
+                onListen?.let { QuickAction(Icons.Default.Hearing, "Écouter", violet, onClick = run(it)) }
+            }
+
+            // Autres actions.
+            SectionCard {
+                ActionRow(Icons.Default.History, "Historique", primary, run(onShowHistory))
+                ActionRow(Icons.Default.Edit, "Renommer", primary, run(onRename))
+                ActionRow(
+                    Icons.Default.AddAPhoto,
+                    if (photo != null || onRemovePhoto != null) "Changer la photo" else "Ajouter une photo",
+                    primary,
+                    run(onChangePhoto),
+                )
+                onRemovePhoto?.let { ActionRow(Icons.Default.HideImage, "Retirer la photo", Muted, run(it)) }
+                ActionRow(Icons.Default.QrCode, "QR code de configuration", primary, run(onShowQr))
+            }
+
+            // Action irréversible, à part.
+            SectionCard(container = SoftRed) {
+                ActionRow(Icons.Default.Delete, "Supprimer ${member.name}", Danger, run(onDelete), showChevron = false)
+            }
+        }
+    }
+}
+
+/** Gros bouton rond coloré avec son libellé (actions rapides). */
+@Composable
+private fun QuickAction(icon: ImageVector, label: String, tint: Color, enabled: Boolean = true, onClick: () -> Unit) {
+    val alpha = if (enabled) 1f else 0.35f
+    Column(
+        Modifier.clip(MaterialTheme.shapes.medium).clickable(enabled = enabled, onClick = onClick).padding(8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Box(
+            Modifier.size(58.dp).clip(CircleShape).background(tint.copy(alpha = 0.14f * alpha)),
+            contentAlignment = Alignment.Center,
+        ) { Icon(icon, contentDescription = null, tint = tint.copy(alpha = alpha), modifier = Modifier.size(26.dp)) }
+        Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onBackground.copy(alpha = alpha))
+    }
+}
+
+/** Ligne d'action : icône dans une pastille teintée, libellé, chevron. */
+@Composable
+private fun ActionRow(icon: ImageVector, label: String, tint: Color, onClick: () -> Unit, showChevron: Boolean = true) {
+    Row(
+        Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium).clickable(onClick = onClick).padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        IconBadge(icon, tint, size = 40.dp)
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyLarge,
+            color = if (tint == Danger) Danger else MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f),
+        )
+        if (showChevron) {
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = Muted)
+        }
+    }
 }
