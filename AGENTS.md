@@ -132,6 +132,13 @@ demande pas de mise à jour. En cas de doute, mettre à jour.
     parent contient la clé de connexion (`parent.token`) du compte créé, jamais
     de mot de passe. Toute modification de ces routes se teste en local avec un
     faux Traccar (essais limités, usage unique, administrateur pour un parent).
+13. **Commandes Traccar et Firebase** : dès qu'un appareil a un jeton
+    `notificationTokens` et que `COMMAND_CLIENT_SERVICE_ACCOUNT` est défini,
+    Traccar envoie TOUTES les commandes par Firebase avec leur seul type (sans
+    `data`) et ne les met jamais en file. Les demandes avec contenu (sonner,
+    écoute en direct) passent donc par des attributs de l'appareil (`kwRing`,
+    `kwListen`) que le téléphone lit au réveil Firebase et après chaque envoi
+    (`RemoteActions`) ; la commande `custom` ne sert que de secours sans Firebase.
 
 ## Git
 

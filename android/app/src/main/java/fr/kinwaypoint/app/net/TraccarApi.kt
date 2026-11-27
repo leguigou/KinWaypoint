@@ -729,8 +729,21 @@ class TraccarApi(baseUrl: String) {
      * impossible (téléphone pas encore inscrit) : il sonnera à son prochain envoi.
      */
     fun ring(token: String, deviceId: Long): Boolean {
-        sendCommand(token, JSONObject().put("deviceId", deviceId).put("type", "custom").put("attributes", JSONObject().put("data", "ring")))
+        // Demande posée sur l'appareil (kwRing) : lue par le téléphone à son réveil.
+        // Traccar envoie TOUTES les commandes par Firebase dès que le téléphone a un
+        // jeton Firebase, sans leur contenu : une commande « ring » seule n'arrivait jamais.
+        updateAttributes(token, deviceId) { attrs -> attrs.put("kwRing", System.currentTimeMillis()) }
+        // Serveur sans Firebase : la commande attend dans la file et part avec la prochaine position.
+        runCatching { sendCommand(token, JSONObject().put("deviceId", deviceId).put("type", "custom").put("attributes", JSONObject().put("data", "ring"))) }
         return locateNow(token, deviceId)
+    }
+
+    /** Demandes en attente pour CET appareil (sonnerie, écoute), lues dans ses attributs. */
+    fun pendingActions(token: String, uniqueId: String): JSONObject? {
+        val devices = getArray(token, url("api/devices"))
+        return (0 until devices.length()).map { devices.getJSONObject(it) }
+            .firstOrNull { it.optString("uniqueId") == uniqueId }
+            ?.optJSONObject("attributes")
     }
 
     /**
@@ -739,11 +752,17 @@ class TraccarApi(baseUrl: String) {
      * transmet. false si le réveil immédiat est impossible.
      */
     fun startListen(token: String, deviceId: Long, room: String, secret: String): Boolean {
-        sendCommand(
-            token,
-            JSONObject().put("deviceId", deviceId).put("type", "custom")
-                .put("attributes", JSONObject().put("data", AudioRelay.command(room, secret))),
-        )
+        val command = AudioRelay.command(room, secret)
+        // Même raison que pour la sonnerie : la demande passe par l'attribut kwListen
+        // (horodatée, ignorée après 2 min), la commande en file sert de secours.
+        updateAttributes(token, deviceId) { attrs -> attrs.put("kwListen", command) }
+        runCatching {
+            sendCommand(
+                token,
+                JSONObject().put("deviceId", deviceId).put("type", "custom")
+                    .put("attributes", JSONObject().put("data", command)),
+            )
+        }
         return locateNow(token, deviceId)
     }
 

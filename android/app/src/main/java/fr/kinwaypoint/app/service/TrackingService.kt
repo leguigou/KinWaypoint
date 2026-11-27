@@ -743,6 +743,8 @@ class TrackingService : Service(), LocationListener {
     }
 
     private fun onSendSuccess(fix: LocationFix) {
+        // Secours si le réveil Firebase n'est pas arrivé : demandes relues (au plus une fois par minute).
+        scope.launch { runCatching { RemoteActions.check(applicationContext) } }
         val now = System.currentTimeMillis()
         val pending = queue.hasPendingAlarm() || sosWaitingForFix
         TrackingStatus.update {
