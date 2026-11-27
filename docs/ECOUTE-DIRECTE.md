@@ -45,7 +45,7 @@ Le service `audio-relay` est dans `docker-compose.yml` (image construite depuis
 
 ## Réglages sur le téléphone de l'enfant
 
-Dans les réglages (cadenas + PIN) → « Écoute en direct par un parent » :
+Dans les réglages (cadenas + PIN) → **Écoute en direct** :
 
 - interrupteur (activé par défaut) ;
 - **Autoriser le micro** (obligatoire) ;

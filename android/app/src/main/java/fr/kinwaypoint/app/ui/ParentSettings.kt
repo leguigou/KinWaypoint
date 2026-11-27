@@ -25,6 +25,11 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.CloudOff
@@ -95,6 +100,7 @@ suspend fun enableParentSharing(
         }
         api.markAsParent(config.token, ownId)
         api.setVisibleToChildren(config.token, ownId, visible = !ghost)
+        runCatching { api.setGhost(config.token, ownId, ghost) }
     }
     repository.setOwnDeviceId(ownId)
     val current = repository.config.first()
@@ -122,6 +128,7 @@ fun ParentSettingsScreen(
     onChangePin: () -> Unit,
     onChangeMode: () -> Unit,
     onOpenPlaces: () -> Unit = {},
+    placesCount: Int = 0,
     proximity: fr.kinwaypoint.app.ui.ProximityConfig = fr.kinwaypoint.app.ui.ProximityConfig(),
     onProximityChange: (fr.kinwaypoint.app.ui.ProximityConfig) -> Unit = {},
 ) {
@@ -132,6 +139,7 @@ fun ParentSettingsScreen(
     val canUseBiometric = remember { actions.biometricAvailable() }
 
     var ghost by remember { mutableStateOf<Boolean?>(null) } // null = inconnu (chargement)
+    var ghostWarning by remember { mutableStateOf<String?>(null) }
     val ghostPref by repository.ghostMode.collectAsState(initial = null)
     var busy by remember { mutableStateOf(false) }
     var colorFor by remember { mutableStateOf<Member?>(null) }
@@ -148,7 +156,10 @@ fun ParentSettingsScreen(
     }
     val sharing = tracking.enabled && ownDeviceId != 0L
 
-    BackHandler(onBack = onBack)
+    // Catégorie ouverte (null = liste des catégories) ; retour = revenir à la liste.
+    var category by remember { mutableStateOf<String?>(null) }
+    val relockMinutes by repository.relockMinutes.collectAsState(initial = 1)
+    BackHandler { if (category != null) category = null else onBack() }
 
     // Mode fantôme : préférence mémorisée sur ce téléphone ; à défaut (ancienne
     // version), lue sur le serveur pendant que le partage est actif.
@@ -176,11 +187,47 @@ fun ParentSettingsScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Retour") }
-                Text("Paramètres", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+                IconButton(onClick = { if (category != null) category = null else onBack() }) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Retour")
+                }
+                Text(
+                    when (category) {
+                        "position" -> "Ma position"
+                        "alerts" -> "Alertes"
+                        "family" -> "Famille"
+                        "security" -> "Sécurité"
+                        "account" -> "Compte"
+                        "about" -> "À propos"
+                        else -> "Paramètres"
+                    },
+                    style = MaterialTheme.typography.headlineSmall,
+                    modifier = Modifier.weight(1f),
+                )
                 if (busy) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
             }
 
+            // --- Liste des catégories (écran principal) ------------------------------
+            if (category == null) {
+                SectionCard {
+                    CategoryRow(Icons.Default.MyLocation, MaterialTheme.colorScheme.primary, "Ma position",
+                        when { !sharing -> "Non partagée"; ghost == true -> "Partagée · mode fantôme"; else -> "Partagée" }) { category = "position" }
+                    CategoryRow(Icons.Default.NotificationsActive, Warning, "Alertes",
+                        rules?.size?.let { n -> if (n == 0) "Aucune alerte active" else "$n alerte${if (n > 1) "s" else ""} active${if (n > 1) "s" else ""}" } ?: "…") { category = "alerts" }
+                    CategoryRow(Icons.Default.Place, Ok, "Lieux",
+                        if (placesCount == 0) "Aucun lieu" else "$placesCount lieu${if (placesCount > 1) "x" else ""}", onClick = onOpenPlaces)
+                    CategoryRow(Icons.Default.People, androidx.compose.ui.graphics.Color(0xFF8B5CF6), "Famille",
+                        "${members.size} membre${if (members.size > 1) "s" else ""} · pas et couleurs") { category = "family" }
+                }
+                SectionCard {
+                    CategoryRow(Icons.Default.Lock, Danger, "Sécurité",
+                        (if (biometricEnabled) "Empreinte" else "Code PIN") + " · " +
+                            when (relockMinutes) { 0 -> "jamais reverrouillé"; 60 -> "verrouillage 1 h"; else -> "verrouillage $relockMinutes min" }) { category = "security" }
+                    CategoryRow(Icons.Default.AccountCircle, MaterialTheme.colorScheme.primary, "Compte", config.email.ifBlank { "Connecté" }) { category = "account" }
+                    CategoryRow(Icons.Default.Info, Muted, "À propos", "Version ${fr.kinwaypoint.app.BuildConfig.VERSION_NAME}") { category = "about" }
+                }
+            }
+
+            if (category == "position") {
             // --- Ma position --------------------------------------------------------
             SectionCard {
                 Text("Ma position", style = MaterialTheme.typography.titleMedium)
@@ -212,17 +259,27 @@ fun ParentSettingsScreen(
                     title = "Mode fantôme",
                     detail = when {
                         ghost == null && ownDeviceId != 0L -> "Vérification auprès du serveur…"
-                        !sharing -> "Partage coupé : les enfants ne voient pas ta position. Ce réglage s'appliquera quand tu le réactiveras."
-                        else -> "Les enfants ne voient pas ta position. Les autres parents la voient toujours."
+                        !sharing -> "Partage coupé : personne ne voit ta position. Ce réglage s'appliquera quand tu le réactiveras."
+                        else -> "Ni les enfants ni les autres parents ne voient ta position."
                     },
                     checked = ghost == true,
                     enabled = !busy && ghost != null,
                     onChange = { on ->
                         launchOp {
                             repository.setGhostMode(on)
-                            // Appliqué tout de suite seulement si le partage est actif.
+                            // Enfants : appliqué tout de suite seulement si le partage est actif.
                             if (sharing) {
                                 withContext(Dispatchers.IO) { api.setVisibleToChildren(config.token, ownDeviceId, visible = !on) }
+                            }
+                            // Autres parents : masqué dans leur appli, accès et lieux retirés sur le serveur.
+                            if (ownDeviceId != 0L) {
+                                val result = withContext(Dispatchers.IO) { api.setGhost(config.token, ownDeviceId, on) }
+                                ghostWarning = if (on && result.adminsStillSeeing > 0) {
+                                    "Masqué dans l'appli des autres parents. Attention : un compte administrateur " +
+                                        "garde accès à ta position depuis l'interface web Traccar."
+                                } else {
+                                    null
+                                }
                             }
                             ghost = on
                         }
@@ -230,11 +287,15 @@ fun ParentSettingsScreen(
                 )
 
             }
+            ghostWarning?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Warning) }
             if (sharing) {
                 StatusCard(status = status, permissions = permissions)
                 PermissionWarnings(permissions, actions)
             }
 
+            }
+
+            if (category == "alerts") {
             // --- Alertes -------------------------------------------------------------
             SectionCard {
                 Text("Alertes", style = MaterialTheme.typography.titleMedium)
@@ -348,18 +409,9 @@ fun ParentSettingsScreen(
                 }
             }
 
-            // --- Lieux ---------------------------------------------------------------
-            SectionCard {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    IconBadge(Icons.Default.Place, MaterialTheme.colorScheme.primary, size = 40.dp)
-                    Column(Modifier.weight(1f)) {
-                        Text("Lieux", style = MaterialTheme.typography.titleSmall)
-                        Text("Maison, école… : alerte quand un enfant arrive ou part.", style = MaterialTheme.typography.bodySmall, color = Muted)
-                    }
-                }
-                OutlinedButton(onClick = onOpenPlaces, modifier = Modifier.fillMaxWidth(), shape = CircleShape) { Text("Gérer les lieux") }
             }
 
+            if (category == "family") {
             // --- Objectif de pas -----------------------------------------------------
             SectionCard {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -400,6 +452,9 @@ fun ParentSettingsScreen(
                 }
             }
 
+            }
+
+            if (category == "security") {
             // --- Sécurité -----------------------------------------------------------
             SectionCard {
                 Text("Sécurité", style = MaterialTheme.typography.titleMedium)
@@ -442,6 +497,9 @@ fun ParentSettingsScreen(
                 }
             }
 
+            }
+
+            if (category == "account") {
             // --- Compte -------------------------------------------------------------
             SectionCard {
                 Text("Compte", style = MaterialTheme.typography.titleMedium)
@@ -456,6 +514,42 @@ fun ParentSettingsScreen(
                     Text("Changer le mode de l'appareil")
                 }
             }
+            }
+
+            // --- À propos ---------------------------------------------------------------
+            if (category == "about") {
+                var updateCheck by remember { mutableStateOf(0) }
+                SectionCard {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        BrandMark(size = 52.dp)
+                        Column(Modifier.weight(1f)) {
+                            Text("KinWaypoint", style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                "Version ${fr.kinwaypoint.app.BuildConfig.VERSION_NAME} (${fr.kinwaypoint.app.BuildConfig.VERSION_CODE})",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Muted,
+                            )
+                        }
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            launchOp {
+                                val found = checkForUpdate(context)
+                                if (found == null) {
+                                    Toast.makeText(context, "KinWaypoint est à jour.", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    updateCheck++
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = CircleShape,
+                    ) { Text("Rechercher une mise à jour") }
+                }
+                // Bandeau de mise à jour (téléchargement et installation), relancé après une recherche.
+                androidx.compose.runtime.key(updateCheck) { UpdateBanner() }
+            }
+
         }
     }
 
@@ -566,5 +660,22 @@ private fun ToggleRow(
             Text(detail, style = MaterialTheme.typography.bodySmall, color = Muted)
         }
         Switch(checked = checked, onCheckedChange = onChange, enabled = enabled)
+    }
+}
+
+/** Ligne de catégorie (façon réglages Android) : icône teintée, titre, résumé, chevron. */
+@Composable
+private fun CategoryRow(icon: ImageVector, tint: androidx.compose.ui.graphics.Color, title: String, summary: String, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium).clickable(onClick = onClick).padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        IconBadge(icon, tint, size = 42.dp)
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleSmall)
+            Text(summary, style = MaterialTheme.typography.bodySmall, color = Muted, maxLines = 1)
+        }
+        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = Muted)
     }
 }

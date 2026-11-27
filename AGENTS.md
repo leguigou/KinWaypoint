@@ -108,6 +108,16 @@ demande pas de mise à jour. En cas de doute, mettre à jour.
    `tracker-db` (l'alias `db` est déjà pris) ; heap Traccar réglé par
    `entrypoint` + `command`, pas `JAVA_OPTS`.
 8. **`tc_positions.attributes` est un `varchar`** : `attributes::jsonb->>'…'`.
+9. **Mode fantôme d'un parent** : retrait du compte lecteur des enfants
+   (`setVisibleToChildren`) + `setGhost` (attribut `kwGhost` filtré par les
+   applis des autres parents, accès retiré aux comptes parents non
+   administrateurs, appareil détaché des lieux). Un administrateur Traccar voit
+   tout côté serveur : on ne peut que le masquer dans l'appli. Toute nouvelle
+   vue des membres doit partir de la liste déjà filtrée de l'accueil parent.
+10. **Podomètre** : `TYPE_STEP_COUNTER` ne donne rien tant qu'on ne marche
+    pas. La valeur du jour est relue dans les préférences (`stepsToday`) pour
+    que chaque position parte avec ses pas ; côté parent, une position sans pas
+    garde ceux de la précédente du même jour (`keepSteps`).
 
 ## Git
 

@@ -292,6 +292,8 @@ class TrackingService : Service(), LocationListener {
         if (!allowed) return
         stepsStarted = stepCounter.start()
         if (!stepsStarted) Log.i(TAG, "pas de podomètre sur ce téléphone")
+        // Pas du jour connus tout de suite (écran enfant), sans attendre le prochain pas.
+        stepCounter.stepsToday?.let { today -> TrackingStatus.update { it.copy(steps = today) } }
     }
 
     private fun onSteps(today: Int, total: Long) {

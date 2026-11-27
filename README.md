@@ -87,29 +87,41 @@ Un serveur **Traccar** collecte, stocke et déclenche les alertes.
   découvertes automatiquement, sinon elles se saisissent dans les réglages avancés.
 - Ajout d'un enfant : l'application crée l'appareil et affiche un **QR code** à
   scanner sur le téléphone de l'enfant.
-- Partage de sa propre position (optionnel) et **mode fantôme** (visible des
-  autres parents, invisible des enfants).
+- Partage de sa propre position (optionnel) et **mode fantôme** (invisible des
+  enfants et des autres parents).
 - Couleurs de profil (palette ou sélecteur libre), photos, objectifs de pas,
   limite de vitesse.
 - Verrouillage par **PIN** ou **empreinte**, délai de reverrouillage réglable
   (1 min → jamais).
 - **Mise à jour depuis l'application** : notification quand une version sort,
-  téléchargement, vérification SHA-256, installation.
+  téléchargement, vérification SHA-256, installation ; recherche à la demande
+  dans Paramètres → À propos.
+- Paramètres rangés **par catégories**, comme sur Android : Ma position,
+  Alertes, Lieux, Famille, Sécurité, Compte, À propos (chaque ligne résume
+  l'état actuel).
 
 ### Côté enfant
 - Écran simple : état du suivi, pas du jour, SOS, « je suis bien arrivé·e ».
 - Carte de la famille : l'enfant s'y voit, avec ses frères et sœurs et les
   parents qui partagent leur position.
-- Réglages protégés par le PIN parent.
+- Réglages protégés par le PIN parent, rangés par catégories : Suivi, Écoute en
+  direct, Sécurité, À propos.
 
 ### Garder la position du parent privée
 
 Pour suivre les enfants sans être suivi, laisse **Partager ma position**
 désactivé. Couper le partage arrête les envois **et** retire aux enfants l'accès
-à ta dernière position. Pour rester visible des autres parents seulement, garde
-le partage et active le **mode fantôme**. Les alertes des lieux et l'historique
-des enfants fonctionnent dans tous les cas. L'alerte « retour près de toi »
-demande, elle, que ton téléphone partage sa position.
+à ta dernière position.
+
+Le **mode fantôme** garde le partage actif (utile pour l'alerte « retour près de
+toi » et ton propre historique) mais **personne ne voit ta position** : ni les
+enfants, ni les autres parents. Ton appareil est masqué dans leur application,
+retiré des comptes parents non administrateurs et détaché des lieux (pas de
+notification « vient d'arriver » à ton sujet). Limite : un compte
+**administrateur** Traccar garde accès à tout depuis l'interface web ;
+l'application prévient dans ce cas.
+
+Les alertes des lieux et l'historique des enfants fonctionnent dans tous les cas.
 
 ---
 
@@ -295,7 +307,7 @@ Secrets GitHub nécessaires :
 2. **Ajouter un enfant** : « Ajouter un enfant » → prénom → un QR code s'affiche.
    Le compte Traccar du parent doit pouvoir créer des appareils.
 3. **Téléphone enfant** : installer l'APK, choisir « Enfant » (même PIN), puis
-   Réglages (cadenas) → « Scanner le QR code » → démarrer le suivi.
+   Réglages (cadenas) → **Suivi** → « Scanner le QR code » → démarrer le suivi.
 4. Sur le téléphone de l'enfant, accorder :
    - la localisation **« Toujours autoriser »** ;
    - l'activité physique (podomètre) ;
@@ -306,8 +318,8 @@ Secrets GitHub nécessaires :
 
    Vérifier qu'une position arrive écran éteint et remonte après une coupure
    réseau.
-5. Créer les lieux (Paramètres → Gérer les lieux) et activer les alertes
-   voulues (Paramètres → Alertes).
+5. Créer les lieux (Paramètres → **Lieux**) et activer les alertes voulues
+   (Paramètres → **Alertes**).
 
 Le QR code contient le secret d'envoi de l'appareil : le garder comme un mot de
 passe. Voir aussi [Configuration à distance](docs/CONFIG-DISTANTE.md) et

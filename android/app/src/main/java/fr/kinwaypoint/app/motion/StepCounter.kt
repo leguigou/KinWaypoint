@@ -23,20 +23,35 @@ class StepCounter(context: Context, private val onSteps: (stepsToday: Int, total
 
     val available: Boolean get() = sensor != null
 
-    /** Pas du jour, ou null si le capteur n'a encore rien donné. */
-    @Volatile var stepsToday: Int? = null
-        private set
+    @Volatile private var started = false
+
+    /**
+     * Pas du jour, ou null si le podomètre n'est pas actif. Relu dans les
+     * préférences : le capteur ne donne rien tant qu'on ne marche pas, mais
+     * après un redémarrage du suivi la valeur du jour reste connue (sinon les
+     * positions partaient sans pas et la barre disparaissait chez les parents).
+     * Nouveau jour sans encore aucun pas compté : 0.
+     */
+    val stepsToday: Int?
+        get() {
+            if (!started) return null
+            val day = prefs.getString("day", null)
+            if (day != LocalDate.now().toString()) return 0
+            return DailySteps(day, prefs.getLong("base", 0), prefs.getLong("last", 0), prefs.getLong("carried", 0)).today
+        }
 
     fun start(): Boolean {
         val s = sensor ?: return false
         // Regroupement des mesures jusqu'à 30 s : la puce ne réveille pas le téléphone à chaque pas.
-        return runCatching {
+        started = runCatching {
             sensorManager?.registerListener(this, s, SensorManager.SENSOR_DELAY_NORMAL, 30_000_000) == true
         }.getOrDefault(false)
+        return started
     }
 
     fun stop() {
         runCatching { sensorManager?.unregisterListener(this) }
+        started = false
     }
 
     override fun onSensorChanged(event: SensorEvent) {
@@ -53,7 +68,6 @@ class StepCounter(context: Context, private val onSteps: (stepsToday: Int, total
             .putLong("last", state.last)
             .putLong("carried", state.carried)
             .apply()
-        stepsToday = state.today
         onSteps(state.today, total)
     }
 

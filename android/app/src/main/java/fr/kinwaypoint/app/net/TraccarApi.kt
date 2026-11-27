@@ -37,7 +37,12 @@ data class Member(
     val stepGoal: Int = DEFAULT_STEP_GOAL,
     /** Limite de vitesse (km/h) déclenchant l'alerte « excès de vitesse », ou null. */
     val speedLimitKmh: Int? = null,
+    /** Parent en mode fantôme : invisible des enfants et des autres parents. */
+    val ghost: Boolean = false,
 )
+
+/** Résultat du mode fantôme : comptes administrateurs qui voient encore tout sur le serveur. */
+data class GhostResult(val adminsStillSeeing: Int)
 
 /** Objectif de pas quotidien proposé par défaut. */
 const val DEFAULT_STEP_GOAL = 8000
@@ -328,6 +333,7 @@ class TraccarApi(baseUrl: String) {
                 isParent = d.optJSONObject("attributes")?.optString("kwRole") == "parent",
                 stepGoal = d.optJSONObject("attributes")?.optInt("kwStepGoal", DEFAULT_STEP_GOAL)?.takeIf { it > 0 } ?: DEFAULT_STEP_GOAL,
                 speedLimitKmh = d.optJSONObject("attributes")?.takeIf { it.has("speedLimit") }?.optDouble("speedLimit")?.let { (it * 1.852).toInt() },
+                ghost = d.optJSONObject("attributes")?.optBoolean("kwGhost", false) == true,
             )
     }
 
@@ -448,6 +454,39 @@ class TraccarApi(baseUrl: String) {
     }
 
     /** Marque l'appareil comme celui d'un parent (jamais rendu visible automatiquement). */
+    /**
+     * Mode fantôme d'un parent, vis-à-vis des AUTRES parents :
+     * - attribut kwGhost : les applis des autres parents masquent l'appareil ;
+     * - accès retiré aux comptes parents non administrateurs (rétabli à la sortie) ;
+     * - appareil détaché des lieux : pas de « X vient d'arriver : Maison » envoyé
+     *   aux autres (rattaché de nouveau par la synchro de l'accueil à la sortie).
+     * Un compte administrateur voit toujours tout sur le serveur (interface web
+     * Traccar) : leur nombre est renvoyé pour prévenir l'utilisateur.
+     */
+    fun setGhost(token: String, deviceId: Long, ghost: Boolean): GhostResult {
+        updateAttributes(token, deviceId) { attrs -> if (ghost) attrs.put("kwGhost", true) else attrs.remove("kwGhost") }
+        var admins = 0
+        runCatching {
+            val sessionUrl = url("api/session").newBuilder().addQueryParameter("token", token).build()
+            val me = getObject(token, sessionUrl).getLong("id")
+            val users = getArray(token, url("api/users"))
+            (0 until users.length()).map { users.getJSONObject(it) }
+                .filter { it.getLong("id") != me && it.optJSONObject("attributes")?.optString("kwRole") != "children-viewer" }
+                .forEach { u ->
+                    if (u.optBoolean("administrator")) {
+                        admins++
+                    } else {
+                        val body = JSONObject().put("userId", u.getLong("id")).put("deviceId", deviceId).toString()
+                            .toRequestBody("application/json".toMediaType())
+                        val request = Request.Builder().url(url("api/permissions")).let { if (ghost) it.delete(body) else it.post(body) }
+                        runCatching { authorized(token, request).close() }
+                    }
+                }
+        }
+        if (ghost) runCatching { places(token).forEach { unlinkPlace(token, it.id, listOf(deviceId)) } }
+        return GhostResult(admins)
+    }
+
     fun markAsParent(token: String, id: Long) {
         updateAttributes(token, id) { attrs -> attrs.put("kwRole", "parent") }
     }
