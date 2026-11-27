@@ -150,7 +150,7 @@ fun installUpdate(context: Context, apk: File): Boolean {
 }
 
 /**
- * Vérification en arrière-plan (appelée par le service de suivi, toutes les 12 h) :
+ * Vérification en arrière-plan (tâche Android planifiée toutes les 4 h) :
  * une notification par nouvelle version, qui ouvre l'appli sur le bandeau.
  */
 suspend fun notifyIfUpdateAvailable(context: Context) {
@@ -176,6 +176,31 @@ suspend fun notifyIfUpdateAvailable(context: Context) {
             .setContentIntent(open)
             .setAutoCancel(true)
             .build(),
+    )
+}
+
+/** Tâche planifiée par Android : survit à la veille, au redémarrage et à l'appli fermée. */
+class UpdateCheckWorker(context: Context, params: androidx.work.WorkerParameters) :
+    androidx.work.CoroutineWorker(context, params) {
+    override suspend fun doWork(): Result {
+        runCatching { notifyIfUpdateAvailable(applicationContext) }
+        return Result.success()
+    }
+}
+
+/** Planifie la vérification des mises à jour (toutes les 4 h, avec réseau). Sans effet si déjà planifiée. */
+fun scheduleUpdateChecks(context: Context) {
+    val request = androidx.work.PeriodicWorkRequestBuilder<UpdateCheckWorker>(4, java.util.concurrent.TimeUnit.HOURS)
+        .setConstraints(
+            androidx.work.Constraints.Builder()
+                .setRequiredNetworkType(androidx.work.NetworkType.CONNECTED)
+                .build(),
+        )
+        .build()
+    androidx.work.WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+        "kw-update-check",
+        androidx.work.ExistingPeriodicWorkPolicy.KEEP,
+        request,
     )
 }
 

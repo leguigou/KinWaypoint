@@ -272,7 +272,7 @@ fun ChildSettingsScreen(
                 TrackingConfig(
                     serverUrl = serverUrl,
                     deviceId = deviceId,
-                    intervalSeconds = (interval.toIntOrNull() ?: 60).coerceIn(15, 3600),
+                    intervalSeconds = (interval.toIntOrNull() ?: fr.kinwaypoint.app.data.DEFAULT_INTERVAL_SECONDS).coerceIn(15, 3600),
                     enabled = enabled,
                     apiUrl = viewerApi,
                     viewerToken = viewerToken,
@@ -366,8 +366,8 @@ fun ChildSettingsScreen(
                 OutlinedTextField(
                     value = interval,
                     onValueChange = { interval = it.filter(Char::isDigit).take(4) },
-                    label = { Text("Intervalle en mouvement (secondes)") },
-                    supportingText = { Text("15 à 3600. À l'arrêt : une position toutes les 10 min.") },
+                    label = { Text("Intervalle normal (secondes)") },
+                    supportingText = { Text("15 à 3600 (300 = 5 min, conseillé). En mouvement : toutes les 15 s ; à l'arrêt : toutes les 10 min.") },
                     singleLine = true,
                     shape = MaterialTheme.shapes.small,
                     modifier = Modifier.fillMaxWidth(),

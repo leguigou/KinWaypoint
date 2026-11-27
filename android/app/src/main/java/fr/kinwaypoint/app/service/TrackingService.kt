@@ -185,6 +185,8 @@ class TrackingService : Service(), LocationListener {
     private var still = false
     /** À l'arrêt, on renvoie cette position (la dernière avant l'arrêt) au lieu du bruit GPS. */
     private var snapTo: Location? = null
+    /** Point précédent, pour détecter un déplacement entre deux mesures espacées. */
+    private var lastSpeedFix: Location? = null
     private var lastQueuedLocation: Location? = null
     private var anchor: Location? = null
     private var anchorSinceElapsed = 0L
@@ -371,17 +373,14 @@ class TrackingService : Service(), LocationListener {
 
     private fun startTracking() {
         scope.launch {
-            val cfg = SettingsRepository(applicationContext).snapshot()
+            val repository = SettingsRepository(applicationContext)
+            repository.migrateDefaults()
+            val cfg = repository.snapshot()
             config = cfg
             intervalMs = cfg.intervalSeconds.coerceIn(15, 3600) * 1000L
             refreshQueueStatus()
-            // Mises à jour : vérification toutes les 12 h, notification si nouvelle version.
-            launch {
-                while (true) {
-                    runCatching { fr.kinwaypoint.app.ui.notifyIfUpdateAvailable(applicationContext) }
-                    delay(12 * 3600_000L)
-                }
-            }
+            // Mises à jour : tâche Android planifiée (aussi relancée ici après une mise à jour du téléphone).
+            runCatching { fr.kinwaypoint.app.ui.scheduleUpdateChecks(applicationContext) }
             withContext(Dispatchers.Main) {
                 registerLocation()
                 registerNetwork()
@@ -453,7 +452,16 @@ class TrackingService : Service(), LocationListener {
         analyzer.addFix(fr.kinwaypoint.app.motion.MotionAnalyzer.Fix(location.time, location.latitude, location.longitude, location.accuracy))
         val kmh = analyzer.speedKmh(nowMs)
         TrackingStatus.update { it.copy(kmh = kmh, activity = analyzer.activity(nowMs).code) }
-        if (kmh != null && kmh > 5) movementDetected() else checkBoostExpired()
+        // Avec un point toutes les 5 min, l'analyse sur 2 min n'a pas assez de mesures :
+        // on compare aussi au point précédent (déplacement net, au-delà du bruit GPS).
+        val movedSincePrevious = lastSpeedFix?.let { prev ->
+            val seconds = (location.time - prev.time) / 1000.0
+            val meters = location.distanceTo(prev)
+            val noise = maxOf(40f, maxOf(prev.accuracy, location.accuracy) * 2.5f)
+            seconds in 20.0..900.0 && meters > noise && meters / seconds * 3.6 > 5
+        } == true
+        lastSpeedFix = location
+        if ((kmh != null && kmh > 5) || movedSincePrevious) movementDetected() else checkBoostExpired()
 
         updateMotion(location)
 
