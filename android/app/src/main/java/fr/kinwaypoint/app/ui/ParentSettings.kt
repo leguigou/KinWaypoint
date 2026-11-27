@@ -134,6 +134,7 @@ fun ParentSettingsScreen(
     var ghost by remember { mutableStateOf<Boolean?>(null) } // null = inconnu (chargement)
     var busy by remember { mutableStateOf(false) }
     var colorFor by remember { mutableStateOf<Member?>(null) }
+    var customColorFor by remember { mutableStateOf<Member?>(null) }
     var goalFor by remember { mutableStateOf<Member?>(null) }
     var rules by remember { mutableStateOf<Set<String>?>(null) } // null = chargement
     val children = members.filter { !it.isParent }
@@ -490,9 +491,29 @@ fun ParentSettingsScreen(
                             if (selected) Icon(Icons.Default.Check, contentDescription = null, tint = Color.White)
                         }
                     }
+                    // Couleur personnalisée : ouvre le sélecteur complet.
+                    val custom = parseHex(member.color)?.takeIf { member.color?.uppercase() !in ProfilePalette }
+                    CustomColorSwatch(custom = custom, size = 44.dp) {
+                        colorFor = null
+                        customColorFor = member
+                    }
                 }
             },
             confirmButton = { TextButton(onClick = { colorFor = null }) { Text("Fermer") } },
+        )
+    }
+    customColorFor?.let { member ->
+        ColorPickerDialog(
+            initial = profileColor(member.name, member.color),
+            title = "Couleur de ${member.name}",
+            onDismiss = { customColorFor = null },
+            onPick = { hex ->
+                customColorFor = null
+                launchOp {
+                    withContext(Dispatchers.IO) { api.setColor(config.token, member.id, hex) }
+                    onMembersChanged()
+                }
+            },
         )
     }
 }
