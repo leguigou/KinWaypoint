@@ -13,6 +13,8 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.hardware.TriggerEvent
 import android.hardware.TriggerEventListener
@@ -60,10 +62,12 @@ import kotlinx.coroutines.flow.first
  *   perdu, l'historique repart au retour de la connexion.
  * - Le SOS part immédiatement avec la dernière position connue, puis la
  *   prochaine mesure fraîche est envoyée sans attendre l'intervalle.
- * - Fréquence adaptative : immobile depuis 5 min → GPS coupé, une position
- *   toutes les 10 min via Wi-Fi / réseau mobile. Le mouvement est détecté par
- *   le capteur « mouvement significatif » (quasi gratuit en batterie) ou par un
- *   déplacement vu sur le réseau : le GPS repart aussitôt. Sans Play Services.
+ * - Fréquence adaptative : « à l'arrêt » → GPS coupé, une position toutes les
+ *   10 min via Wi-Fi / réseau mobile. On s'y met dès que le podomètre ne compte
+ *   plus de pas ET que le téléphone ne bouge plus (accéléromètre) depuis 3 min,
+ *   même si le GPS « tremble » ; sinon après 5 min au même endroit selon le GPS.
+ *   On en sort aux premiers pas, au capteur « mouvement significatif » ou sur un
+ *   déplacement vu par le réseau : le GPS repart aussitôt. Sans Play Services.
  */
 class TrackingService : Service(), LocationListener {
 
@@ -80,8 +84,14 @@ class TrackingService : Service(), LocationListener {
         private const val TWO_MINUTES = 2 * 60 * 1000L
         private const val MAX_RETRY_DELAY_MS = 5 * 60 * 1000L
 
-        /** Durée sans déplacement avant de passer en mode « à l'arrêt ». */
+        /** Durée sans déplacement (selon le GPS) avant de passer en mode « à l'arrêt ». */
         private const val STILL_AFTER_MS = 5 * 60 * 1000L
+        /** Aucun pas et téléphone immobile depuis ce temps → « à l'arrêt », sans attendre le GPS. */
+        private const val CALM_STILL_MS = 3 * 60 * 1000L
+        /** Pas comptés depuis la mise « à l'arrêt » qui suffisent à en sortir. */
+        private const val STEPS_TO_WAKE = 15
+        /** Écart d'accélération (m/s²) sur quelques secondes au-delà duquel le téléphone bouge. */
+        private const val SHAKE_THRESHOLD = 0.6f
         /** Cadence d'envoi à l'arrêt (sert aussi de signe de vie pour les parents). */
         private const val STILL_INTERVAL_MS = 10 * 60 * 1000L
         /** Suivi rapproché après un mouvement détecté : une position toutes les 15 s… */
@@ -184,6 +194,51 @@ class TrackingService : Service(), LocationListener {
         }
     }
 
+    // Indices d'immobilité : derniers pas et dernier mouvement du téléphone.
+    private var accelerometer: Sensor? = null
+    private var accelWatching = false
+    private var accelSinceElapsed = 0L
+    private var lastShakeElapsed = 0L
+    private var lastStepElapsed = 0L
+    private var lastStepTotal = -1L
+    private var stepsAtStill = -1L
+    private var bucketStart = 0L
+    private var bucketMin = Float.MAX_VALUE
+    private var bucketMax = -Float.MAX_VALUE
+    private val accelListener = object : SensorEventListener {
+        override fun onSensorChanged(event: SensorEvent) {
+            val (x, y, z) = Triple(event.values[0], event.values[1], event.values[2])
+            val magnitude = kotlin.math.sqrt(x * x + y * y + z * z)
+            val now = SystemClock.elapsedRealtime()
+            bucketMin = minOf(bucketMin, magnitude)
+            bucketMax = maxOf(bucketMax, magnitude)
+            // Par tranches de 5 s : posé sur une table, l'écart reste sous 0,1 m/s².
+            if (now - bucketStart >= 5_000) {
+                if (bucketMax - bucketMin > SHAKE_THRESHOLD) lastShakeElapsed = now
+                bucketStart = now
+                bucketMin = Float.MAX_VALUE
+                bucketMax = -Float.MAX_VALUE
+            }
+        }
+        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+    }
+
+    /** Accéléromètre écouté seulement hors mode « à l'arrêt » (là, le capteur de mouvement suffit). */
+    private fun watchPhoneMotion(on: Boolean) {
+        val sensor = accelerometer ?: return
+        if (on == accelWatching) return
+        accelWatching = on
+        if (on) {
+            accelSinceElapsed = SystemClock.elapsedRealtime()
+            lastShakeElapsed = 0L
+            bucketStart = accelSinceElapsed
+            // Mesures groupées par lots de 10 s : le processeur n'est pas réveillé à chaque mesure.
+            runCatching { sensorManager?.registerListener(accelListener, sensor, SensorManager.SENSOR_DELAY_NORMAL, 10_000_000) }
+        } else {
+            runCatching { sensorManager?.unregisterListener(accelListener) }
+        }
+    }
+
     // Podomètre et analyse du mouvement.
     private lateinit var stepCounter: fr.kinwaypoint.app.motion.StepCounter
     private val analyzer = fr.kinwaypoint.app.motion.MotionAnalyzer()
@@ -238,6 +293,13 @@ class TrackingService : Service(), LocationListener {
         val now = System.currentTimeMillis()
         analyzer.addSteps(now, total)
         TrackingStatus.update { it.copy(steps = today) }
+        if (lastStepTotal in 0 until total) lastStepElapsed = SystemClock.elapsedRealtime()
+        lastStepTotal = total
+        // « À l'arrêt » et la personne se remet à marcher : on repart tout de suite.
+        if (still && stepsAtStill >= 0 && total - stepsAtStill >= STEPS_TO_WAKE) {
+            Log.i(TAG, "pas détectés : fin du mode à l'arrêt")
+            enterMoving()
+        }
         // Plus de 40 pas / min : la personne marche.
         if (analyzer.cadence(now) >= 40) movementDetected()
     }
@@ -261,6 +323,7 @@ class TrackingService : Service(), LocationListener {
         queue = FixQueue.get(this)
         sensorManager = getSystemService(SensorManager::class.java)
         motionSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_SIGNIFICANT_MOTION)
+        accelerometer = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
         stepCounter = fr.kinwaypoint.app.motion.StepCounter(this) { today, total -> onSteps(today, total) }
         createChannel()
     }
@@ -320,6 +383,7 @@ class TrackingService : Service(), LocationListener {
                 registerLocation()
                 registerNetwork()
                 startStepsIfAllowed()
+                watchPhoneMotion(true)
             }
             flush()
         }
@@ -427,6 +491,17 @@ class TrackingService : Service(), LocationListener {
             return
         }
 
+        // Indices du téléphone : ni pas ni mouvement depuis 3 min → à l'arrêt, sans
+        // attendre le GPS (dont la position « tremble » même immobile).
+        if (accelWatching && now - accelSinceElapsed >= CALM_STILL_MS) {
+            val lastSign = maxOf(lastShakeElapsed, lastStepElapsed)
+            if (now - lastSign >= CALM_STILL_MS) {
+                Log.i(TAG, "aucun pas et téléphone immobile depuis 3 min")
+                enterStill()
+                return
+            }
+        }
+
         if (ref == null || location.distanceTo(ref) > stillRadius(location.accuracy)) {
             anchor = location
             anchorSinceElapsed = now
@@ -438,6 +513,8 @@ class TrackingService : Service(), LocationListener {
     private fun enterStill() {
         if (still) return
         still = true
+        stepsAtStill = lastStepTotal
+        watchPhoneMotion(false)
         Log.i(TAG, "immobile : passage en mode économie")
         TrackingStatus.update { it.copy(still = true) }
         registerLocation()
@@ -452,6 +529,8 @@ class TrackingService : Service(), LocationListener {
         anchor = null
         anchorSinceElapsed = SystemClock.elapsedRealtime()
         motionSensor?.let { sensor -> runCatching { sensorManager?.cancelTriggerSensor(motionListener, sensor) } }
+        stepsAtStill = -1L
+        watchPhoneMotion(true)
         TrackingStatus.update { it.copy(still = false) }
         if (wasStill) {
             Log.i(TAG, "en mouvement : retour au GPS")
@@ -764,6 +843,7 @@ class TrackingService : Service(), LocationListener {
         runCatching { locationManager.removeUpdates(this) }
         motionSensor?.let { sensor -> runCatching { sensorManager?.cancelTriggerSensor(motionListener, sensor) } }
         stepCounter.stop()
+        watchPhoneMotion(false)
         connectivity?.let { manager -> runCatching { manager.unregisterNetworkCallback(networkCallback) } }
         scope.cancel()
         TrackingStatus.update { it.copy(running = false, still = false, boosting = false) }
