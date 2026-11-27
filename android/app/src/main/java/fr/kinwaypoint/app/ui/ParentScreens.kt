@@ -544,6 +544,7 @@ fun ParentHomeScreen(
             proximity = proximityConfig,
             onProximityChange = { scope.launch { repository.setProximityAlert(it) } },
             placesCount = places.size,
+            onAddChild = { showAddChild = true },
         )
     } else if (historyOpen) {
         HistoryScreen(
