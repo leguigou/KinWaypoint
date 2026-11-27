@@ -58,15 +58,27 @@ jobs:
           KW_KEYSTORE_PASSWORD: ${{ secrets.KW_KEYSTORE_PASSWORD }}
           KW_KEY_ALIAS: ${{ secrets.KW_KEY_ALIAS }}
           KW_KEY_PASSWORD: ${{ secrets.KW_KEY_PASSWORD }}
-          # Adresse du serveur familial, hors du dépôt (ex. https://famille.exemple.fr).
-          KW_FAMILY_HUB: ${{ secrets.KW_FAMILY_HUB }}
+          # Adresse du serveur familial, hors du dépôt (ex. https://famille.exemple.fr),
+          # acceptée en secret ou en variable du dépôt.
+          HUB_SECRET: ${{ secrets.KW_FAMILY_HUB }}
+          HUB_VARIABLE: ${{ vars.KW_FAMILY_HUB }}
         run: |
+          # Diagnostic sans jamais afficher la valeur.
+          echo "KW_FAMILY_HUB : secret ${HUB_SECRET:+présent}${HUB_SECRET:-absent}, variable ${HUB_VARIABLE:+présente}${HUB_VARIABLE:-absente}"
+          HUB="${HUB_SECRET:-$HUB_VARIABLE}"
+          # Nettoyage : espaces, retours à la ligne, guillemets, « / » final ; https:// ajouté si oublié.
+          HUB="$(printf '%s' "$HUB" | tr -d '[:space:]"'"'"'')"
+          HUB="${HUB%/}"
+          if [ -n "$HUB" ] && [[ "$HUB" != http*://* ]]; then HUB="https://$HUB"; fi
           # Sans elle, l'APK ne trouverait ni le serveur, ni les mises à jour :
           # on refuse de le publier plutôt que de casser les téléphones.
-          if [[ "${KW_FAMILY_HUB}" != https://* ]]; then
-            echo "::error::Secret KW_FAMILY_HUB absent ou invalide (attendu : https://…). Ajoute-le dans Settings → Secrets and variables → Actions."
+          if [[ "$HUB" != https://* ]]; then
+            echo "::error::KW_FAMILY_HUB absent ou invalide. À créer dans Settings → Secrets and variables → Actions → onglet Secrets → « New repository secret » (nom KW_FAMILY_HUB, valeur https://…)."
             exit 1
           fi
+          echo "::add-mask::$HUB"
+          echo "KW_FAMILY_HUB=$HUB" >> "$GITHUB_ENV"
+          export KW_FAMILY_HUB="$HUB"
           chmod +x gradlew
           ./gradlew --no-daemon --stacktrace testReleaseUnitTest assembleRelease
           mv app/build/outputs/apk/release/app-release.apk "app/build/outputs/apk/release/kinwaypoint-${GITHUB_SHA::7}.apk"
@@ -162,7 +174,6 @@ jobs:
         continue-on-error: true
         env:
           KW_HUB_TOKEN: ${{ secrets.KW_HUB_TOKEN }}
-          KW_FAMILY_HUB: ${{ secrets.KW_FAMILY_HUB }}
         run: |
           if [ -z "${KW_HUB_TOKEN}" ]; then
             echo "Secret KW_HUB_TOKEN absent : dépôt ignoré."
