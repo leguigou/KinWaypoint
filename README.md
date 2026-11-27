@@ -28,14 +28,12 @@ Un serveur **Traccar** collecte, stocke et déclenche les alertes.
 - Carte familiale (MapLibre + OpenStreetMap, sans clé d'API) : avatar photo ou
   initiale de chacun, mise à jour **en direct** (WebSocket, actualisation
   périodique en secours).
-- Fiches glissantes par personne :
-  - lieu actuel et durée (« 🏠 Maison · 2 h 26 ») ;
-  - batterie et état de charge ;
-  - sonnerie (silencieux / vibreur) ;
-  - **Wi-Fi** : coupé, activé sans connexion, ou connecté avec le nom du réseau
-    (ex. « Wi-Fi · Maison-5G ») ;
-  - distance ;
-  - heure d'arrivée estimée vers un lieu.
+- Fiches glissantes par personne, **toutes de la même hauteur** et rangées de
+  la même façon : état (« ● En ligne · il y a 3 min »), une ligne « où » (lieu
+  et durée, trajet vers un lieu avec heure d'arrivée, ou déplacement), quatre
+  chiffres (batterie, précision, à pied, en voiture), objectif de pas, bouton
+  Itinéraire. Seul le **tracé de la personne affichée** est dessiné : il change
+  quand on fait glisser les fiches.
 - **Ancienneté et précision** de chaque position en couleur (vert / orange /
   rouge) et cercle de précision sur la carte.
 - Pastilles sur l'avatar : 🚗 / 🚶 avec la vitesse, 🔇 silencieux, 🪫 batterie

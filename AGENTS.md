@@ -105,6 +105,9 @@ demande pas de mise à jour. En cas de doute, mettre à jour.
   à l'écran. La liaison passe par `ChildLinkScreen` (QR ou code, via
   `resolveConfigCode`), qui active le suivi puis enchaîne les autorisations.
   Le QR affiché côté parent ne montre ni serveur ni identifiant en clair.
+- Fiches de la carte (`EntryCard`) : structure fixe, une information absente
+  s'affiche « — » au lieu de faire disparaître sa ligne ; pas de pastilles ni de
+  date complète. Un seul tracé dessiné : celui de la fiche affichée.
 - Curseurs : toujours `KwSlider` (poignée ronde contourée, piste fine), jamais
   le `Slider` Material brut. Rangées de gélules (`FilterChip`) dans un
   `FlowRow` pour qu'elles passent à la ligne au lieu d'être écrasées.

@@ -31,6 +31,13 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.ui.draw.clip
+import androidx.compose.material.icons.filled.DirectionsCar
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.BatteryFull
@@ -182,10 +189,8 @@ fun FamilyMapScreen(
     // fiches (lieu, pas, arrivée, grande police…) fixe la hauteur de toutes.
     val density0 = LocalDensity.current
     val neededHeights = remember { androidx.compose.runtime.mutableStateMapOf<Long, Int>() }
-    val estimated = 196.dp +
-        (if (labels.values.any { it != null && it != "SOS" && !it.startsWith("→") }) 24.dp else 0.dp) +
-        (if (entries.any { it.member?.position?.steps != null }) 46.dp else 0.dp) +
-        (if (etas.values.any { it != null }) 28.dp else 0.dp)
+    // Fiches de structure identique : la hauteur ne dépend plus de leur contenu.
+    val estimated = 250.dp
     val maxCard = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp * 0.5f).dp
     val measured = entries.mapNotNull { neededHeights[it.id] }.maxOrNull()
     val cardHeight = (measured?.let { with(density0) { it.toDp() } } ?: estimated).coerceIn(150.dp, maxCard)
@@ -294,7 +299,8 @@ fun FamilyMapScreen(
             }
         }
         st.safely { getSourceAs<GeoJsonSource>(FAMILY_SOURCE)?.setGeoJson(FeatureCollection.fromFeatures(features)) }
-        st.setTraces(mapTraces, colors)
+        // Seul le tracé de la fiche affichée : plusieurs tracés superposés devenaient illisibles.
+        st.setTraces(mapTraces.filterKeys { it == selectedId }, colors)
     }
 
     LaunchedEffect(state.map) {
@@ -441,6 +447,11 @@ fun FamilyMapScreen(
                     arrival = etas[entry.id],
                     onLocate = if (!entry.isMe && entry.member != null) onLocate?.let { f -> { f(entry.id) } } else null,
                     isParent = if (entry.isMe) ownMember?.isParent == true else entry.member?.isParent == true,
+                    ownMember = ownMember,
+                    onCenter = {
+                        userMoved = true
+                        state.map?.let { m -> runCatching { m.animateCamera(CameraUpdateFactory.newLatLngZoom(entry.latLng, maxOf(m.cameraPosition.zoom, 15.0)), 600) } }
+                    },
                     onNeededHeight = { px ->
                         val old = neededHeights[entry.id]
                         if (old == null || kotlin.math.abs(old - px) > 2) neededHeights[entry.id] = px
@@ -451,8 +462,16 @@ fun FamilyMapScreen(
     }
 }
 
-/** Fiche d'une personne, en bas de la carte. */
-@OptIn(ExperimentalLayoutApi::class)
+/**
+ * Fiche d'une personne, en bas de la carte. Même structure et mêmes
+ * emplacements pour tout le monde (une information absente affiche « — »),
+ * pour que toutes les fiches aient la même hauteur :
+ * 1. avatar, prénom, état « ● En ligne · il y a 3 min » ;
+ * 2. une ligne « où » : lieu, trajet vers un lieu, déplacement ou rien ;
+ * 3. quatre chiffres : batterie, précision, à pied, en voiture ;
+ * 4. objectif de pas ;
+ * 5. un bouton.
+ */
 @Composable
 private fun EntryCard(
     place: fr.kinwaypoint.app.net.Place? = null,
@@ -467,6 +486,10 @@ private fun EntryCard(
     onLocate: (() -> Unit)? = null,
     /** Compte parent : bouclier sur l'avatar. */
     isParent: Boolean = false,
+    /** Position et objectif de « Moi » (appareil de ce téléphone), s'il est connu du serveur. */
+    ownMember: Member? = null,
+    /** « Moi » : recentrer la carte (à la place du bouton Itinéraire). */
+    onCenter: () -> Unit = {},
     /** Hauteur (px) dont la fiche a besoin pour tout afficher sans défiler. */
     onNeededHeight: (Int) -> Unit = {},
 ) {
@@ -476,6 +499,9 @@ private fun EntryCard(
     LaunchedEffect(cardPx, viewportPx, contentPx) {
         if (cardPx > 0 && viewportPx > 0 && contentPx > 0) onNeededHeight(cardPx - viewportPx + contentPx)
     }
+    val member = if (entry.isMe) ownMember else entry.member
+    val position = member?.position
+    val split = travelSplit(trace)
     Card(
         modifier = Modifier.fillMaxWidth().fillMaxHeight().onSizeChanged { cardPx = it.height },
         shape = MaterialTheme.shapes.large,
@@ -484,114 +510,147 @@ private fun EntryCard(
     ) {
         // Liseré de la couleur du profil : la même que son tracé.
         Box(Modifier.fillMaxWidth().height(5.dp).background(color))
-        Column(Modifier.fillMaxSize().padding(18.dp)) {
-        // Contenu trop long (beaucoup de pastilles) : il défile ; le bouton reste en bas.
+        Column(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 14.dp)) {
+        // Grande police : le contenu défile plutôt que de déborder ; le bouton reste en bas.
         Column(
             Modifier.weight(1f)
                 .onSizeChanged { viewportPx = it.height }
                 .verticalScroll(rememberScrollState())
-                // Mesurée après le défilement : hauteur naturelle du contenu.
                 .onSizeChanged { contentPx = it.height },
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            // 1. En-tête
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Box {
                     if (entry.isMe && photo == null) {
-                        IconBadge(Icons.Default.MyLocation, color, size = 48.dp)
+                        IconBadge(Icons.Default.MyLocation, color, size = 44.dp)
                     } else {
-                        Avatar(entry.name, size = 48.dp, photo = photo, colorHex = entry.colorHex)
+                        Avatar(entry.name, size = 44.dp, photo = photo, colorHex = entry.colorHex)
                     }
                     if (isParent) ParentShield(Modifier.align(Alignment.TopEnd), size = 18.dp)
                 }
                 Column(Modifier.weight(1f)) {
-                    Text(if (entry.isMe) "Ma position" else entry.name, style = MaterialTheme.typography.titleMedium)
-                    if (place != null && placeLabel != null && placeLabel != "SOS") {
-                        Text("${placeEmoji(place.icon)} $placeLabel", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
-                    }
-                    val p = entry.member?.position
                     Text(
-                        when {
-                            entry.isMe -> "Ce téléphone"
-                            p != null -> "Vu ${relativeTime(p.fixTime)} · ${formatDateTime(p.fixTime)}"
-                            else -> ""
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Muted,
+                        if (entry.isMe) "Ma position" else entry.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                     )
-                }
-                onLocate?.let { locate ->
-                    FilledTonalIconButton(onClick = locate) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Demander sa position maintenant")
+                    // État sur une seule ligne : point + « En ligne » coloré, puis l'ancienneté.
+                    val online = entry.isMe || entry.member?.online == true
+                    val fixTime = if (entry.isMe) me?.time ?: position?.fixTime else position?.fixTime
+                    val stateColor = when {
+                        !online -> Idle
+                        fixTime == null -> Ok
+                        else -> Color(freshnessColor(fixTime))
                     }
-                }
-            }
-            // Pastilles sur plusieurs lignes si besoin (statut, batterie, distance, tracé).
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                val member = entry.member
-                if (member != null) {
-                    StatusPill(if (member.online) "En ligne" else "Hors ligne", if (member.online) Ok else Idle)
-                    // Ancienneté et précision de la position, en couleur.
-                    member.position?.let { p ->
-                        StatusPill("🕒 ${relativeTime(p.fixTime)}", Color(freshnessColor(p.fixTime)), showDot = false)
-                        if (p.accuracy > 0) {
-                            StatusPill("± ${p.accuracy.toInt()} m", Color(accuracyColor(p.accuracy)), icon = Icons.Default.GpsFixed)
-                        }
-                    }
-                    member.position?.battery?.let { b ->
-                        val charging = member.position?.charging == true
-                        StatusPill(
-                            "$b %",
-                            if (b < 20 && !charging) Danger else MaterialTheme.colorScheme.primary,
-                            icon = if (charging) Icons.Default.BatteryChargingFull else Icons.Default.BatteryFull,
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Box(Modifier.size(8.dp).clip(CircleShape).background(stateColor))
+                        Text(
+                            buildAnnotatedString {
+                                withStyle(SpanStyle(color = stateColor, fontWeight = FontWeight.SemiBold)) {
+                                    append(if (entry.isMe) "Ce téléphone" else if (online) "En ligne" else "Hors ligne")
+                                }
+                                fixTime?.let { append(" · " + relativeTime(it)) }
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Muted,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                         )
                     }
-                    // Distance depuis ce téléphone, quand on connaît sa position.
-                    me?.let { here ->
-                        val result = FloatArray(1)
-                        Location.distanceBetween(here.latitude, here.longitude, entry.latitude, entry.longitude, result)
-                        StatusPill(formatDistance(result[0]), Muted, icon = Icons.Default.GpsFixed)
+                }
+                // Même place réservée sur toutes les fiches (bouton ou vide).
+                Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+                    onLocate?.let { locate ->
+                        FilledTonalIconButton(onClick = locate, modifier = Modifier.size(40.dp)) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Demander sa position maintenant", modifier = Modifier.size(20.dp))
+                        }
                     }
-                } else {
-                    me?.let { StatusPill("± ${it.accuracy.toInt()} m", Color(accuracyColor(it.accuracy.toDouble())), icon = Icons.Default.GpsFixed) }
                 }
-                // Pas du jour et déplacement en cours.
-                activityLabel(member?.position?.activity, member?.position?.kmh)?.let { StatusPill(it, Warning) }
-                // État du téléphone : sonnerie coupée, Wi-Fi.
-                when (member?.position?.ringer) {
-                    "silent" -> StatusPill("Silencieux", Warning, icon = Icons.AutoMirrored.Filled.VolumeOff)
-                    "vibrate" -> StatusPill("Vibreur", Muted, icon = Icons.Default.Vibration)
-                }
-                when {
-                    member?.position?.wifi != null -> StatusPill(member.position.wifi, MaterialTheme.colorScheme.primary, icon = Icons.Default.Wifi)
-                    member?.position?.wifiOn == true -> StatusPill("Wi-Fi activé", Muted, icon = Icons.Default.Wifi)
-                    member?.position?.wifiOn == false -> StatusPill("Wi-Fi coupé", Muted, icon = Icons.Default.WifiOff)
-                }
-                // Distance du jour par mode : à pied, vélo, véhicule.
-                travelParts(travelSplit(trace)).forEach { (emoji, km) -> StatusPill("$emoji $km", color, showDot = false) }
             }
-            arrival?.let {
-                Text(
-                    "${placeEmoji(it.place.icon)} En route vers ${it.place.name} · arrivée dans ~${it.minutes} min",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.primary,
+
+            // 2. Où : lieu, trajet vers un lieu, déplacement, ou rien de connu.
+            val where = when {
+                placeLabel == "SOS" -> "🆘 SOS en cours"
+                place != null && placeLabel != null -> "${placeEmoji(place.icon)} $placeLabel"
+                arrival != null -> "→ ${placeEmoji(arrival.place.icon)} ${arrival.place.name} · arrivée ~${arrival.minutes} min"
+                else -> activityLabel(position?.activity, position?.kmh) ?: "📍 Hors des lieux enregistrés"
+            }
+            Text(
+                where,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = when {
+                    placeLabel == "SOS" -> Danger
+                    place != null || arrival != null -> MaterialTheme.colorScheme.primary
+                    else -> Muted
+                },
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+
+            // 3. Quatre chiffres, toujours aux mêmes places.
+            Row(Modifier.fillMaxWidth()) {
+                val battery = position?.battery
+                val charging = position?.charging == true
+                MapStat(
+                    icon = if (charging) Icons.Default.BatteryChargingFull else Icons.Default.BatteryFull,
+                    text = battery?.let { "$it %" } ?: "—",
+                    color = when {
+                        battery == null -> Muted
+                        charging -> Ok
+                        battery < 10 -> Danger
+                        battery < 20 -> Warning
+                        else -> MaterialTheme.colorScheme.onSurface
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+                val accuracy = if (entry.isMe) me?.accuracy?.toDouble() ?: position?.accuracy else position?.accuracy
+                MapStat(
+                    icon = Icons.Default.GpsFixed,
+                    text = accuracy?.takeIf { it > 0 }?.let { "± ${it.toInt()} m" } ?: "—",
+                    color = accuracy?.takeIf { it > 0 }?.let { Color(accuracyColor(it)) } ?: Muted,
+                    modifier = Modifier.weight(1f),
+                )
+                MapStat(
+                    icon = Icons.AutoMirrored.Filled.DirectionsWalk,
+                    text = formatDistance(split.foot),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f),
+                )
+                MapStat(
+                    icon = Icons.Default.DirectionsCar,
+                    text = formatDistance(split.vehicle),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f),
                 )
             }
-            // Objectif de pas du jour.
-            entry.member?.let { m -> m.position?.steps?.let { StepGoalBar(it, m.stepGoal, color) } }
+
+            // 4. Objectif de pas (barre vide si le podomètre n'a encore rien donné).
+            val goal = member?.stepGoal ?: fr.kinwaypoint.app.net.DEFAULT_STEP_GOAL
+            StepGoalBar(position?.steps ?: 0, goal, color)
         }
-            // Le bouton reste en bas, à la même place sur toutes les fiches.
-            if (!entry.isMe) {
-                Spacer(Modifier.height(10.dp))
-                FilledTonalButton(
-                    onClick = { actions.openMap(entry.latitude, entry.longitude, entry.name) },
-                    shape = CircleShape,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Icon(Icons.Default.Directions, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.size(8.dp))
-                    Text("Itinéraire")
-                }
+            // 5. Le bouton reste en bas, à la même place sur toutes les fiches.
+            Spacer(Modifier.height(10.dp))
+            FilledTonalButton(
+                onClick = { if (entry.isMe) onCenter() else actions.openMap(entry.latitude, entry.longitude, entry.name) },
+                shape = CircleShape,
+                modifier = Modifier.fillMaxWidth().height(44.dp),
+            ) {
+                Icon(if (entry.isMe) Icons.Default.MyLocation else Icons.Default.Directions, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.size(8.dp))
+                Text(if (entry.isMe) "Me centrer" else "Itinéraire")
             }
         }
+    }
+}
+
+/** Un chiffre de la fiche carte : petit pictogramme + valeur, sur une ligne. */
+@Composable
+private fun MapStat(icon: ImageVector, text: String, color: Color, modifier: Modifier = Modifier) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Icon(icon, contentDescription = null, tint = if (color == MaterialTheme.colorScheme.onSurface) Muted else color, modifier = Modifier.size(16.dp))
+        Text(text, style = MaterialTheme.typography.labelLarge, color = color, maxLines = 1, softWrap = false)
     }
 }
