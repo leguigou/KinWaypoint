@@ -477,7 +477,13 @@ fun ParentHomeScreen(
     // (une fois par ouverture, sans effet si c'est déjà fait).
     // Notifications du serveur en français et à l'heure de ce téléphone (une fois par session).
     LaunchedEffect(config.token) {
-        withContext(Dispatchers.IO) { runCatching { api.ensureUserPreferences(config.token) } }
+        withContext(Dispatchers.IO) {
+            runCatching { api.ensureUserPreferences(config.token) }
+            // Alerte SOS : règle Traccar créée d'office pour ce compte parent (chaque
+            // parent a ses propres règles). Sans elle, aucun SOS n'arrivait en notification.
+            runCatching { api.setAlertRule(config.token, fr.kinwaypoint.app.net.AlertRule.SOS, enabled = true) }
+                .onFailure { android.util.Log.w("KinWaypoint", "règle SOS non créée : ${it.message}") }
+        }
     }
 
     LaunchedEffect(members.filter { !it.isParent }.map { it.id }, places.map { it.id }, proximityConfig, ownDeviceId) {

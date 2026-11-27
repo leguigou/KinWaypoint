@@ -152,6 +152,9 @@ fun ChildHomeScreen(
                 }
             }
 
+            // Nouvelle version : bandeau visible aussi par l'enfant (téléchargement et installation).
+            UpdateBanner()
+
             if (!config.isValid) {
                 // Pas encore relié : un seul bouton, le parent scanne ou tape le code.
                 SectionCard(container = SoftOrange) {

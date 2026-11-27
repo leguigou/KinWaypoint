@@ -187,6 +187,12 @@ demande pas de mise à jour. En cas de doute, mettre à jour.
     suivi, les alertes, l'historique et les réglages gardent la liste complète.
     Un membre avec un SOS en cours n'est jamais masqué.
 
+18. **SOS** : envoyé en `alarm=sos` (minuscules, comme `Position.ALARM_SOS`
+    de Traccar et le modèle `alarm.vm`) ; en interne la file garde « SOS ».
+    La règle de notification `AlertRule.SOS` est créée d'office par chaque
+    appli parent à l'ouverture de l'accueil (les règles Traccar sont propres à
+    chaque compte) ; elle n'a pas d'interrupteur.
+
 ## Git
 
 - Travailler sur la branche indiquée par la session ; ne jamais réécrire

@@ -22,6 +22,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Fingerprint
@@ -333,6 +334,19 @@ fun ParentSettingsScreen(
                     }
                 }
                 val loaded = rules != null
+                // SOS : toujours actif (règle créée d'office à l'ouverture de l'accueil).
+                ToggleRow(
+                    icon = Icons.Default.Warning,
+                    title = "SOS",
+                    detail = if (rules?.contains("sos") == false) {
+                        "Pas encore actif sur le serveur : ouvre l'accueil pour l'activer."
+                    } else {
+                        "Toujours actif : notification immédiate, avec la position, quand un enfant appuie 3 s sur SOS."
+                    },
+                    checked = rules?.contains("sos") != false,
+                    enabled = false,
+                    onChange = {},
+                )
                 ToggleRow(
                     icon = Icons.Default.CloudOff,
                     title = "Pas de nouvelles",

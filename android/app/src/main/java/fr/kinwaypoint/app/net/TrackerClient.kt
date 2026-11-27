@@ -41,7 +41,9 @@ class TrackerClient {
             .add("batt", fix.battery.toString())
             .add("charge", fix.charging.toString())
             .apply {
-                fix.alarm?.let { add("alarm", it) }
+                // Traccar et les modèles de notification attendent « sos » en minuscules
+                // (Position.ALARM_SOS) ; « SOS » ne correspondait à aucune règle.
+                fix.alarm?.let { add("alarm", if (it.equals("sos", ignoreCase = true)) "sos" else it) }
                 fix.fixAgeSeconds?.let { add("fixAge", it.toString()) }
                 fix.ringer?.let { add("ringer", it) }
                 // « ssid » et non « wifi » : « wifi » est réservé par le protocole OsmAnd

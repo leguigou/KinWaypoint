@@ -73,7 +73,8 @@ Un serveur **Traccar** collecte, stocke et déclenche les alertes.
 - Notifications **même application fermée** (Firebase, et Telegram en option),
   rédigées en français :
   - arrivée / départ d'un lieu ;
-  - SOS (avec adresse) ;
+  - SOS (avec adresse) : alerte **toujours active**, créée d'office sur le
+    serveur pour chaque compte parent à l'ouverture de l'accueil ;
   - batterie faible ;
   - « je suis bien arrivé·e » ;
   - excès de vitesse ;
@@ -143,6 +144,8 @@ Un serveur **Traccar** collecte, stocke et déclenche les alertes.
 
 ### Côté enfant
 - Écran simple : état du suivi, pas du jour, SOS, « je suis bien arrivé·e ».
+- **Mises à jour** : notification et bandeau sur l'accueil de l'enfant aussi
+  (téléchargement et installation en deux touches).
 - Carte de la famille : l'enfant s'y voit, avec ses frères et sœurs et les
   parents qui partagent leur position.
 - **Liaison sans configuration** : « Enfant », code PIN parent, puis QR code ou

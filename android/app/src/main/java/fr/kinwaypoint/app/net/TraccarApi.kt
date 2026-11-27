@@ -179,6 +179,8 @@ data class FamilyEvent(
 
 /** Alertes réglables depuis l'appli (règles de notification Traccar). */
 enum class AlertRule(val key: String, val type: String, val alarms: String? = null) {
+    /** SOS : toujours actif, créé d'office pour chaque compte parent (pas d'interrupteur). */
+    SOS("sos", "alarm", "sos"),
     NO_NEWS("noNews", "deviceUnknown"),
     LOW_BATTERY("lowBattery", "alarm", "lowBattery"),
     CHECK_IN("checkIn", "alarm", "general"),
