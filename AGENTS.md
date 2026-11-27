@@ -114,6 +114,11 @@ demande pas de mise à jour. En cas de doute, mettre à jour.
    administrateurs, appareil détaché des lieux). Un administrateur Traccar voit
    tout côté serveur : on ne peut que le masquer dans l'appli. Toute nouvelle
    vue des membres doit partir de la liste déjà filtrée de l'accueil parent.
+11. **Autres parents** : comptes créés par l'appli d'un administrateur
+    (`createParentAccount`), jamais administrateurs. Le partage de la famille
+    (`shareFamilyWithParents` : appareils hors mode fantôme et lieux) tourne
+    dans la synchro de l'accueil ; il ne fait rien depuis un compte non
+    administrateur (liste des comptes refusée).
 10. **Podomètre** : `TYPE_STEP_COUNTER` ne donne rien tant qu'on ne marche
     pas. La valeur du jour est relue dans les préférences (`stepsToday`) pour
     que chaque position parte avec ses pas ; côté parent, une position sans pas

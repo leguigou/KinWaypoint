@@ -87,6 +87,10 @@ Un serveur **Traccar** collecte, stocke et déclenche les alertes.
   découvertes automatiquement, sinon elles se saisissent dans les réglages avancés.
 - Ajout d'un enfant : l'application crée l'appareil et affiche un **QR code** à
   scanner sur le téléphone de l'enfant.
+- **Ajout d'un autre parent** (Paramètres → Famille) : l'application crée son
+  compte, non administrateur, avec un mot de passe provisoire affiché une fois,
+  et lui partage toute la famille. Chaque ajout suivant (enfant, lieu) lui est
+  partagé automatiquement.
 - Partage de sa propre position (optionnel) et **mode fantôme** (invisible des
   enfants et des autres parents).
 - Couleurs de profil (palette ou sélecteur libre), photos, objectifs de pas,
@@ -321,6 +325,9 @@ Secrets GitHub nécessaires :
    réseau.
 5. Créer les lieux (Paramètres → **Lieux**) et activer les alertes voulues
    (Paramètres → **Alertes**).
+6. **Deuxième parent** : Paramètres → Famille → « Ajouter un parent » (prénom,
+   e-mail). Sur son téléphone : installer l'APK, choisir « Parent », se
+   connecter avec l'e-mail et le mot de passe provisoire affichés.
 
 Le QR code contient le secret d'envoi de l'appareil : le garder comme un mot de
 passe. Voir aussi [Configuration à distance](docs/CONFIG-DISTANTE.md) et
@@ -367,7 +374,7 @@ fréquents et les cercles de Findmykids servent de référence fonctionnelle.
 | **Facile à moyenne** | Rechercher une adresse pour créer un lieu | Géocodage (de préférence auto-hébergé) dans l'écran des lieux |
 | **Moyenne** | Afficher les coupures GPS pendant la relecture d'un trajet | Repérer les trous entre points horodatés |
 | **Complexe** | Améliorer l'heure d'arrivée : moteur d'itinéraires, mode de déplacement, positions périmées | Faire évoluer l'estimation actuelle, puis mesurer les écarts sur des trajets réels |
-| **Complexe** | Plusieurs cercles, invitations avec rôles et révocation | Repenser les permissions serveur et la séparation des cercles ; le mode parent privé doit rester disponible |
+| **Complexe** | Plusieurs cercles, rôles et révocation d'un parent | L'ajout d'un parent existe (un seul cercle) ; reste la séparation des cercles et le retrait d'un compte depuis l'appli |
 
 En continu : mesurer la consommation de batterie et la fiabilité du suivi et
 des notifications sur les modèles Android réellement utilisés.

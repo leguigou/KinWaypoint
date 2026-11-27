@@ -51,6 +51,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -150,6 +151,7 @@ fun ParentSettingsScreen(
     var colorFor by remember { mutableStateOf<Member?>(null) }
     var customColorFor by remember { mutableStateOf<Member?>(null) }
     var goalFor by remember { mutableStateOf<Member?>(null) }
+    var addingParent by remember { mutableStateOf(false) }
     var rules by remember { mutableStateOf<Set<String>?>(null) } // null = chargement
     val children = members.filter { !it.isParent }
     var speedLimit by remember(children.map { it.speedLimitKmh }) {
@@ -421,6 +423,10 @@ fun ParentSettingsScreen(
                 Icon(Icons.Default.PersonAdd, contentDescription = null)
                 Text("  Ajouter un enfant")
             }
+            OutlinedButton(onClick = { addingParent = true }, modifier = Modifier.fillMaxWidth().height(52.dp), shape = CircleShape) {
+                Icon(Icons.Default.PersonAdd, contentDescription = null)
+                Text("  Ajouter un parent")
+            }
             // --- Objectif de pas -----------------------------------------------------
             SectionCard {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -562,6 +568,10 @@ fun ParentSettingsScreen(
         }
     }
 
+    if (addingParent) {
+        AddParentDialog(api = api, token = config.token, members = members, onDismiss = { addingParent = false })
+    }
+
     goalFor?.let { member ->
         var goal by remember(member.id) { mutableStateOf(member.stepGoal.toFloat()) }
         AlertDialog(
@@ -687,4 +697,118 @@ private fun CategoryRow(icon: ImageVector, tint: androidx.compose.ui.graphics.Co
         }
         Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = Muted)
     }
+}
+
+/**
+ * Ajout d'un autre parent : l'appli crée son compte (non administrateur) avec
+ * un mot de passe provisoire, puis lui partage toute la famille. Les
+ * identifiants ne sont affichés qu'une fois.
+ */
+@Composable
+private fun AddParentDialog(api: TraccarApi, token: String, members: List<Member>, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var name by remember { mutableStateOf("") }
+    var email by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var created by remember { mutableStateOf<fr.kinwaypoint.app.net.NewParentAccount?>(null) }
+    val emailOk = email.trim().matches(Regex("[^@\\s]+@[^@\\s]+\\.[^@\\s]+"))
+
+    val account = created
+    if (account != null) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("Compte de $name créé") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Note ces identifiants maintenant : le mot de passe ne sera plus affiché.", style = MaterialTheme.typography.bodyMedium)
+                    SectionCard(container = SoftGreen) {
+                        Text("E-mail", style = MaterialTheme.typography.labelMedium, color = Muted)
+                        Text(account.email, style = MaterialTheme.typography.titleMedium)
+                        Text("Mot de passe provisoire", style = MaterialTheme.typography.labelMedium, color = Muted)
+                        Text(
+                            account.password,
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                        )
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
+                            clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("KinWaypoint", "${account.email}\n${account.password}"))
+                            Toast.makeText(context, "Identifiants copiés", Toast.LENGTH_SHORT).show()
+                        },
+                        shape = CircleShape,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Copier") }
+                    Text(
+                        "Sur son téléphone : installer KinWaypoint, choisir « Parent », créer son code PIN, puis se connecter " +
+                            "avec cet e-mail et ce mot de passe. Il voit déjà toute la famille. Transmets le mot de passe en privé " +
+                            "(de vive voix ou par message direct) ; il pourra le changer depuis l'interface web Traccar.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Muted,
+                    )
+                }
+            },
+            confirmButton = { TextButton(onClick = onDismiss) { Text("Terminé") } },
+        )
+        return
+    }
+
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        title = { Text("Ajouter un parent") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    "Son compte voit toute la famille (enfants, lieux, alertes). Il n'est pas administrateur : " +
+                        "ton mode fantôme peut donc te cacher de lui.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Muted,
+                )
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it.take(40) },
+                    label = { Text("Prénom") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = email,
+                    onValueChange = { email = it.take(120); error = null },
+                    label = { Text("Adresse e-mail") },
+                    singleLine = true,
+                    isError = email.isNotBlank() && !emailOk,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Email),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Danger) }
+                if (busy) CircularProgressIndicator(Modifier.size(24.dp))
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = !busy && name.isNotBlank() && emailOk,
+                onClick = {
+                    busy = true
+                    scope.launch {
+                        withContext(Dispatchers.IO) {
+                            runCatching {
+                                val newAccount = api.createParentAccount(token, name, email)
+                                // Accès immédiat à toute la famille (hors parents en mode fantôme).
+                                runCatching {
+                                    api.shareFamilyWithParents(token, members.filter { !it.ghost }.map { it.id }, api.places(token).map { it.id })
+                                }
+                                newAccount
+                            }
+                        }.onSuccess { created = it }
+                            .onFailure { error = it.message ?: "Création impossible" }
+                        busy = false
+                    }
+                },
+            ) { Text("Créer le compte") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("Annuler") } },
+    )
 }

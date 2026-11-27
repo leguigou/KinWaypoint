@@ -41,6 +41,9 @@ data class Member(
     val ghost: Boolean = false,
 )
 
+/** Compte parent créé depuis l'appli : identifiants à transmettre (mot de passe affiché une fois). */
+data class NewParentAccount(val email: String, val password: String)
+
 /** Résultat du mode fantôme : comptes administrateurs qui voient encore tout sur le serveur. */
 data class GhostResult(val adminsStillSeeing: Int)
 
@@ -485,6 +488,71 @@ class TraccarApi(baseUrl: String) {
         }
         if (ghost) runCatching { places(token).forEach { unlinkPlace(token, it.id, listOf(deviceId)) } }
         return GhostResult(admins)
+    }
+
+    /**
+     * Crée le compte d'un autre parent : non administrateur (le mode fantôme peut
+     * alors le masquer côté serveur), en français, avec un mot de passe
+     * provisoire lisible. Réservé à un compte administrateur.
+     */
+    fun createParentAccount(token: String, name: String, email: String): NewParentAccount {
+        val password = readablePassword()
+        val body = JSONObject()
+            .put("name", name.trim())
+            .put("email", email.trim())
+            .put("password", password)
+            .put("administrator", false)
+            .put("attributes", JSONObject()
+                .put("kwRole", "parent")
+                .put("language", "fr")
+                .put("timezone", java.util.TimeZone.getDefault().id))
+        val request = Request.Builder().url(url("api/users"))
+            .post(body.toString().toRequestBody("application/json".toMediaType()))
+        authorized(token, request).use { response ->
+            when {
+                response.code == 400 && response.body?.string().orEmpty().contains("unique", ignoreCase = true) ->
+                    error("Un compte existe déjà avec cet e-mail.")
+                response.code == 400 || response.code == 403 ->
+                    error("Création refusée : seul un compte administrateur peut créer un compte parent.")
+                else -> check(response)
+            }
+        }
+        return NewParentAccount(email.trim(), password)
+    }
+
+    /**
+     * Partage toute la famille avec les autres parents (comptes non
+     * administrateurs, hors compte lecteur des enfants) : appareils et lieux.
+     * Lancé par l'appli d'un administrateur à chaque changement ; sans droits
+     * administrateur, la liste des comptes est refusée et rien n'est fait.
+     * Liens déjà présents : ignorés.
+     */
+    fun shareFamilyWithParents(token: String, deviceIds: List<Long>, placeIds: List<Long>) {
+        val sessionUrl = url("api/session").newBuilder().addQueryParameter("token", token).build()
+        val me = getObject(token, sessionUrl).getLong("id")
+        val users = getArray(token, url("api/users"))
+        (0 until users.length()).map { users.getJSONObject(it) }
+            .filter {
+                it.getLong("id") != me && !it.optBoolean("administrator") &&
+                    it.optJSONObject("attributes")?.optString("kwRole") != "children-viewer"
+            }
+            .forEach { parent ->
+                val userId = parent.getLong("id")
+                fun link(key: String, id: Long) {
+                    val body = JSONObject().put("userId", userId).put(key, id).toString()
+                        .toRequestBody("application/json".toMediaType())
+                    runCatching { authorized(token, Request.Builder().url(url("api/permissions")).post(body)).close() }
+                }
+                deviceIds.forEach { link("deviceId", it) }
+                placeIds.forEach { link("geofenceId", it) }
+            }
+    }
+
+    /** Mot de passe provisoire lisible : 3 groupes de 4 caractères sans ambiguïté (ex. kh7m-p3wa-x9td). */
+    private fun readablePassword(): String {
+        val alphabet = "abcdefghjkmnpqrstuvwxyz23456789"
+        val random = java.security.SecureRandom()
+        return (1..3).joinToString("-") { (1..4).map { alphabet[random.nextInt(alphabet.length)] }.joinToString("") }
     }
 
     fun markAsParent(token: String, id: Long) {
