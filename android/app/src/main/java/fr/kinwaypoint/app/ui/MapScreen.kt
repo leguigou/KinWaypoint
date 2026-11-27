@@ -40,6 +40,8 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Route
 import androidx.compose.material.icons.filled.ZoomOutMap
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
@@ -80,8 +82,7 @@ import org.maplibre.geojson.Point
 
 private const val ME_ID = -1L
 
-/** Hauteur commune des fiches en bas de la carte. */
-private val ENTRY_CARD_HEIGHT = 300.dp
+
 
 /** Un point affiché : un membre de la famille, ou « Moi » (ce téléphone). */
 private data class MapEntry(
@@ -121,6 +122,8 @@ fun FamilyMapScreen(
     places: List<fr.kinwaypoint.app.net.Place> = emptyList(),
     /** Membres avec un SOS en cours (non acquitté). */
     sosIds: Set<Long> = emptySet(),
+    /** Fermer l'alerte SOS d'un membre (= « J'ai vu »). Null : pas de bouton fermer. */
+    onDismissSos: ((Long) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -166,6 +169,12 @@ fun FamilyMapScreen(
         }
     }
 
+    // Hauteur commune des fiches, ajustée à ce qu'elles contiennent vraiment
+    // (pas d'espace vide quand aucune fiche n'affiche de pas ni d'arrivée).
+    val cardHeight = 196.dp +
+        (if (entries.any { it.member?.position?.steps != null }) 46.dp else 0.dp) +
+        (if (etas.values.any { it != null }) 28.dp else 0.dp)
+
     // Zones mortes : la barre du haut (+ hauteur d'un avatar, dessiné AU-DESSUS du
     // point) et les fiches du bas. Le cadrage et le centrage restent dans la partie visible.
     val density = LocalDensity.current
@@ -173,7 +182,7 @@ fun FamilyMapScreen(
         MapInsets(
             top = WindowInsets.statusBars.getTop(density) + (72.dp + 96.dp).roundToPx(),
             bottom = WindowInsets.navigationBars.getBottom(density) +
-                (if (entries.isEmpty()) 24.dp else ENTRY_CARD_HEIGHT + 16.dp + 24.dp).roundToPx(),
+                (if (entries.isEmpty()) 24.dp else cardHeight + 16.dp + 24.dp).roundToPx(),
             side = 56.dp.roundToPx(),
         )
     }
@@ -194,7 +203,7 @@ fun FamilyMapScreen(
         val m = state.map ?: return@LaunchedEffect
         m.addOnMapClickListener { point ->
             val screen = m.projection.toScreenLocation(point)
-            val id = m.queryRenderedFeatures(screen, AVATAR_LAYER).firstOrNull()
+            val id = runCatching { m.queryRenderedFeatures(screen, AVATAR_LAYER).firstOrNull() }.getOrNull()
                 ?.getNumberProperty("id")?.toLong() ?: return@addOnMapClickListener false
             val index = currentEntries.indexOfFirst { it.id == id }
             if (index >= 0) scope.launch { pagerState.animateScrollToPage(index) }
@@ -206,7 +215,7 @@ fun FamilyMapScreen(
     val markerKey = entries.map { listOf(it.id, it.name, it.member?.online, it.colorHex, labels[it.id]) } to photos.values.map { it.generationId }
     LaunchedEffect(state.style, markerKey) {
         val st = state.style ?: return@LaunchedEffect
-        entries.forEach { e ->
+        st.safely { entries.forEach { e ->
             val bitmap = markerBitmap(
                 context = context,
                 name = e.name,
@@ -222,8 +231,8 @@ fun FamilyMapScreen(
                 sos = e.id in sosIds,
                 badge = activityEmoji(e.member?.position?.activity),
             )
-            st.addImage("avatar-${e.id}", bitmap)
-        }
+            addImage("avatar-${e.id}", bitmap)
+        } }
     }
 
     LaunchedEffect(state.style, places) {
@@ -242,7 +251,7 @@ fun FamilyMapScreen(
                 addNumberProperty("sort", if (e.id == selectedId) 1 else 0)
             }
         }
-        st.getSourceAs<GeoJsonSource>(FAMILY_SOURCE)?.setGeoJson(FeatureCollection.fromFeatures(features))
+        st.safely { getSourceAs<GeoJsonSource>(FAMILY_SOURCE)?.setGeoJson(FeatureCollection.fromFeatures(features)) }
         st.setTraces(mapTraces, colors)
     }
 
@@ -331,6 +340,15 @@ fun FamilyMapScreen(
                                 Text("${e.name} a besoin d'aide", style = MaterialTheme.typography.titleMedium, color = Color.White)
                                 Text("SOS actif · touche pour centrer", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.9f))
                             }
+                            if (onDismissSos != null) {
+                                FilledTonalIconButton(
+                                    onClick = { onDismissSos(e.id) },
+                                    colors = androidx.compose.material3.IconButtonDefaults.filledTonalIconButtonColors(
+                                        containerColor = Color.White.copy(alpha = 0.22f),
+                                        contentColor = Color.White,
+                                    ),
+                                ) { Icon(Icons.Default.Close, contentDescription = "Fermer l'alerte (j'ai vu)") }
+                            }
                         }
                     }
                 }
@@ -345,9 +363,10 @@ fun FamilyMapScreen(
                 // Hauteur commune à toutes les fiches, alignées en bas.
                 verticalAlignment = Alignment.Bottom,
                 modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(bottom = 16.dp)
-                    .height(ENTRY_CARD_HEIGHT),
+                    .height(cardHeight),
             ) { page ->
-                val entry = entries[page]
+                // La liste peut changer pendant le défilement (position reçue en direct).
+                val entry = entries.getOrNull(page) ?: return@HorizontalPager
                 EntryCard(
                     place = placeOf[entry.id],
                     placeLabel = labels[entry.id],
@@ -413,7 +432,7 @@ private fun EntryCard(
                 }
             }
             // Pastilles sur plusieurs lignes si besoin (statut, batterie, distance, tracé).
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 val member = entry.member
                 if (member != null) {
                     StatusPill(if (member.online) "En ligne" else "Hors ligne", if (member.online) Ok else Idle)

@@ -43,8 +43,11 @@ fun rememberLiveUpdates(api: TraccarApi, token: String, onMessage: (TraccarApi.L
                 val closed = CompletableDeferred<Unit>()
                 val listener = object : WebSocketListener() {
                     override fun onMessage(webSocket: WebSocket, text: String) {
-                        val message = api.parseLiveMessage(text)
-                        handler.post { currentOnMessage(message) }
+                        // Une erreur ici (fil réseau) fermerait l'appli : on l'ignore et on journalise.
+                        val message = runCatching { api.parseLiveMessage(text) }
+                            .onFailure { android.util.Log.w("KinWaypoint", "message direct illisible", it) }
+                            .getOrNull() ?: return
+                        handler.post { runCatching { currentOnMessage(message) } }
                     }
                     override fun onClosed(webSocket: WebSocket, code: Int, reason: String) { closed.complete(Unit) }
                     override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) { closed.complete(Unit) }

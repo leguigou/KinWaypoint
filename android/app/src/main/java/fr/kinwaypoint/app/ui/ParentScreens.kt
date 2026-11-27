@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.NotificationsActive
@@ -514,6 +515,12 @@ fun ParentHomeScreen(
         FamilyMapScreen(
             places = places,
             sosIds = sosIds,
+            onDismissSos = { deviceId ->
+                // Ferme toutes les alertes SOS en cours de ce membre.
+                alarms.filter { it.deviceId == deviceId }.maxOfOrNull { it.id }?.let { id ->
+                    scope.launch { repository.acknowledgeAlarm(id) }
+                }
+            },
             traces = todayTraces,
             ownDeviceId = ownDeviceId,
             onOpenHistory = { historyFocus = null; historyOpen = true },
@@ -637,10 +644,16 @@ fun ParentHomeScreen(
                                         colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Danger),
                                     ) { Text("Voir sur la carte") }
                                 }
-                                TextButton(
+                                OutlinedButton(
                                     onClick = { scope.launch { repository.acknowledgeAlarm(alarm.id) } },
-                                    colors = ButtonDefaults.textButtonColors(contentColor = Color.White),
-                                ) { Text("J'ai vu") }
+                                    shape = CircleShape,
+                                    border = androidx.compose.foundation.BorderStroke(1.5.dp, Color.White),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                                ) {
+                                    Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.size(6.dp))
+                                    Text("J'ai vu, fermer")
+                                }
                             }
                         }
                     }

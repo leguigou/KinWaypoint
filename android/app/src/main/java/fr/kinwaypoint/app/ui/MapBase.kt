@@ -73,6 +73,8 @@ internal const val PLACE_PIN_SOURCE = "places-pin"
 internal class KinMapState {
     var map by mutableStateOf<MapLibreMap?>(null)
     var style by mutableStateOf<Style?>(null)
+    /** Carte détruite (écran quitté) : plus aucune opération sur elle. */
+    @Volatile var destroyed = false
 }
 
 /**
@@ -99,12 +101,12 @@ internal fun KinMap(state: KinMapState, modifier: Modifier = Modifier, attributi
                 state.map = m
                 var fallbackTried = false
                 addOnDidFailLoadingMapListener {
-                    if (!fallbackTried) {
+                    if (!fallbackTried && !state.destroyed) {
                         fallbackTried = true
-                        m.setStyle(Style.Builder().fromJson(FALLBACK_STYLE)) { st -> state.style = prepareLayers(st) }
+                        m.setStyle(Style.Builder().fromJson(FALLBACK_STYLE)) { st -> if (!state.destroyed) state.style = prepareLayers(st) }
                     }
                 }
-                m.setStyle(Style.Builder().fromUri(STYLE_URL)) { st -> state.style = prepareLayers(st) }
+                m.setStyle(Style.Builder().fromUri(STYLE_URL)) { st -> if (!state.destroyed) state.style = prepareLayers(st) }
             }
         }
     }
@@ -124,6 +126,9 @@ internal fun KinMap(state: KinMapState, modifier: Modifier = Modifier, attributi
             lifecycle.removeObserver(observer)
             if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) mapView.onPause()
             if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) mapView.onStop()
+            state.destroyed = true
+            state.style = null
+            state.map = null
             mapView.onDestroy()
         }
     }
@@ -231,22 +236,40 @@ private fun prepareLayers(style: Style): Style {
 
 private fun hex(color: Int) = String.format("#%06X", 0xFFFFFF and color)
 
+/**
+ * Toute modification du fond de carte passe par ici : si le style n'est plus
+ * valide (rechargement en cours, carte fermée), MapLibre lève une exception qui
+ * fermerait l'appli. On ignore la mise à jour : la suivante la rattrapera.
+ */
+internal inline fun Style.safely(block: Style.() -> Unit) {
+    if (!isFullyLoaded) return
+    try {
+        block()
+    } catch (e: Exception) {
+        android.util.Log.w("KinWaypoint", "mise à jour de la carte ignorée", e)
+    }
+}
+
 /** Lignes des tracés : une par personne, dans sa couleur. */
 internal fun Style.setTraces(traces: Map<Long, List<TracePoint>>, colors: Map<Long, Int>) {
-    val features = traces.mapNotNull { (id, points) ->
-        if (points.size < 2) return@mapNotNull null
-        Feature.fromGeometry(LineString.fromLngLats(points.map { Point.fromLngLat(it.longitude, it.latitude) })).apply {
-            addStringProperty("color", hex(colors[id] ?: 0xFF5B5BD6.toInt()))
+    safely {
+        val features = traces.mapNotNull { (id, points) ->
+            if (points.size < 2) return@mapNotNull null
+            Feature.fromGeometry(LineString.fromLngLats(points.map { Point.fromLngLat(it.longitude, it.latitude) })).apply {
+                addStringProperty("color", hex(colors[id] ?: 0xFF5B5BD6.toInt()))
+            }
         }
+        getSourceAs<GeoJsonSource>(TRACE_SOURCE)?.setGeoJson(FeatureCollection.fromFeatures(features))
     }
-    getSourceAs<GeoJsonSource>(TRACE_SOURCE)?.setGeoJson(FeatureCollection.fromFeatures(features))
 }
 
 internal fun Style.setHighlight(point: TracePoint?, color: Int) {
-    val features = point?.let {
-        listOf(Feature.fromGeometry(Point.fromLngLat(it.longitude, it.latitude)).apply { addStringProperty("color", hex(color)) })
-    } ?: emptyList()
-    getSourceAs<GeoJsonSource>(HIGHLIGHT_SOURCE)?.setGeoJson(FeatureCollection.fromFeatures(features))
+    safely {
+        val features = point?.let {
+            listOf(Feature.fromGeometry(Point.fromLngLat(it.longitude, it.latitude)).apply { addStringProperty("color", hex(color)) })
+        } ?: emptyList()
+        getSourceAs<GeoJsonSource>(HIGHLIGHT_SOURCE)?.setGeoJson(FeatureCollection.fromFeatures(features))
+    }
 }
 
 /** Longueur d'un tracé, en mètres. */
@@ -450,25 +473,27 @@ private fun placeBitmap(context: Context, icon: String, colorHex: String): Bitma
 
 /** Affiche les lieux sur la carte. */
 internal fun Style.setPlaces(context: Context, places: List<Place>) {
-    places.forEach { addImage("place-${it.id}", placeBitmap(context, it.icon, it.color)) }
-    getSourceAs<GeoJsonSource>(PLACE_AREA_SOURCE)?.setGeoJson(
-        FeatureCollection.fromFeatures(
-            places.map {
-                Feature.fromGeometry(circlePolygon(it.latitude, it.longitude, it.radius)).apply { addStringProperty("color", it.color) }
-            },
-        ),
-    )
-    getSourceAs<GeoJsonSource>(PLACE_PIN_SOURCE)?.setGeoJson(
-        FeatureCollection.fromFeatures(
-            places.map { p ->
-                Feature.fromGeometry(Point.fromLngLat(p.longitude, p.latitude)).apply {
-                    addStringProperty("icon", "place-${p.id}")
-                    addStringProperty("name", p.name)
-                    addStringProperty("color", p.color)
-                }
-            },
-        ),
-    )
+    safely {
+        places.forEach { addImage("place-${it.id}", placeBitmap(context, it.icon, it.color)) }
+        getSourceAs<GeoJsonSource>(PLACE_AREA_SOURCE)?.setGeoJson(
+            FeatureCollection.fromFeatures(
+                places.map {
+                    Feature.fromGeometry(circlePolygon(it.latitude, it.longitude, it.radius)).apply { addStringProperty("color", it.color) }
+                },
+            ),
+        )
+        getSourceAs<GeoJsonSource>(PLACE_PIN_SOURCE)?.setGeoJson(
+            FeatureCollection.fromFeatures(
+                places.map { p ->
+                    Feature.fromGeometry(Point.fromLngLat(p.longitude, p.latitude)).apply {
+                        addStringProperty("icon", "place-${p.id}")
+                        addStringProperty("name", p.name)
+                        addStringProperty("color", p.color)
+                    }
+                },
+            ),
+        )
+    }
 }
 
 /** Lieu dans lequel se trouve ce point (le plus proche s'il y en a plusieurs). */

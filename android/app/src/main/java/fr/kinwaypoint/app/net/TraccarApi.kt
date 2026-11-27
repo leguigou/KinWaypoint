@@ -228,11 +228,12 @@ class TraccarApi(baseUrl: String) {
 
     fun parseLiveMessage(text: String): LiveMessage {
         val json = runCatching { JSONObject(text) }.getOrNull() ?: return LiveMessage(emptyMap(), emptyMap(), false)
+        // Chaque élément est lu séparément : un élément inattendu est ignoré, jamais fatal.
         val positions = json.optJSONArray("positions")?.let { a ->
-            (0 until a.length()).associate { i -> a.getJSONObject(i).let { it.getLong("deviceId") to parsePosition(it) } }
+            (0 until a.length()).mapNotNull { i -> runCatching { a.getJSONObject(i).let { it.getLong("deviceId") to parsePosition(it) } }.getOrNull() }.toMap()
         }.orEmpty()
         val online = json.optJSONArray("devices")?.let { a ->
-            (0 until a.length()).associate { i -> a.getJSONObject(i).let { it.getLong("id") to (it.optString("status") == "online") } }
+            (0 until a.length()).mapNotNull { i -> runCatching { a.getJSONObject(i).let { it.getLong("id") to (it.optString("status") == "online") } }.getOrNull() }.toMap()
         }.orEmpty()
         return LiveMessage(positions, online, (json.optJSONArray("events")?.length() ?: 0) > 0)
     }

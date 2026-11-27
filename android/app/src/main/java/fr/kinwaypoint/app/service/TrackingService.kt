@@ -256,6 +256,7 @@ class TrackingService : Service(), LocationListener {
 
     override fun onCreate() {
         super.onCreate()
+        fr.kinwaypoint.app.CrashReport.install(this)
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
         queue = FixQueue.get(this)
         sensorManager = getSystemService(SensorManager::class.java)
