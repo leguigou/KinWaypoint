@@ -403,6 +403,27 @@ fun ParentSettingsScreen(
                         else scope.launch { repository.setBiometric(false) }
                     },
                 )
+                // Délai avant de redemander le code ou l'empreinte.
+                val relock by repository.relockMinutes.collectAsState(initial = 1)
+                Text("Verrouillage automatique", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    if (relock == 0) {
+                        "L'espace parent reste ouvert : le verrouillage de ton téléphone suffit. « Verrouiller maintenant » reste possible."
+                    } else {
+                        "Code ou empreinte redemandés après cette durée hors de l'appli (même après un redémarrage)."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Muted,
+                )
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    listOf(1 to "1 min", 5 to "5 min", 15 to "15 min", 60 to "1 h", 0 to "Jamais").forEach { (minutes, label) ->
+                        androidx.compose.material3.FilterChip(
+                            selected = relock == minutes,
+                            onClick = { scope.launch { repository.setRelockMinutes(minutes) } },
+                            label = { Text(label) },
+                        )
+                    }
+                }
                 OutlinedButton(onClick = onChangePin, modifier = Modifier.fillMaxWidth(), shape = CircleShape) { Text("Changer le code PIN") }
                 OutlinedButton(onClick = onLock, modifier = Modifier.fillMaxWidth(), shape = CircleShape) {
                     Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(16.dp))
