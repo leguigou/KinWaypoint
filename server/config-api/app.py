@@ -43,7 +43,7 @@ STORE = os.path.join(DATA_DIR, "codes.json")
 APK_DIR = os.path.join(DATA_DIR, "apk")
 APK_INDEX = os.path.join(DATA_DIR, "apk.json")
 APK_BASE_URL = os.environ.get("KW_APK_BASE_URL", "https://famille.deloffre.fr").rstrip("/")
-APK_CODE = os.environ.get("KW_APK_CODE", "azerty")
+APK_CODE = os.environ.get("KW_APK_CODE", "")
 # Adresses du serveur Traccar, données à l'appli pour qu'on n'ait plus qu'un
 # e-mail et un mot de passe à saisir (route publique /apk/server.json).
 TRACCAR_API_URL = os.environ.get("KW_TRACCAR_API_URL", "").rstrip("/")
@@ -52,6 +52,11 @@ TRACCAR_TRACK_URL = os.environ.get("KW_TRACCAR_TRACK_URL", "").rstrip("/")
 AUDIO_RELAY_URL = os.environ.get("KW_AUDIO_RELAY_URL", "").rstrip("/")
 COOKIE_NAME = "kwapk"
 COOKIE_DAYS = 30
+# Verrou anti-force brute : sans lui un code court (« azerty ») se devine en
+# quelques milliers d'essais. Fenêtre glissante par adresse IP réelle.
+LOGIN_MAX_TRIES = 10
+LOGIN_WINDOW_S = 900
+LOGIN_TRIES = {}
 # Une consommation n'est pas instantanément fatale : on tolère quelques
 # relectures dans une courte fenêtre (double-tap, mauvais réseau, retour arrière
 # du navigateur) avant de fermer définitivement le jeton.
@@ -302,8 +307,20 @@ def safe_name(raw):
 class Handler(BaseHTTPRequestHandler):
     server_version = "KinWaypoint/1.0"
 
+    def client_ip(self):
+        """IP réelle du client derrière Traefik.
+
+        Traefik *ajoute* l'adresse du pair à la fin de X-Forwarded-For. Prendre
+        la dernière entrée empêche un client de contourner le verrou anti-force
+        brute en envoyant lui-même un en-tête falsifié.
+        """
+        forwarded = self.headers.get("X-Forwarded-For", "")
+        if forwarded:
+            return forwarded.split(",")[-1].strip()
+        return self.client_address[0]
+
     def log_message(self, format, *args):
-        print(f"{iso(now())} {self.client_address[0]} {format % args}", flush=True)
+        print(f"{iso(now())} {self.client_ip()} {format % args}", flush=True)
 
     def reply(self, code, payload, headers=None):
         body = json.dumps(payload, ensure_ascii=False).encode()
@@ -344,6 +361,10 @@ class Handler(BaseHTTPRequestHandler):
         return hmac.compare_digest(signature, expected)
 
     def apk_authorized(self):
+        # Fail-closed : sans code configuré, rien ne s'ouvre. Sans cette garde,
+        # une requête « ?code= » vide validerait une comparaison vide/vide.
+        if not APK_CODE:
+            return False
         # 1) le code passé en query (pratique pour un script)
         query = parse_qs(self.path.split("?", 1)[1]) if "?" in self.path else {}
         if query.get("code") and hmac.compare_digest(query["code"][0], APK_CODE):
@@ -359,6 +380,9 @@ class Handler(BaseHTTPRequestHandler):
     def require_apk_auth(self):
         if self.apk_authorized():
             return True
+        if not APK_CODE:
+            self.reply_html(503, render_login("Dépôt non configuré sur le serveur."))
+            return False
         self.reply_html(200, render_login(""))
         return False
 
@@ -652,16 +676,51 @@ class Handler(BaseHTTPRequestHandler):
         self.reply(201, {"url": url, "token": token, "expiresAt": iso(expires)})
 
     def login(self):
+        ip = self.client_ip()
+
+        # Dépôt non configuré : on refuse tout plutôt que de retomber sur un
+        # code par défaut connu de tout le monde.
+        if not APK_CODE:
+            self.log_message("depot apk non configure (KW_APK_CODE absent)")
+            self.reply_html(200, render_login("Dépôt non configuré sur le serveur."))
+            return
+
+        with LOCK:
+            record = LOGIN_TRIES.get(ip)
+            if record and time.time() - record[1] > LOGIN_WINDOW_S:
+                LOGIN_TRIES.pop(ip, None)
+                record = None
+            if record and record[0] >= LOGIN_MAX_TRIES:
+                minutes = int(LOGIN_WINDOW_S / 60)
+                self.log_message("code d'acces bloque (trop d'essais)")
+                self.reply_html(429, render_login(
+                    f"Trop d'essais. Réessaie dans {minutes} minutes."))
+                return
+
         try:
             length = int(self.headers.get("Content-Length", 0))
             form = parse_qs(self.rfile.read(length).decode("utf-8", "replace"))
         except ValueError:
             form = {}
         code = (form.get("code") or [""])[0].strip()
+
         if not code or not hmac.compare_digest(code, APK_CODE):
-            self.log_message("code d'acces refuse")
-            self.reply_html(200, render_login("Code incorrect, réessaie."))
+            with LOCK:
+                record = LOGIN_TRIES.get(ip)
+                if record:
+                    record[0] += 1
+                else:
+                    LOGIN_TRIES[ip] = [1, time.time()]
+                reste = LOGIN_MAX_TRIES - LOGIN_TRIES[ip][0]
+            self.log_message(f"code d'acces refuse (reste {max(reste, 0)} essais)")
+            message = "Code incorrect, réessaie."
+            if reste <= 3:
+                message = f"Code incorrect. Encore {max(reste, 0)} essai(s) avant blocage."
+            self.reply_html(200, render_login(message))
             return
+
+        with LOCK:
+            LOGIN_TRIES.pop(ip, None)
         self.log_message("depot apk deverrouille")
         self.reply_html(303, "", {
             "Location": "/apk/",
@@ -734,6 +793,22 @@ class Handler(BaseHTTPRequestHandler):
         self.reply(201, {"ok": True, "file": name, "url": f"{APK_BASE_URL}/apk/{name}", "sha256": entry["sha256"]})
 
 
+def preflight():
+    """État des variables critiques au démarrage (jamais de valeur affichée)."""
+    checks = [
+        ("KW_ADMIN_TOKEN", ADMIN_TOKEN, "depot d'APK desactive, uploads refuses"),
+        ("KW_APK_CODE", APK_CODE, "depot d'APK ferme, aucun code ne peut ouvrir"),
+        ("KW_TRACCAR_API_URL", TRACCAR_API_URL, "/apk/server.json repondra 404"),
+        ("KW_TRACCAR_TRACK_URL", TRACCAR_TRACK_URL, "l'app ne recevra pas l'adresse d'envoi"),
+        ("KW_AUDIO_RELAY_URL", AUDIO_RELAY_URL, "ecoute en direct indisponible"),
+        ("KW_BASE_URL", BASE_URL, "liens de configuration inutilisables"),
+    ]
+    for name, value, impact in checks:
+        mark = "OK     " if value else "MANQUE "
+        print(f"  {mark} {name:<24} {'' if value else '-> ' + impact}", flush=True)
+
+
 if __name__ == "__main__":
-    print(f"KinWaypoint sur :{PORT} | base={BASE_URL} | data={DATA_DIR}", flush=True)
+    print(f"KinWaypoint sur :{PORT} | data={DATA_DIR}", flush=True)
+    preflight()
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()

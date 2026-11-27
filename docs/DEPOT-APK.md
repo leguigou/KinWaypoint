@@ -18,6 +18,18 @@ curl "https://famille.deloffre.fr/apk/index.json?code=azerty"
 `GET /apk/index.json` renvoie la liste en JSON. `GET /apk/<fichier>` sert le
 fichier avec le bon type MIME.
 
+Garde-fous du code d'accès :
+
+- **10 essais par 15 minutes et par adresse IP**. L'IP réelle est lue en **fin**
+  de chaîne `X-Forwarded-For` (celle que Traefik ajoute) : envoyer soi-même un
+  en-tête falsifié ne contourne donc pas le verrou.
+- **Fail-closed** : sans `KW_APK_CODE`, le dépôt répond `503` « non configuré »
+  au lieu de retomber sur une valeur par défaut connue. Les routes publiques
+  `latest.json` / `latest.apk` restent servies pour ne pas casser les mises à
+  jour de l'appli.
+- Au démarrage, le serveur journalise l'état des six variables critiques
+  (`OK` / `MANQUE` avec la conséquence), jamais leur valeur.
+
 ## Mise à jour depuis l'appli (routes publiques)
 
 Deux routes sont accessibles **sans code**, et ne concernent que la dernière
