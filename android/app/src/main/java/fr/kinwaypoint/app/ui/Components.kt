@@ -3,6 +3,7 @@ package fr.kinwaypoint.app.ui
 import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.layout.Arrangement
@@ -136,6 +137,25 @@ fun Avatar(name: String, size: Dp = 48.dp, photo: Bitmap? = null, colorHex: Stri
                 fontSize = (size.value * 0.42f).sp,
             )
         }
+    }
+}
+
+/**
+ * Pastille bouclier des comptes parents, en haut à droite de l'avatar (comme la
+ * pastille de connexion en bas à droite) : distingue les parents des enfants.
+ */
+@Composable
+fun ParentShield(modifier: Modifier = Modifier, size: Dp = 20.dp) {
+    Box(
+        modifier.size(size).clip(CircleShape).background(Color.White)
+            .border(1.dp, Color(0x2216172B), CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        Image(
+            painter = androidx.compose.ui.res.painterResource(fr.kinwaypoint.app.R.drawable.ic_parent_shield),
+            contentDescription = "Parent",
+            modifier = Modifier.size(size * 0.74f),
+        )
     }
 }
 

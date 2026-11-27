@@ -235,7 +235,7 @@ fun FamilyMapScreen(
 
     // Images des avatars (photo ou initiale), régénérées quand une photo, une couleur ou un statut change.
     val markerKey = entries.map {
-        listOf(it.id, it.name, it.member?.online, it.colorHex, labels[it.id], statusBadges(it.member?.position), speedText(it.member?.position))
+        listOf(it.id, it.name, it.member?.online, it.colorHex, labels[it.id], statusBadges(it.member?.position), speedText(it.member?.position), it.member?.isParent)
     } to photos.values.map { it.generationId }
     LaunchedEffect(state.style, markerKey) {
         val st = state.style ?: return@LaunchedEffect
@@ -256,6 +256,7 @@ fun FamilyMapScreen(
                 badge = activityEmoji(e.member?.position?.activity),
                 sideBadges = statusBadges(e.member?.position),
                 badgeText = speedText(e.member?.position),
+                parent = if (e.isMe) ownMember?.isParent == true else e.member?.isParent == true,
             )
             addImage("avatar-${e.id}", bitmap)
         } }
@@ -436,6 +437,7 @@ fun FamilyMapScreen(
                     actions = actions,
                     arrival = etas[entry.id],
                     onLocate = if (!entry.isMe && entry.member != null) onLocate?.let { f -> { f(entry.id) } } else null,
+                    isParent = if (entry.isMe) ownMember?.isParent == true else entry.member?.isParent == true,
                     onNeededHeight = { px ->
                         val old = neededHeights[entry.id]
                         if (old == null || kotlin.math.abs(old - px) > 2) neededHeights[entry.id] = px
@@ -460,6 +462,8 @@ private fun EntryCard(
     actions: PlatformActions,
     arrival: Eta.Arrival? = null,
     onLocate: (() -> Unit)? = null,
+    /** Compte parent : bouclier sur l'avatar. */
+    isParent: Boolean = false,
     /** Hauteur (px) dont la fiche a besoin pour tout afficher sans défiler. */
     onNeededHeight: (Int) -> Unit = {},
 ) {
@@ -488,10 +492,13 @@ private fun EntryCard(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                if (entry.isMe && photo == null) {
-                    IconBadge(Icons.Default.MyLocation, color, size = 48.dp)
-                } else {
-                    Avatar(entry.name, size = 48.dp, photo = photo, colorHex = entry.colorHex)
+                Box {
+                    if (entry.isMe && photo == null) {
+                        IconBadge(Icons.Default.MyLocation, color, size = 48.dp)
+                    } else {
+                        Avatar(entry.name, size = 48.dp, photo = photo, colorHex = entry.colorHex)
+                    }
+                    if (isParent) ParentShield(Modifier.align(Alignment.TopEnd), size = 18.dp)
                 }
                 Column(Modifier.weight(1f)) {
                     Text(if (entry.isMe) "Ma position" else entry.name, style = MaterialTheme.typography.titleMedium)
