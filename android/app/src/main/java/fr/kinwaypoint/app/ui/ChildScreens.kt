@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -118,7 +119,7 @@ fun ChildHomeScreen(
         }
     }
 
-    if (parentsOpen && config.canSeeParents) {
+    if (parentsOpen) {
         ChildParentsMap(config, permissions, actions, onBack = { parentsOpen = false })
         return
     }
@@ -191,7 +192,7 @@ fun ChildHomeScreen(
 
             PermissionWarnings(permissions, actions)
 
-            if (config.canSeeParents) {
+            if (config.canSeeParents || (config.isValid && config.enabled)) {
                 FilledTonalButton(
                     onClick = { parentsOpen = true },
                     modifier = Modifier.fillMaxWidth().height(56.dp),
@@ -774,12 +775,15 @@ private fun ChildParentsMap(
     actions: PlatformActions,
     onBack: () -> Unit,
 ) {
-    val api = remember(config.apiUrl) { fr.kinwaypoint.app.net.TraccarApi(config.apiUrl) }
+    // Adresse de secours sans accès « Ma famille » : aucun appel n'est fait dans ce cas.
+    val api = remember(config.apiUrl) { fr.kinwaypoint.app.net.TraccarApi(config.apiUrl.ifBlank { "https://localhost" }) }
     var parents by remember { mutableStateOf<List<fr.kinwaypoint.app.net.Member>>(emptyList()) }
     var places by remember { mutableStateOf<List<fr.kinwaypoint.app.net.Place>>(emptyList()) }
     var error by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(api) {
+        // Sans accès « Ma famille » (ancien QR code), la carte montre seulement « Moi ».
+        if (!config.canSeeParents) return@LaunchedEffect
         while (true) {
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 runCatching { api.members(config.viewerToken) }
@@ -807,14 +811,16 @@ private fun ChildParentsMap(
             // Son propre appareil apparaît comme « Moi ».
             ownDeviceId = parents.firstOrNull { it.uniqueId == config.deviceId }?.id ?: 0L,
         )
-        val message = error ?: if (parents.none { it.position != null && it.uniqueId != config.deviceId }) {
-            "Personne d'autre ne partage sa position pour le moment."
-        } else {
-            null
+        val message = when {
+            !config.canSeeParents -> "Tu te vois sur la carte. Pour voir ta famille, un parent doit rescanner ton QR code."
+            error != null -> error
+            parents.none { it.position != null && it.uniqueId != config.deviceId } -> "Personne d'autre ne partage sa position pour le moment."
+            else -> null
         }
+        // En haut, sous la barre : la carte (et « Moi ») reste visible.
         message?.let {
             androidx.compose.foundation.layout.Box(
-                Modifier.align(Alignment.Center).padding(32.dp),
+                Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(start = 16.dp, end = 16.dp, top = 72.dp),
             ) { InfoCard(title = "Ma famille", detail = it, container = CardSurface, icon = Icons.Default.People) }
         }
     }

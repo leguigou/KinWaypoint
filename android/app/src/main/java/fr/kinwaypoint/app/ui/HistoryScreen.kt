@@ -26,6 +26,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalIconButton
@@ -73,7 +75,13 @@ private sealed interface HistoryRow {
     val start: Long
     val end: Long
 
-    data class Stop(override val memberId: Long, override val point: TracePoint, override val end: Long) : HistoryRow {
+    data class Stop(
+        override val memberId: Long,
+        override val point: TracePoint,
+        override val end: Long,
+        /** Dernier point de l'arrêt : le trajet suivant part de là (et de cette heure). */
+        val last: TracePoint = point,
+    ) : HistoryRow {
         override val start get() = point.time
     }
 
@@ -99,18 +107,22 @@ private fun tripMode(kmh: Double): Pair<String, String> = when {
  * Découpe la journée : plusieurs points à moins de 60 m pendant 3 min ou plus
  * forment un « arrêt » ; ce qu'il y a entre deux arrêts forme un « trajet ».
  */
-private fun buildRows(memberId: Long, points: List<TracePoint>): List<HistoryRow> {
+private fun buildRows(memberId: Long, rawPoints: List<TracePoint>): List<HistoryRow> {
+    val points = rawPoints.sortedBy { it.time }
     val rows = mutableListOf<HistoryRow>()
     val result = FloatArray(1)
     val moving = mutableListOf<TracePoint>()
 
     fun closeTrip(next: TracePoint?) {
+        // Le trajet part de la FIN de l'arrêt précédent (et non de son début) et
+        // finit au début de l'arrêt suivant : pas de chevauchement dans la liste.
         val tripPoints = buildList {
-            (rows.lastOrNull() as? HistoryRow.Stop)?.let { add(it.point) }
+            (rows.lastOrNull() as? HistoryRow.Stop)?.let { add(it.last) }
             addAll(moving)
             next?.let { add(it) }
         }
-        if (tripPoints.size >= 2 && traceLength(tripPoints) >= 50f) rows += HistoryRow.Trip(memberId, tripPoints)
+        // Bruit GPS sur place (« Marche · 0 m ») : pas un trajet.
+        if (tripPoints.size >= 2 && traceLength(cleanTrace(tripPoints)) >= 80f) rows += HistoryRow.Trip(memberId, tripPoints)
         moving.clear()
     }
 
@@ -126,7 +138,7 @@ private fun buildRows(memberId: Long, points: List<TracePoint>): List<HistoryRow
         }
         if (j > i && points[j].time - anchor.time >= 3 * 60_000L) {
             closeTrip(anchor)
-            rows += HistoryRow.Stop(memberId, anchor, points[j].time)
+            rows += HistoryRow.Stop(memberId, anchor, points[j].time, last = points[j])
             i = j + 1
         } else {
             moving += anchor
@@ -188,13 +200,45 @@ fun HistoryScreen(
         visible.flatMap { (id, points) -> buildRows(id, points) }.sortedByDescending { it.start }
     }
 
+    // Rejouer la journée d'une personne : curseur horaire, lecture automatique.
+    val replayTrace = remember(visible, focus) { focus?.let { visible[it] }?.sortedBy { it.time }.orEmpty() }
+    var replayAt by remember(day, focus) { mutableStateOf<Long?>(null) }
+    var playing by remember(day, focus) { mutableStateOf(false) }
+    val replayPoint = replayAt?.let { pointAt(replayTrace, it) }
+
     // Carte : tracés visibles, point mis en avant, cadrage sur la journée.
     LaunchedEffect(state.style, places) { state.style?.setPlaces(context, places) }
 
-    LaunchedEffect(state.style, visible, highlighted) {
+    LaunchedEffect(state.style, visible, highlighted, replayAt) {
         val st = state.style ?: return@LaunchedEffect
-        st.setTraces(visible, colors)
-        st.setHighlight(highlighted?.point, highlighted?.let { colors[it.memberId] } ?: 0)
+        val at = replayAt
+        val who = focus
+        if (at != null && who != null && replayPoint != null) {
+            // En lecture : le tracé s'arrête à l'heure du curseur.
+            st.setTraces(mapOf(who to replayTrace.filter { it.time <= at } + replayPoint), colors)
+            st.setHighlight(replayPoint, colors[who] ?: 0)
+        } else {
+            st.setTraces(visible, colors)
+            st.setHighlight(highlighted?.point, highlighted?.let { colors[it.memberId] } ?: 0)
+        }
+        // Trajet choisi dans la liste : tracé épais du départ à l'arrivée.
+        val trip = (highlighted as? HistoryRow.Trip)?.takeIf { at == null }
+        st.setSelectedTrip(trip?.points.orEmpty(), trip?.let { colors[it.memberId] } ?: 0)
+    }
+
+    // Lecture : on avance de point en point (les arrêts passent vite, les trajets
+    // se déroulent), la carte suit la personne.
+    LaunchedEffect(playing) {
+        while (playing && replayTrace.size >= 2) {
+            val t = replayAt ?: replayTrace.first().time
+            val next = replayTrace.firstOrNull { it.time > t }
+            if (next == null) { playing = false; break }
+            replayAt = next.time
+            state.map?.let { m ->
+                runCatching { m.animateCamera(CameraUpdateFactory.newLatLng(LatLng(next.latitude, next.longitude)), 250) }
+            }
+            delay(220)
+        }
     }
     LaunchedEffect(state.map, visible) {
         val m = state.map ?: return@LaunchedEffect
@@ -244,22 +288,11 @@ fun HistoryScreen(
             ) {
                 FilterChip(selected = focus == null, onClick = { focus = null; highlighted = null }, label = { Text("Tout le monde") })
                 members.forEach { m ->
-                    val travel = traces[m.id]?.let { travelSplit(it) }
-                    // Pas du jour : le plus grand compteur envoyé ce jour-là.
-                    val steps = traces[m.id]?.mapNotNull { it.steps }?.maxOrNull()
                     FilterChip(
                         selected = focus == m.id,
                         onClick = { focus = m.id; highlighted = null },
                         leadingIcon = { Box(Modifier.size(12.dp).clip(CircleShape).background(Color(colors[m.id] ?: 0))) },
-                        label = {
-                            Text(
-                                listOfNotNull(
-                                    nameOf(m),
-                                    travel?.let { t -> travelParts(t).joinToString(" ") { (e, km) -> "$e $km" } }?.takeIf { it.isNotEmpty() },
-                                    steps?.let { "${formatSteps(it)}/${formatSteps(m.stepGoal)} pas" + if (it >= m.stepGoal) " 🎉" else "" },
-                                ).joinToString(" · "),
-                            )
-                        },
+                        label = { Text(nameOf(m)) },
                     )
                 }
             }
@@ -268,6 +301,61 @@ fun HistoryScreen(
             Box(Modifier.fillMaxWidth().weight(1f).padding(horizontal = 16.dp).clip(MaterialTheme.shapes.large)) {
                 KinMap(state, Modifier.fillMaxSize(), attributionTopDp = 8)
                 if (loading) CircularProgressIndicator(Modifier.align(Alignment.Center))
+            }
+
+            // Rejouer le trajet : bouton lecture, curseur horaire, heure et vitesse.
+            if (replayTrace.size >= 2) {
+                val first = replayTrace.first().time
+                val last = replayTrace.last().time
+                val shownAt = replayAt ?: last
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    FilledTonalIconButton(onClick = {
+                        if (!playing && (replayAt == null || replayAt!! >= last)) replayAt = first
+                        highlighted = null
+                        playing = !playing
+                    }) {
+                        Icon(
+                            if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = if (playing) "Pause" else "Rejouer la journée",
+                        )
+                    }
+                    androidx.compose.material3.Slider(
+                        // Secondes depuis le premier point : un Float ne garde pas la précision d'une date.
+                        value = ((shownAt - first) / 1000f).coerceIn(0f, (last - first) / 1000f),
+                        onValueChange = { s ->
+                            playing = false
+                            highlighted = null
+                            replayAt = first + (s * 1000).toLong()
+                        },
+                        valueRange = 0f..((last - first) / 1000f).coerceAtLeast(1f),
+                        modifier = Modifier.weight(1f),
+                    )
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(
+                            java.time.Instant.ofEpochMilli(shownAt).atZone(zone).format(DateTimeFormatter.ofPattern("HH:mm")),
+                            style = MaterialTheme.typography.titleSmall,
+                        )
+                        replayPoint?.speedKmh?.takeIf { it >= 1 }?.let { kmh ->
+                            Text("${if (kmh > 15) "🚗" else "🚶"} ${kmh.toInt()} km/h", style = MaterialTheme.typography.labelSmall, color = Muted)
+                        }
+                    }
+                    if (replayAt != null) {
+                        IconButton(onClick = { playing = false; replayAt = null }) {
+                            Icon(Icons.Default.Close, contentDescription = "Fermer la lecture")
+                        }
+                    }
+                }
+            } else if (focus == null && traces.values.any { it.size >= 2 }) {
+                Text(
+                    "▶ Choisis une personne pour rejouer sa journée.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Muted,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
+                )
             }
 
             // Chronologie
@@ -293,6 +381,8 @@ fun HistoryScreen(
                                 selected = highlighted == row,
                                 place = (row as? HistoryRow.Stop)?.let { placeAt(it.point.latitude, it.point.longitude, places) },
                                 onClick = {
+                                    playing = false
+                                    replayAt = null
                                     highlighted = row
                                     val m = state.map
                                     if (row is HistoryRow.Trip && m != null) {
@@ -395,4 +485,21 @@ private fun dayLabel(day: LocalDate, today: LocalDate): String = when (day) {
     today -> "Aujourd'hui"
     today.minusDays(1) -> "Hier"
     else -> day.format(DateTimeFormatter.ofPattern("EEEE", Locale.FRANCE)).replaceFirstChar { it.uppercase() }
+}
+
+/** Position à l'instant t : interpolée entre les deux points qui l'encadrent. */
+private fun pointAt(points: List<TracePoint>, t: Long): TracePoint? {
+    if (points.isEmpty()) return null
+    if (t <= points.first().time) return points.first()
+    if (t >= points.last().time) return points.last()
+    val i = points.indexOfFirst { it.time > t }
+    val a = points[i - 1]
+    val b = points[i]
+    val f = (t - a.time).toDouble() / (b.time - a.time).coerceAtLeast(1)
+    return a.copy(
+        latitude = a.latitude + (b.latitude - a.latitude) * f,
+        longitude = a.longitude + (b.longitude - a.longitude) * f,
+        time = t,
+        speedKmh = b.speedKmh,
+    )
 }

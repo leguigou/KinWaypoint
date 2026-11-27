@@ -1,6 +1,6 @@
 # Plan — KinWaypoint
 
-Décisions validées avec Guillaume (25/11/2026) :
+Décisions validées le 25/11/2026 :
 
 | Sujet | Décision |
 |---|---|

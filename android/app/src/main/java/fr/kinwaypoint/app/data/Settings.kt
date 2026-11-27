@@ -105,6 +105,12 @@ class SettingsRepository(private val context: Context) {
         val ALLOW_LISTEN = booleanPreferencesKey("allow_remote_listen")
 
         val DEFAULTS_VERSION = intPreferencesKey("defaults_version")
+
+        val RELOCK_MINUTES = intPreferencesKey("parent_relock_minutes")
+        val LAST_ACTIVE = longPreferencesKey("app_last_active_at")
+        val PARENT_UNLOCKED = booleanPreferencesKey("parent_unlocked")
+
+        val GHOST = booleanPreferencesKey("parent_ghost")
     }
 
     val mode: Flow<AppMode> = context.dataStore.data.map { prefs ->
@@ -191,6 +197,46 @@ class SettingsRepository(private val context: Context) {
                 prefs[Keys.DEFAULTS_VERSION] = 1
             }
         }
+    }
+
+    /**
+     * Délai d'absence avant de redemander le code / l'empreinte pour l'espace
+     * parent, en minutes ; 0 = jamais (le verrouillage du téléphone suffit).
+     */
+    val relockMinutes: Flow<Int> = context.dataStore.data.map { prefs -> prefs[Keys.RELOCK_MINUTES] ?: 1 }
+
+    suspend fun setRelockMinutes(minutes: Int) {
+        context.dataStore.edit { prefs -> prefs[Keys.RELOCK_MINUTES] = minutes }
+    }
+
+    /**
+     * Mode fantôme voulu par le parent (null = jamais réglé ici). Mémorisé sur le
+     * téléphone : quand le partage est coupé, le serveur masque toujours la
+     * position, on ne peut donc plus y lire la préférence.
+     */
+    val ghostMode: Flow<Boolean?> = context.dataStore.data.map { prefs -> prefs[Keys.GHOST] }
+
+    suspend fun setGhostMode(ghost: Boolean) {
+        context.dataStore.edit { prefs -> prefs[Keys.GHOST] = ghost }
+    }
+
+    /** Dernière utilisation de l'appli (heure murale), pour décider au redémarrage. */
+    suspend fun markActive(now: Long = System.currentTimeMillis()) {
+        context.dataStore.edit { prefs -> prefs[Keys.LAST_ACTIVE] = now }
+    }
+
+    suspend fun setParentUnlocked(unlocked: Boolean) {
+        context.dataStore.edit { prefs -> prefs[Keys.PARENT_UNLOCKED] = unlocked }
+    }
+
+    /** L'espace parent était ouvert et le délai n'est pas écoulé : pas besoin du code. */
+    suspend fun parentSessionValid(now: Long = System.currentTimeMillis()): Boolean {
+        val prefs = context.dataStore.data.first()
+        if (prefs[Keys.PARENT_UNLOCKED] != true) return false
+        val minutes = prefs[Keys.RELOCK_MINUTES] ?: 1
+        if (minutes == 0) return true
+        val last = prefs[Keys.LAST_ACTIVE] ?: return false
+        return now - last in 0 until minutes * 60_000L
     }
 
     /** Mode enfant : un parent peut écouter le micro en direct (toujours visible sur ce téléphone). */

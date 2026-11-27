@@ -88,7 +88,7 @@ suspend fun enableParentSharing(
     var uniqueId = members.firstOrNull { it.id == ownId }?.uniqueId
     withContext(Dispatchers.IO) {
         if (ownId == 0L || uniqueId == null) {
-            // Nom affiché : la partie avant @ de l'e-mail (« guillaume » → « Guillaume »), modifiable ensuite.
+            // Nom affiché : la partie avant @ de l'e-mail (« camille » → « Camille »), modifiable ensuite.
             val name = config.email.substringBefore('@').replaceFirstChar { it.uppercase() }.ifBlank { "Parent" }
             uniqueId = generateDeviceId()
             ownId = api.createDevice(config.token, name, uniqueId!!)
@@ -132,6 +132,7 @@ fun ParentSettingsScreen(
     val canUseBiometric = remember { actions.biometricAvailable() }
 
     var ghost by remember { mutableStateOf<Boolean?>(null) } // null = inconnu (chargement)
+    val ghostPref by repository.ghostMode.collectAsState(initial = null)
     var busy by remember { mutableStateOf(false) }
     var colorFor by remember { mutableStateOf<Member?>(null) }
     var customColorFor by remember { mutableStateOf<Member?>(null) }
@@ -149,9 +150,11 @@ fun ParentSettingsScreen(
 
     BackHandler(onBack = onBack)
 
-    // État fantôme : lu sur le serveur (c'est lui qui l'applique).
-    LaunchedEffect(ownDeviceId) {
-        if (ownDeviceId == 0L) { ghost = false; return@LaunchedEffect }
+    // Mode fantôme : préférence mémorisée sur ce téléphone ; à défaut (ancienne
+    // version), lue sur le serveur pendant que le partage est actif.
+    LaunchedEffect(ownDeviceId, ghostPref) {
+        ghostPref?.let { ghost = it; return@LaunchedEffect }
+        if (ownDeviceId == 0L || !tracking.enabled) { ghost = false; return@LaunchedEffect }
         ghost = withContext(Dispatchers.IO) {
             runCatching { !api.isVisibleToChildren(config.token, ownDeviceId) }.getOrNull()
         }
@@ -191,9 +194,15 @@ fun ParentSettingsScreen(
                         when {
                             on && !permissions.fineLocation -> actions.requestLocation()
                             on -> launchOp { enableParentSharing(context, repository, config, api, members, ghost == true) ; onMembersChanged() }
+                            // Partage coupé : plus d'envois, ET les enfants perdent l'accès à la
+                            // dernière position (sans passer par le mode fantôme).
                             else -> launchOp {
                                 repository.setEnabled(false)
                                 TrackingService.stop(context)
+                                if (ownDeviceId != 0L) {
+                                    withContext(Dispatchers.IO) { api.setVisibleToChildren(config.token, ownDeviceId, visible = false) }
+                                }
+                                onMembersChanged()
                             }
                         }
                     },
@@ -201,23 +210,25 @@ fun ParentSettingsScreen(
                 ToggleRow(
                     icon = Icons.Default.VisibilityOff,
                     title = "Mode fantôme",
-                    detail = if (ghost == null && ownDeviceId != 0L) {
-                        "Vérification auprès du serveur…"
-                    } else {
-                        "Les enfants ne voient pas ta position. Les autres parents la voient toujours."
+                    detail = when {
+                        ghost == null && ownDeviceId != 0L -> "Vérification auprès du serveur…"
+                        !sharing -> "Partage coupé : les enfants ne voient pas ta position. Ce réglage s'appliquera quand tu le réactiveras."
+                        else -> "Les enfants ne voient pas ta position. Les autres parents la voient toujours."
                     },
                     checked = ghost == true,
-                    enabled = !busy && ownDeviceId != 0L && ghost != null,
+                    enabled = !busy && ghost != null,
                     onChange = { on ->
                         launchOp {
-                            withContext(Dispatchers.IO) { api.setVisibleToChildren(config.token, ownDeviceId, visible = !on) }
+                            repository.setGhostMode(on)
+                            // Appliqué tout de suite seulement si le partage est actif.
+                            if (sharing) {
+                                withContext(Dispatchers.IO) { api.setVisibleToChildren(config.token, ownDeviceId, visible = !on) }
+                            }
                             ghost = on
                         }
                     },
                 )
-                if (ownDeviceId == 0L) {
-                    Text("Active le partage une première fois pour pouvoir passer en mode fantôme.", style = MaterialTheme.typography.bodySmall, color = Muted)
-                }
+
             }
             if (sharing) {
                 StatusCard(status = status, permissions = permissions)
@@ -403,6 +414,27 @@ fun ParentSettingsScreen(
                         else scope.launch { repository.setBiometric(false) }
                     },
                 )
+                // Délai avant de redemander le code ou l'empreinte.
+                val relock by repository.relockMinutes.collectAsState(initial = 1)
+                Text("Verrouillage automatique", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    if (relock == 0) {
+                        "L'espace parent reste ouvert : le verrouillage de ton téléphone suffit. « Verrouiller maintenant » reste possible."
+                    } else {
+                        "Code ou empreinte redemandés après cette durée hors de l'appli (même après un redémarrage)."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Muted,
+                )
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    listOf(1 to "1 min", 5 to "5 min", 15 to "15 min", 60 to "1 h", 0 to "Jamais").forEach { (minutes, label) ->
+                        androidx.compose.material3.FilterChip(
+                            selected = relock == minutes,
+                            onClick = { scope.launch { repository.setRelockMinutes(minutes) } },
+                            label = { Text(label) },
+                        )
+                    }
+                }
                 OutlinedButton(onClick = onChangePin, modifier = Modifier.fillMaxWidth(), shape = CircleShape) { Text("Changer le code PIN") }
                 OutlinedButton(onClick = onLock, modifier = Modifier.fillMaxWidth(), shape = CircleShape) {
                     Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(16.dp))

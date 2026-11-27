@@ -106,10 +106,22 @@ fun AppRoot(
         AppMode.PARENT -> Screen.PinCheck(AfterPin.Go(Screen.Parent), back = null)
     }
 
-    // Premier écran, une fois les réglages chargés.
+    // Premier écran, une fois les réglages chargés. Espace parent encore ouvert
+    // (délai de verrouillage non écoulé, ou « jamais ») : on y va directement.
     LaunchedEffect(mode) {
         val m = mode ?: return@LaunchedEffect
-        if (screen == null) screen = home(m)
+        if (screen == null) {
+            screen = if (m == AppMode.PARENT && repository.parentSessionValid()) Screen.Parent else home(m)
+        }
+    }
+
+    // Mémorise si l'espace parent est ouvert (pour le prochain lancement).
+    LaunchedEffect(screen) {
+        when (screen) {
+            Screen.Parent -> repository.setParentUnlocked(true)
+            is Screen.PinCheck, Screen.ModeSelect -> repository.setParentUnlocked(false)
+            else -> Unit
+        }
     }
 
     // Reverrouillage après un passage prolongé en arrière-plan.

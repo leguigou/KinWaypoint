@@ -31,6 +31,7 @@ object AudioRelay {
 
     /** Adresse wss:// du relais, ou null si le serveur familial ne l'annonce pas. */
     suspend fun relayUrl(hub: String = fr.kinwaypoint.app.ui.FAMILY_HUB): String? = withContext(Dispatchers.IO) {
+        if (!hub.startsWith("https://")) return@withContext null
         runCatching {
             client.newCall(Request.Builder().url("$hub/apk/server.json").build()).execute().use { response ->
                 if (!response.isSuccessful) return@use null

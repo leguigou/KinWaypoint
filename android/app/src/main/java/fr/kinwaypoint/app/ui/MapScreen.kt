@@ -265,6 +265,18 @@ fun FamilyMapScreen(
         state.style?.setPlaces(context, places)
     }
 
+    // Cercle de précision autour de la personne affichée (couleur selon la précision).
+    LaunchedEffect(state.style, selectedId, entries) {
+        val st = state.style ?: return@LaunchedEffect
+        val e = entries.firstOrNull { it.id == selectedId }
+        val accuracy = when {
+            e == null -> null
+            e.isMe -> me?.accuracy?.toDouble() ?: ownMember?.position?.accuracy
+            else -> e.member?.position?.accuracy
+        }
+        st.setAccuracy(e?.latitude ?: 0.0, e?.longitude ?: 0.0, accuracy, accuracyColor(accuracy ?: 0.0))
+    }
+
     // Points, avatars et tracés.
     LaunchedEffect(state.style, entries, selectedId, markerKey, mapTraces) {
         val st = state.style ?: return@LaunchedEffect
@@ -508,6 +520,13 @@ private fun EntryCard(
                 val member = entry.member
                 if (member != null) {
                     StatusPill(if (member.online) "En ligne" else "Hors ligne", if (member.online) Ok else Idle)
+                    // Ancienneté et précision de la position, en couleur.
+                    member.position?.let { p ->
+                        StatusPill("🕒 ${relativeTime(p.fixTime)}", Color(freshnessColor(p.fixTime)), showDot = false)
+                        if (p.accuracy > 0) {
+                            StatusPill("± ${p.accuracy.toInt()} m", Color(accuracyColor(p.accuracy)), icon = Icons.Default.GpsFixed)
+                        }
+                    }
                     member.position?.battery?.let { b ->
                         val charging = member.position?.charging == true
                         StatusPill(
@@ -523,7 +542,7 @@ private fun EntryCard(
                         StatusPill(formatDistance(result[0]), Muted, icon = Icons.Default.GpsFixed)
                     }
                 } else {
-                    me?.let { StatusPill("± ${it.accuracy.toInt()} m", Muted, icon = Icons.Default.GpsFixed) }
+                    me?.let { StatusPill("± ${it.accuracy.toInt()} m", Color(accuracyColor(it.accuracy.toDouble())), icon = Icons.Default.GpsFixed) }
                 }
                 // Pas du jour et déplacement en cours.
                 activityLabel(member?.position?.activity, member?.position?.kmh)?.let { StatusPill(it, Warning) }
