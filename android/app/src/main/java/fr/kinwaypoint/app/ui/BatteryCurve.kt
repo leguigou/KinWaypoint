@@ -154,7 +154,7 @@ fun BatteryCurveCard(points: List<TracePoint>, dayStart: Long, color: Color) {
                 Modifier.weight(1f),
             )
             BatteryFigure(
-                if (stats.chargeSessions == 0) "Aucune" else "${stats.chargeSessions} · ${durationText(stats.chargingMinutes)}",
+                if (stats.chargeSessions == 0) "Aucune" else "${stats.chargeSessions} · ${chargingDuration(stats.chargingMinutes)}",
                 "Recharges",
                 Modifier.weight(1f),
             )
@@ -176,7 +176,7 @@ private fun BatteryFigure(value: String, label: String, modifier: Modifier = Mod
     }
 }
 
-private fun durationText(minutes: Long) = when {
+private fun chargingDuration(minutes: Long) = when {
     minutes < 60 -> "$minutes min"
     else -> "${minutes / 60} h ${String.format("%02d", minutes % 60)}"
 }
