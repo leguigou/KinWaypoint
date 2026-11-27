@@ -87,8 +87,8 @@ Un serveur **Traccar** collecte, stocke et déclenche les alertes.
   découvertes automatiquement, sinon elles se saisissent dans les réglages avancés.
 - Ajout d'un enfant : l'application crée l'appareil et affiche un **QR code** à
   scanner sur le téléphone de l'enfant.
-- Partage de sa propre position (optionnel) et **mode fantôme** (visible des
-  autres parents, invisible des enfants).
+- Partage de sa propre position (optionnel) et **mode fantôme** (invisible des
+  enfants et des autres parents).
 - Couleurs de profil (palette ou sélecteur libre), photos, objectifs de pas,
   limite de vitesse.
 - Verrouillage par **PIN** ou **empreinte**, délai de reverrouillage réglable
@@ -106,10 +106,17 @@ Un serveur **Traccar** collecte, stocke et déclenche les alertes.
 
 Pour suivre les enfants sans être suivi, laisse **Partager ma position**
 désactivé. Couper le partage arrête les envois **et** retire aux enfants l'accès
-à ta dernière position. Pour rester visible des autres parents seulement, garde
-le partage et active le **mode fantôme**. Les alertes des lieux et l'historique
-des enfants fonctionnent dans tous les cas. L'alerte « retour près de toi »
-demande, elle, que ton téléphone partage sa position.
+à ta dernière position.
+
+Le **mode fantôme** garde le partage actif (utile pour l'alerte « retour près de
+toi » et ton propre historique) mais **personne ne voit ta position** : ni les
+enfants, ni les autres parents. Ton appareil est masqué dans leur application,
+retiré des comptes parents non administrateurs et détaché des lieux (pas de
+notification « vient d'arriver » à ton sujet). Limite : un compte
+**administrateur** Traccar garde accès à tout depuis l'interface web ;
+l'application prévient dans ce cas.
+
+Les alertes des lieux et l'historique des enfants fonctionnent dans tous les cas.
 
 ---
 

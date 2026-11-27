@@ -95,6 +95,7 @@ suspend fun enableParentSharing(
         }
         api.markAsParent(config.token, ownId)
         api.setVisibleToChildren(config.token, ownId, visible = !ghost)
+        runCatching { api.setGhost(config.token, ownId, ghost) }
     }
     repository.setOwnDeviceId(ownId)
     val current = repository.config.first()
@@ -132,6 +133,7 @@ fun ParentSettingsScreen(
     val canUseBiometric = remember { actions.biometricAvailable() }
 
     var ghost by remember { mutableStateOf<Boolean?>(null) } // null = inconnu (chargement)
+    var ghostWarning by remember { mutableStateOf<String?>(null) }
     val ghostPref by repository.ghostMode.collectAsState(initial = null)
     var busy by remember { mutableStateOf(false) }
     var colorFor by remember { mutableStateOf<Member?>(null) }
@@ -212,17 +214,27 @@ fun ParentSettingsScreen(
                     title = "Mode fantôme",
                     detail = when {
                         ghost == null && ownDeviceId != 0L -> "Vérification auprès du serveur…"
-                        !sharing -> "Partage coupé : les enfants ne voient pas ta position. Ce réglage s'appliquera quand tu le réactiveras."
-                        else -> "Les enfants ne voient pas ta position. Les autres parents la voient toujours."
+                        !sharing -> "Partage coupé : personne ne voit ta position. Ce réglage s'appliquera quand tu le réactiveras."
+                        else -> "Ni les enfants ni les autres parents ne voient ta position."
                     },
                     checked = ghost == true,
                     enabled = !busy && ghost != null,
                     onChange = { on ->
                         launchOp {
                             repository.setGhostMode(on)
-                            // Appliqué tout de suite seulement si le partage est actif.
+                            // Enfants : appliqué tout de suite seulement si le partage est actif.
                             if (sharing) {
                                 withContext(Dispatchers.IO) { api.setVisibleToChildren(config.token, ownDeviceId, visible = !on) }
+                            }
+                            // Autres parents : masqué dans leur appli, accès et lieux retirés sur le serveur.
+                            if (ownDeviceId != 0L) {
+                                val result = withContext(Dispatchers.IO) { api.setGhost(config.token, ownDeviceId, on) }
+                                ghostWarning = if (on && result.adminsStillSeeing > 0) {
+                                    "Masqué dans l'appli des autres parents. Attention : un compte administrateur " +
+                                        "garde accès à ta position depuis l'interface web Traccar."
+                                } else {
+                                    null
+                                }
                             }
                             ghost = on
                         }
@@ -230,6 +242,7 @@ fun ParentSettingsScreen(
                 )
 
             }
+            ghostWarning?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Warning) }
             if (sharing) {
                 StatusCard(status = status, permissions = permissions)
                 PermissionWarnings(permissions, actions)

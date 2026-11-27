@@ -363,7 +363,8 @@ fun ParentHomeScreen(
         }
         withContext(Dispatchers.IO) { runCatching { api.places(config.token) } }.onSuccess { places = it }
         result.onSuccess { (list, recent) ->
-            members = list
+            // Parent en mode fantôme : invisible ici, sauf pour lui-même.
+            members = list.filter { !it.ghost || it.id == ownDeviceId }
             alarms = recent
             error = null
             refreshedAt = System.currentTimeMillis()
@@ -446,7 +447,8 @@ fun ParentHomeScreen(
             runCatching { api.shareChildrenWithEachOther(config.token, members) }
             // Chaque lieu s'applique à tous les appareils (y compris un enfant ajouté après le lieu).
             places.filter { it.alerts }.forEach { place ->
-                val all = members.map { it.id }
+                // Un parent en mode fantôme n'est rattaché à aucun lieu (ses arrivées trahiraient sa position).
+                val all = members.filter { !it.ghost }.map { it.id }
                 val targets = place.targets(all)
                 runCatching { api.linkPlace(config.token, place.id, targets) }
                 if (targets.size < all.size) runCatching { api.unlinkPlace(config.token, place.id, all - targets.toSet()) }
