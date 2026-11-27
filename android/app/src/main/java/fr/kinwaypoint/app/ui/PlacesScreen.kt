@@ -107,11 +107,13 @@ fun PlacesScreen(
     var toMinutes by remember { mutableIntStateOf(17 * 60) }
     var pickingTime by remember { mutableStateOf<String?>(null) } // "from" / "to"
     var detail by remember { mutableStateOf<Place?>(null) }
+    var ssid by remember { mutableStateOf("") }
     var suggestions by remember { mutableStateOf<List<PlaceSuggestion>>(emptyList()) }
 
     fun startAdd() {
         editingId = 0L; name = ""; icon = "home"; color = "#5B5BD6"; alerts = true; radius = 150f
         chosen = null; scheduleOn = false; days = setOf(1, 2, 3, 4, 5); fromMinutes = 8 * 60; toMinutes = 17 * 60
+        ssid = ""
         adding = true
     }
 
@@ -125,6 +127,7 @@ fun PlacesScreen(
         editingId = p.id; name = p.name; icon = p.icon; color = p.color; alerts = p.alerts
         radius = p.radius.toFloat().coerceIn(30f, 500f)
         chosen = p.childIds?.toSet()
+        ssid = p.ssid.orEmpty()
         scheduleOn = p.schedule != null
         p.schedule?.let { days = it.days; fromMinutes = it.fromMinutes; toMinutes = it.toMinutes }
         adding = true
@@ -347,6 +350,23 @@ fun PlacesScreen(
                                 }
                             }
                         }
+                        // Wi-Fi du lieu : connecté à ce réseau = présent, même si le GPS est imprécis à l'intérieur.
+                        OutlinedTextField(
+                            value = ssid,
+                            onValueChange = { ssid = it.take(32) },
+                            label = { Text("Wi-Fi de ce lieu (facultatif)") },
+                            supportingText = { Text("Nom du réseau, ex. celui de la box. Connecté = dans ce lieu.") },
+                            singleLine = true,
+                            shape = MaterialTheme.shapes.small,
+                            trailingIcon = {
+                                TextButton(onClick = {
+                                    val current = currentWifiName(context)
+                                    if (current != null) ssid = current
+                                    else Toast.makeText(context, "Ce téléphone n'est connecté à aucun Wi-Fi (ou la localisation est coupée).", Toast.LENGTH_LONG).show()
+                                }) { Text("Wi-Fi actuel") }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
                         Text("Rayon : ${radius.toInt()} m", style = MaterialTheme.typography.labelLarge)
                         Slider(value = radius, onValueChange = { radius = it }, valueRange = 30f..500f)
                         Button(
@@ -363,6 +383,7 @@ fun PlacesScreen(
                                                     editingId, name.ifBlank { "Lieu" }, c.latitude, c.longitude, radius.toDouble(), icon, color, alerts,
                                                     childIds = chosen?.toList(),
                                                     schedule = if (scheduleOn && days.isNotEmpty()) PlaceSchedule(days, fromMinutes, toMinutes) else null,
+                                                    ssid = ssid.trim().ifBlank { null },
                                                 ),
                                                 ids,
                                             )
@@ -517,3 +538,10 @@ private fun TimePickDialog(minutes: Int, title: String, onDismiss: () -> Unit, o
         dismissButton = { TextButton(onClick = onDismiss) { Text("Annuler") } },
     )
 }
+
+/** Nom du Wi-Fi auquel CE téléphone est connecté (Android exige la localisation pour le lire). */
+private fun currentWifiName(context: android.content.Context): String? = runCatching {
+    @Suppress("DEPRECATION")
+    (context.applicationContext.getSystemService(android.content.Context.WIFI_SERVICE) as android.net.wifi.WifiManager)
+        .connectionInfo?.ssid?.trim('"')?.takeIf { it.isNotBlank() && it != "<unknown ssid>" }
+}.getOrNull()

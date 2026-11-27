@@ -23,6 +23,8 @@ import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.WifiOff
+import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.filled.Hearing
@@ -845,8 +847,8 @@ fun ParentHomeScreen(
                         }
                     },
                     isMe = member.id == ownDeviceId,
-                    place = member.position?.let { placeAt(it.latitude, it.longitude, places) },
-                    placeSince = member.position?.let { placeAt(it.latitude, it.longitude, places) }
+                    place = placeFor(member.position, places),
+                    placeSince = placeFor(member.position, places)
                         ?.let { p -> todayTraces[member.id]?.let { inPlaceSince(it, p) } },
                     travel = todayTraces[member.id]?.let { travelSplit(it) },
                     photo = photos[member.id],
@@ -1030,7 +1032,8 @@ private fun MemberCard(
             // Dans un lieu : gélule « 🏠 Maison » à la couleur du lieu, en premier.
             place?.let {
                 val since = placeSince?.let { t -> " · " + shortDuration(System.currentTimeMillis() - t) }.orEmpty()
-                StatusPill("${placeEmoji(it.icon)} ${it.name}$since", parseHex(it.color) ?: MaterialTheme.colorScheme.primary, icon = null, showDot = false)
+                val viaWifi = if (inPlaceByWifi(position, it)) " · Wi-Fi" else ""
+                StatusPill("${placeEmoji(it.icon)} ${it.name}$since$viaWifi", parseHex(it.color) ?: MaterialTheme.colorScheme.primary, icon = null, showDot = false)
             }
             StatusPill(if (member.online) "En ligne" else "Hors ligne", if (member.online) Ok else Idle)
             // Ancienneté de la position : vert < 15 min, orange < 1 h, rouge au-delà.
@@ -1045,6 +1048,12 @@ private fun MemberCard(
                     },
                     icon = if (charging) Icons.Default.BatteryChargingFull else Icons.Default.BatteryFull,
                 )
+            }
+            // Wi-Fi : réseau connecté, activé sans réseau, ou coupé.
+            when {
+                position?.wifi != null -> StatusPill(position.wifi, MaterialTheme.colorScheme.primary, icon = Icons.Default.Wifi)
+                position?.wifiOn == true -> StatusPill("Wi-Fi activé", Muted, icon = Icons.Default.Wifi)
+                position?.wifiOn == false -> StatusPill("Wi-Fi coupé", Idle, icon = Icons.Default.WifiOff)
             }
             // Sonnerie coupée : utile avant d'appeler.
             when (position?.ringer) {

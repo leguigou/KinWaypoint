@@ -74,6 +74,8 @@ class TrackingService : Service(), LocationListener {
     companion object {
         const val ACTION_START = "fr.kinwaypoint.app.action.START"
         const val ACTION_SOS = "fr.kinwaypoint.app.action.SOS"
+        /** Les cadences ont changé (réglées par un parent) : on les recharge. */
+        const val ACTION_RELOAD = "fr.kinwaypoint.app.action.RELOAD"
         /** Un parent demande une position tout de suite (réveil Firebase). */
         const val ACTION_PING = "fr.kinwaypoint.app.action.PING"
         /** L'enfant signale « je suis bien arrivé·e ». */
@@ -120,6 +122,8 @@ class TrackingService : Service(), LocationListener {
          * serveur contient les commandes en attente (ex. « ring »).
          */
         fun ping(context: Context) = deliver(context, ACTION_PING)
+
+        fun reload(context: Context) = deliver(context, ACTION_RELOAD)
 
         fun checkIn(context: Context) = deliver(context, ACTION_CHECKIN)
 
@@ -172,6 +176,9 @@ class TrackingService : Service(), LocationListener {
 
     @Volatile private var config: TrackingConfig? = null
     @Volatile private var intervalMs: Long = 60_000L
+    /** Cadences en mouvement et à l'arrêt (réglables par les parents). */
+    @Volatile private var movingMs: Long = BOOST_INTERVAL_MS
+    @Volatile private var stillMs: Long = STILL_INTERVAL_MS
     @Volatile private var started = false
 
     // Sélection des positions (thread principal uniquement).
@@ -253,8 +260,8 @@ class TrackingService : Service(), LocationListener {
     /** Intervalle effectif : 10 min à l'arrêt, 15 s en suivi rapproché, sinon celui réglé. */
     private val currentIntervalMs: Long
         get() = when {
-            still -> maxOf(intervalMs, STILL_INTERVAL_MS)
-            boosting -> minOf(intervalMs, BOOST_INTERVAL_MS)
+            still -> maxOf(intervalMs, stillMs)
+            boosting -> minOf(intervalMs, movingMs)
             else -> intervalMs
         }
 
@@ -265,7 +272,7 @@ class TrackingService : Service(), LocationListener {
     private fun movementDetected() {
         boostUntilElapsed = SystemClock.elapsedRealtime() + BOOST_DURATION_MS
         if (still) enterMoving()
-        if (!boosting && intervalMs > BOOST_INTERVAL_MS) {
+        if (!boosting && intervalMs > movingMs) {
             boosting = true
             Log.i(TAG, "mouvement : suivi rapproché (15 s) pendant 5 min")
             TrackingStatus.update { it.copy(boosting = true) }
@@ -366,11 +373,24 @@ class TrackingService : Service(), LocationListener {
         }
 
         when (intent?.action) {
+            ACTION_RELOAD -> scope.launch {
+                applyCadence(SettingsRepository(applicationContext).snapshot())
+                withContext(Dispatchers.Main) { registerLocation() }
+            }
             ACTION_SOS -> triggerSos()
             ACTION_PING -> sendNow(alarm = null)
             ACTION_CHECKIN -> sendNow(alarm = "general")
         }
         return START_STICKY
+    }
+
+    /** Cadences : normale, en mouvement, à l'arrêt (bornées pour rester raisonnables). */
+    private fun applyCadence(cfg: fr.kinwaypoint.app.data.TrackingConfig) {
+        config = cfg
+        intervalMs = cfg.intervalSeconds.coerceIn(15, 3600) * 1000L
+        movingMs = cfg.movingSeconds.coerceIn(5, 300) * 1000L
+        stillMs = cfg.stillSeconds.coerceIn(120, 3600) * 1000L
+        Log.i(TAG, "cadences : ${intervalMs / 1000} s / en mouvement ${movingMs / 1000} s / à l'arrêt ${stillMs / 1000} s")
     }
 
     private fun startTracking() {
@@ -379,7 +399,7 @@ class TrackingService : Service(), LocationListener {
             repository.migrateDefaults()
             val cfg = repository.snapshot()
             config = cfg
-            intervalMs = cfg.intervalSeconds.coerceIn(15, 3600) * 1000L
+            applyCadence(cfg)
             refreshQueueStatus()
             // Mises à jour : tâche Android planifiée (aussi relancée ici après une mise à jour du téléphone).
             runCatching { fr.kinwaypoint.app.ui.scheduleUpdateChecks(applicationContext) }
@@ -500,7 +520,7 @@ class TrackingService : Service(), LocationListener {
     /** Met à jour l'état mouvement / arrêt à partir de chaque mesure reçue. */
     private fun updateMotion(location: Location) {
         // Inutile si l'intervalle réglé est déjà aussi long que celui « à l'arrêt ».
-        if (intervalMs >= STILL_INTERVAL_MS) return
+        if (intervalMs >= stillMs) return
         // Mouvement détecté récemment (pas, vitesse) : on ne passe pas « à l'arrêt ».
         if (boosting) return
         val now = SystemClock.elapsedRealtime()
@@ -607,6 +627,9 @@ class TrackingService : Service(), LocationListener {
             activity = analyzer.activity(System.currentTimeMillis()).code,
             kmh = analyzer.speedKmh(System.currentTimeMillis())?.let { Math.round(it * 10) / 10.0 },
             wifi = readWifiName(),
+            wifiOn = runCatching {
+                (applicationContext.getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager).isWifiEnabled
+            }.getOrNull(),
         )
 
         TrackingStatus.update { it.copy(battery = battery) }

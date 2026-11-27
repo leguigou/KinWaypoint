@@ -18,6 +18,12 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 /** Cadence normale d'envoi des positions (s) : 5 min. */
 const val DEFAULT_INTERVAL_SECONDS = 300
 
+/** Cadence en mouvement (s) : 15 s. */
+const val DEFAULT_MOVING_SECONDS = 15
+
+/** Cadence à l'arrêt (s) : 10 min. */
+const val DEFAULT_STILL_SECONDS = 600
+
 /** Rôle de l'appareil, choisi au premier lancement. */
 enum class AppMode { UNSET, CHILD, PARENT }
 
@@ -35,6 +41,10 @@ data class TrackingConfig(
     val apiUrl: String = "",
     /** Mode enfant : jeton du compte « Enfants (lecture seule) » ; vide = pas d'accès. */
     val viewerToken: String = "",
+    /** Cadence quand un déplacement est détecté (s) : 15 s par défaut. */
+    val movingSeconds: Int = DEFAULT_MOVING_SECONDS,
+    /** Cadence à l'arrêt, GPS coupé (s) : 10 min par défaut. */
+    val stillSeconds: Int = DEFAULT_STILL_SECONDS,
 ) {
     val canSeeParents: Boolean get() = apiUrl.isNotBlank() && viewerToken.isNotBlank()
 
@@ -111,6 +121,9 @@ class SettingsRepository(private val context: Context) {
         val PARENT_UNLOCKED = booleanPreferencesKey("parent_unlocked")
 
         val GHOST = booleanPreferencesKey("parent_ghost")
+
+        val CAD_MOVING = intPreferencesKey("cadence_moving_seconds")
+        val CAD_STILL = intPreferencesKey("cadence_still_seconds")
     }
 
     val mode: Flow<AppMode> = context.dataStore.data.map { prefs ->
@@ -125,6 +138,8 @@ class SettingsRepository(private val context: Context) {
             enabled = prefs[Keys.ENABLED] ?: false,
             apiUrl = prefs[Keys.VIEW_API].orEmpty(),
             viewerToken = prefs[Keys.VIEW_TOKEN].orEmpty(),
+            movingSeconds = prefs[Keys.CAD_MOVING] ?: DEFAULT_MOVING_SECONDS,
+            stillSeconds = prefs[Keys.CAD_STILL] ?: DEFAULT_STILL_SECONDS,
         )
     }
 
@@ -281,6 +296,8 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.ENABLED] = config.enabled
             prefs[Keys.VIEW_API] = config.apiUrl.trim()
             prefs[Keys.VIEW_TOKEN] = config.viewerToken
+            prefs[Keys.CAD_MOVING] = config.movingSeconds
+            prefs[Keys.CAD_STILL] = config.stillSeconds
         }
     }
 

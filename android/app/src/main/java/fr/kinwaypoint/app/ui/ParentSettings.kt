@@ -160,6 +160,7 @@ fun ParentSettingsScreen(
     var customColorFor by remember { mutableStateOf<Member?>(null) }
     var goalFor by remember { mutableStateOf<Member?>(null) }
     var addingParent by remember { mutableStateOf(false) }
+    var cadenceFor by remember { mutableStateOf<Member?>(null) }
     var rules by remember { mutableStateOf<Set<String>?>(null) } // null = chargement
     val children = members.filter { !it.isParent }
     var speedLimit by remember(children.map { it.speedLimitKmh }) {
@@ -456,6 +457,34 @@ fun ParentSettingsScreen(
                 }
             }
 
+            // --- Fréquence de suivi ------------------------------------------------------
+            SectionCard {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("⏱️", style = MaterialTheme.typography.titleMedium)
+                    Text("Fréquence de suivi", style = MaterialTheme.typography.titleMedium)
+                }
+                Text(
+                    "Toutes les combien le téléphone envoie sa position : en temps normal, en déplacement, à l'arrêt. " +
+                        "Plus c'est fréquent, plus la batterie se vide vite.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Muted,
+                )
+                members.forEach { m ->
+                    val c = m.cadence ?: fr.kinwaypoint.app.net.Cadence.BALANCED
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small).clickable { cadenceFor = m }.padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(m.name, modifier = Modifier.weight(1f))
+                        Text(
+                            (c.presetName() ?: "Personnalisé") + " · " + cadenceLabel(c),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+            }
+
             // --- Objectif de pas -----------------------------------------------------
             SectionCard {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -595,6 +624,24 @@ fun ParentSettingsScreen(
             }
 
         }
+    }
+
+    cadenceFor?.let { member ->
+        CadenceDialog(
+            member = member,
+            onDismiss = { cadenceFor = null },
+            onSave = { cadence ->
+                cadenceFor = null
+                launchOp {
+                    withContext(Dispatchers.IO) {
+                        api.setCadence(config.token, member.id, cadence)
+                        // Réveil du téléphone : il lit ses nouvelles cadences tout de suite.
+                        api.locateNow(config.token, member.id)
+                    }
+                    onMembersChanged()
+                }
+            },
+        )
     }
 
     if (addingParent) {
@@ -900,4 +947,54 @@ private fun ReorderableMembers(members: List<Member>, photos: Map<Long, Bitmap>,
             }
         }
     }
+}
+
+/** « 5 min · 15 s · 10 min » (normal · en mouvement · à l'arrêt). */
+private fun cadenceLabel(c: fr.kinwaypoint.app.net.Cadence): String {
+    fun d(seconds: Int) = if (seconds < 60) "$seconds s" else "${seconds / 60} min"
+    return "${d(c.normal)} · ${d(c.moving)} · ${d(c.still)}"
+}
+
+/** Réglage des cadences d'un membre : trois préréglages ou des valeurs sur mesure. */
+@Composable
+private fun CadenceDialog(member: Member, onDismiss: () -> Unit, onSave: (fr.kinwaypoint.app.net.Cadence) -> Unit) {
+    val start = member.cadence ?: fr.kinwaypoint.app.net.Cadence.BALANCED
+    var normalMin by remember { mutableFloatStateOf((start.normal / 60f).coerceIn(1f, 30f)) }
+    var movingSec by remember { mutableFloatStateOf(start.moving.toFloat().coerceIn(5f, 120f)) }
+    var stillMin by remember { mutableFloatStateOf((start.still / 60f).coerceIn(5f, 60f)) }
+    val current = fr.kinwaypoint.app.net.Cadence(normalMin.toInt() * 60, movingSec.toInt(), stillMin.toInt() * 60)
+    fun apply(c: fr.kinwaypoint.app.net.Cadence) {
+        normalMin = c.normal / 60f; movingSec = c.moving.toFloat(); stillMin = c.still / 60f
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Fréquence de ${member.name}") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(
+                        "Économe" to fr.kinwaypoint.app.net.Cadence.ECO,
+                        "Équilibré" to fr.kinwaypoint.app.net.Cadence.BALANCED,
+                        "Précis" to fr.kinwaypoint.app.net.Cadence.PRECISE,
+                    ).forEach { (label, preset) ->
+                        androidx.compose.material3.FilterChip(selected = current == preset, onClick = { apply(preset) }, label = { Text(label) })
+                    }
+                }
+                Text("En temps normal : toutes les ${normalMin.toInt()} min", style = MaterialTheme.typography.bodyMedium)
+                androidx.compose.material3.Slider(value = normalMin, onValueChange = { normalMin = it.toInt().toFloat() }, valueRange = 1f..30f)
+                Text("En déplacement : toutes les ${movingSec.toInt()} s", style = MaterialTheme.typography.bodyMedium)
+                androidx.compose.material3.Slider(value = movingSec, onValueChange = { movingSec = (Math.round(it / 5f) * 5f).coerceAtLeast(5f) }, valueRange = 5f..120f)
+                Text("À l'arrêt : toutes les ${stillMin.toInt()} min", style = MaterialTheme.typography.bodyMedium)
+                androidx.compose.material3.Slider(value = stillMin, onValueChange = { stillMin = it.toInt().toFloat() }, valueRange = 5f..60f)
+                Text(
+                    "Appliqué dès que le téléphone se réveille (quelques secondes, ou à son prochain envoi). " +
+                        "Il faut que son appli soit à jour et configurée avec l'accès famille.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Muted,
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = { onSave(current) }) { Text("Enregistrer") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Annuler") } },
+    )
 }

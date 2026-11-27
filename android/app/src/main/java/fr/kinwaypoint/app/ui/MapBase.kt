@@ -737,6 +737,20 @@ internal fun Style.setPlaces(context: Context, places: List<Place>) {
 }
 
 /** Lieu dans lequel se trouve ce point (le plus proche s'il y en a plusieurs). */
+/**
+ * Lieu d'un membre : d'abord par le Wi-Fi (connecté au Wi-Fi d'un lieu = il y
+ * est, même si le GPS est imprécis à l'intérieur), sinon par la position.
+ */
+internal fun placeFor(position: fr.kinwaypoint.app.net.MemberPosition?, places: List<Place>): Place? {
+    val p = position ?: return null
+    p.wifi?.let { ssid -> places.firstOrNull { it.ssid?.equals(ssid, ignoreCase = true) == true }?.let { return it } }
+    return placeAt(p.latitude, p.longitude, places)
+}
+
+/** Le membre est-il reconnu dans ce lieu grâce à son Wi-Fi ? */
+internal fun inPlaceByWifi(position: fr.kinwaypoint.app.net.MemberPosition?, place: Place?): Boolean =
+    position?.wifi != null && place?.ssid?.equals(position.wifi, ignoreCase = true) == true
+
 internal fun placeAt(latitude: Double, longitude: Double, places: List<Place>): Place? {
     val result = FloatArray(1)
     return places.mapNotNull { p ->

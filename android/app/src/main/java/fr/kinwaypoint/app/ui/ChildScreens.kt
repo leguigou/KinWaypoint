@@ -275,8 +275,9 @@ fun ChildSettingsScreen(
 
     fun save(enabled: Boolean, then: () -> Unit = {}) {
         scope.launch {
+            // copy : les cadences en mouvement / à l'arrêt réglées par les parents sont conservées.
             repository.save(
-                TrackingConfig(
+                config.copy(
                     serverUrl = serverUrl,
                     deviceId = deviceId,
                     intervalSeconds = (interval.toIntOrNull() ?: fr.kinwaypoint.app.data.DEFAULT_INTERVAL_SECONDS).coerceIn(15, 3600),
@@ -405,7 +406,12 @@ fun ChildSettingsScreen(
                     value = interval,
                     onValueChange = { interval = it.filter(Char::isDigit).take(4) },
                     label = { Text("Intervalle normal (secondes)") },
-                    supportingText = { Text("15 à 3600 (300 = 5 min, conseillé). En mouvement : toutes les 15 s ; à l'arrêt : toutes les 10 min.") },
+                    supportingText = {
+                        Text(
+                            "15 à 3600 (300 = 5 min, conseillé). Les parents peuvent régler toutes les cadences à distance " +
+                                "(Paramètres → Famille → Fréquence de suivi) : leur réglage l'emporte.",
+                        )
+                    },
                     singleLine = true,
                     shape = MaterialTheme.shapes.small,
                     modifier = Modifier.fillMaxWidth(),

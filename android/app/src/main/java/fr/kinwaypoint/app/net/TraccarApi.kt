@@ -41,7 +41,28 @@ data class Member(
     val ghost: Boolean = false,
     /** Rang d'affichage choisi par les parents (glisser-déposer), ou null = ordre alphabétique. */
     val order: Int? = null,
+    /** Cadences de suivi réglées par les parents, ou null = valeurs par défaut du téléphone. */
+    val cadence: Cadence? = null,
 )
+
+/**
+ * Cadences d'envoi des positions (secondes) : normale, en mouvement (déplacement
+ * détecté), à l'arrêt (GPS coupé). Plus c'est fréquent, plus la batterie s'use.
+ */
+data class Cadence(val normal: Int, val moving: Int, val still: Int) {
+    companion object {
+        val ECO = Cadence(600, 60, 1200)
+        val BALANCED = Cadence(300, 15, 600)
+        val PRECISE = Cadence(60, 10, 300)
+    }
+
+    fun presetName(): String? = when (this) {
+        ECO -> "Économe"
+        BALANCED -> "Équilibré"
+        PRECISE -> "Précis"
+        else -> null
+    }
+}
 
 /** Compte parent créé depuis l'appli : identifiants à transmettre (mot de passe affiché une fois). */
 data class NewParentAccount(val email: String, val password: String)
@@ -75,6 +96,8 @@ data class MemberPosition(
     val ringer: String? = null,
     /** Nom du Wi-Fi connecté, ou null. */
     val wifi: String? = null,
+    /** Wi-Fi activé sur le téléphone (même non connecté), ou null si inconnu. */
+    val wifiOn: Boolean? = null,
     /** Pas du jour (podomètre du téléphone), ou null. */
     val steps: Int? = null,
     /** Activité estimée par le téléphone : still, walking, bike, vehicle. */
@@ -100,6 +123,8 @@ data class Place(
     val childIds: List<Long>? = null,
     /** Horaires des alertes ; null = tout le temps. */
     val schedule: PlaceSchedule? = null,
+    /** Nom du Wi-Fi de ce lieu (ex. la box de la maison) : connecté = présent, même si le GPS est imprécis. */
+    val ssid: String? = null,
 )
 
 /** Appareils concernés par les alertes d'un lieu, parmi ceux donnés. */
@@ -316,6 +341,7 @@ class TraccarApi(baseUrl: String) {
                 charging = attrs?.takeIf { it.has("charge") }?.optBoolean("charge"),
                 ringer = attrs?.optString("ringer")?.takeIf { it.isNotBlank() },
                 wifi = attrs?.optString("ssid")?.takeIf { it.isNotBlank() },
+                wifiOn = attrs?.takeIf { it.has("wifiOn") }?.let { a -> a.optBoolean("wifiOn") || a.optString("wifiOn") == "true" },
                 steps = attrs?.takeIf { it.has("steps") }?.optDouble("steps")?.toInt(),
                 activity = attrs?.optString("activity")?.takeIf { it.isNotBlank() }
                     ?: activityFromSpeed(p.optDouble("speed", 0.0) * 1.852),
@@ -340,6 +366,10 @@ class TraccarApi(baseUrl: String) {
                 speedLimitKmh = d.optJSONObject("attributes")?.takeIf { it.has("speedLimit") }?.optDouble("speedLimit")?.let { (it * 1.852).toInt() },
                 ghost = d.optJSONObject("attributes")?.optBoolean("kwGhost", false) == true,
                 order = d.optJSONObject("attributes")?.takeIf { it.has("kwOrder") }?.optInt("kwOrder"),
+                cadence = d.optJSONObject("attributes")?.let { a ->
+                    val n = a.optInt("kwIntNormal", 0); val m = a.optInt("kwIntMoving", 0); val s = a.optInt("kwIntStill", 0)
+                    if (n > 0 && m > 0 && s > 0) Cadence(n, m, s) else null
+                },
             )
     }
 
@@ -558,6 +588,13 @@ class TraccarApi(baseUrl: String) {
         return (1..3).joinToString("-") { (1..4).map { alphabet[random.nextInt(alphabet.length)] }.joinToString("") }
     }
 
+    /** Cadences de suivi d'un membre : appliquées par son téléphone à son prochain réveil. */
+    fun setCadence(token: String, id: Long, cadence: Cadence) {
+        updateAttributes(token, id) { attrs ->
+            attrs.put("kwIntNormal", cadence.normal).put("kwIntMoving", cadence.moving).put("kwIntStill", cadence.still)
+        }
+    }
+
     /** Rang d'affichage d'un membre (attribut kwOrder), partagé par toute la famille. */
     fun setOrder(token: String, id: Long, order: Int) {
         updateAttributes(token, id) { attrs -> attrs.put("kwOrder", order) }
@@ -595,6 +632,7 @@ class TraccarApi(baseUrl: String) {
                 alerts = g.optJSONObject("attributes")?.let { if (it.has("kwAlerts")) it.optBoolean("kwAlerts") else true } ?: true,
                 childIds = g.optJSONObject("attributes")?.optString("kwChildren")?.takeIf { it.isNotBlank() }
                     ?.split(",")?.mapNotNull { it.trim().toLongOrNull() },
+                ssid = g.optJSONObject("attributes")?.optString("kwSsid")?.trim()?.takeIf { it.isNotBlank() },
                 schedule = g.optJSONObject("attributes")?.let { a ->
                     val days = a.optString("kwDays").split(",").mapNotNull { it.trim().toIntOrNull() }.filter { it in 1..7 }.toSet()
                     if (days.isEmpty() || g.optLong("calendarId", 0L) == 0L) null
@@ -630,6 +668,7 @@ class TraccarApi(baseUrl: String) {
         val attrs = g.optJSONObject("attributes") ?: JSONObject()
         attrs.put("kwIcon", place.icon).put("kwColor", place.color).put("kwAlerts", place.alerts)
         if (place.childIds.isNullOrEmpty()) attrs.remove("kwChildren") else attrs.put("kwChildren", place.childIds.joinToString(","))
+        if (place.ssid.isNullOrBlank()) attrs.remove("kwSsid") else attrs.put("kwSsid", place.ssid.trim())
         val oldCalendar = g.optLong("calendarId", 0L)
         val schedule = place.schedule?.takeIf { place.alerts && it.days.isNotEmpty() }
         val calendarId = if (schedule != null) {

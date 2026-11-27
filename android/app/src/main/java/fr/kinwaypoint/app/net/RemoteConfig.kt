@@ -202,7 +202,7 @@ data class RemoteConfig(
         child?.let { c ->
             val current = repository.config.first()
             repository.save(
-                TrackingConfig(
+                current.copy(
                     serverUrl = c.serverUrl,
                     deviceId = c.deviceId,
                     intervalSeconds = c.intervalSeconds ?: current.intervalSeconds,

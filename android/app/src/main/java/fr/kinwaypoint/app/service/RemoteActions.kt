@@ -44,6 +44,19 @@ object RemoteActions {
             .getOrNull() ?: return
         val prefs = context.getSharedPreferences("remote_actions", Context.MODE_PRIVATE)
 
+        // Cadences réglées par un parent (kwIntNormal / kwIntMoving / kwIntStill).
+        val normal = attrs.optInt("kwIntNormal", 0)
+        val moving = attrs.optInt("kwIntMoving", 0)
+        val still = attrs.optInt("kwIntStill", 0)
+        if (normal > 0 && moving > 0 && still > 0) {
+            val current = repository.config.first()
+            if (current.intervalSeconds != normal || current.movingSeconds != moving || current.stillSeconds != still) {
+                repository.save(current.copy(intervalSeconds = normal, movingSeconds = moving, stillSeconds = still))
+                Log.i(TAG, "cadences reçues des parents : $normal s / $moving s / $still s")
+                TrackingService.reload(context.applicationContext)
+            }
+        }
+
         // Sonnerie : demande récente et pas encore traitée.
         val ring = attrs.optLong("kwRing", 0L)
         if (ring > prefs.getLong("ring", 0L) && now - ring in -60_000L..MAX_AGE_MS) {

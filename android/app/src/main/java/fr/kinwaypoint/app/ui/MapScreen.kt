@@ -44,6 +44,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material3.Card
@@ -157,7 +158,9 @@ fun FamilyMapScreen(
     // Étiquette au-dessus de chaque avatar : SOS, ou lieu et durée (« École · 12 min »).
     var clock by remember { mutableStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(60_000); clock = System.currentTimeMillis() } }
-    val placeOf: Map<Long, fr.kinwaypoint.app.net.Place?> = entries.associate { it.id to placeAt(it.latitude, it.longitude, places) }
+    val placeOf: Map<Long, fr.kinwaypoint.app.net.Place?> = entries.associate {
+        it.id to (it.member?.position?.let { p -> placeFor(p, places) } ?: placeAt(it.latitude, it.longitude, places))
+    }
     val etas: Map<Long, Eta.Arrival?> = entries.associate { e ->
         val kmh = if (e.isMe) me?.speed?.let { it * 3.6 } else e.member?.position?.kmh
         e.id to if (placeOf[e.id] != null) null else Eta.estimate(mapTraces[e.id].orEmpty(), e.latitude, e.longitude, kmh, places, clock)
@@ -558,7 +561,11 @@ private fun EntryCard(
                     "silent" -> StatusPill("Silencieux", Warning, icon = Icons.AutoMirrored.Filled.VolumeOff)
                     "vibrate" -> StatusPill("Vibreur", Muted, icon = Icons.Default.Vibration)
                 }
-                member?.position?.wifi?.let { StatusPill(it, Muted, icon = Icons.Default.Wifi) }
+                when {
+                    member?.position?.wifi != null -> StatusPill(member.position.wifi, MaterialTheme.colorScheme.primary, icon = Icons.Default.Wifi)
+                    member?.position?.wifiOn == true -> StatusPill("Wi-Fi activé", Muted, icon = Icons.Default.Wifi)
+                    member?.position?.wifiOn == false -> StatusPill("Wi-Fi coupé", Muted, icon = Icons.Default.WifiOff)
+                }
                 // Distance du jour par mode : à pied, vélo, véhicule.
                 travelParts(travelSplit(trace)).forEach { (emoji, km) -> StatusPill("$emoji $km", color, showDot = false) }
             }
