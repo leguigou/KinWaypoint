@@ -37,7 +37,8 @@ Un serveur **Traccar** collecte, stocke et déclenche les alertes.
 - **Ancienneté et précision** de chaque position en couleur (vert / orange /
   rouge) et cercle de précision sur la carte.
 - Pastilles sur l'avatar : 🚗 / 🚶 avec la vitesse, 🔇 silencieux, 🪫 batterie
-  faible, SOS.
+  faible, SOS ; un **écusson** en haut à droite distingue les comptes parents
+  (liste des membres, fiches et marqueurs de la carte, côté parent comme enfant).
 - Distance du jour **à pied** et **en voiture**, podomètre et objectif de pas.
 - Fréquence adaptative pour préserver la batterie :
   - une position toutes les **5 min** en temps normal ;

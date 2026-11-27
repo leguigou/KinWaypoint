@@ -953,6 +953,8 @@ private fun MemberCard(
                     Modifier.align(Alignment.BottomEnd).size(16.dp).clip(CircleShape).background(CardSurface).padding(3.dp)
                         .clip(CircleShape).background(if (member.online) Ok else Idle),
                 )
+                // Bouclier en haut à droite : compte parent.
+                if (member.isParent) ParentShield(Modifier.align(Alignment.TopEnd))
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(if (isMe) "${member.name} (moi)" else member.name, style = MaterialTheme.typography.titleMedium)

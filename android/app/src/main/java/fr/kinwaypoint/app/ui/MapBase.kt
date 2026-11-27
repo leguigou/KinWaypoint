@@ -461,6 +461,8 @@ internal fun markerBitmap(
     sideBadges: List<String> = emptyList(),
     /** Vitesse affichée à côté du badge (« 42 km/h ») : le badge devient une pastille. */
     badgeText: String? = null,
+    /** Compte parent : bouclier en haut à droite de l'avatar. */
+    parent: Boolean = false,
 ): Bitmap {
     val d = context.resources.displayMetrics.density
     val circle = 52 * d
@@ -564,9 +566,24 @@ internal fun markerBitmap(
         }
     }
 
+    // Bouclier « parent » en haut à droite : les pastilles d'état descendent d'un cran.
+    if (parent) {
+        val sx = cx + r * 0.72f
+        val sy = cy - r * 0.72f
+        canvas.drawCircle(sx, sy, 10 * d, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.WHITE
+            setShadowLayer(2 * d, 0f, 1 * d, 0x44000000)
+        })
+        androidx.core.content.ContextCompat.getDrawable(context, fr.kinwaypoint.app.R.drawable.ic_parent_shield)?.let { shield ->
+            val half = 7.5f * d
+            shield.setBounds((sx - half).toInt(), (sy - half).toInt(), (sx + half).toInt(), (sy + half).toInt())
+            shield.draw(canvas)
+        }
+    }
+
     sideBadges.take(2).forEachIndexed { i, emojiText ->
         val bx = cx + r + 4 * d
-        val by = cy - r * 0.85f + i * 21 * d
+        val by = (if (parent) cy else cy - r * 0.85f) + i * 21 * d
         canvas.drawCircle(bx, by, 10 * d, Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = android.graphics.Color.WHITE
             setShadowLayer(2 * d, 0f, 1 * d, 0x44000000)
@@ -577,7 +594,8 @@ internal fun markerBitmap(
 
     if (status != null) {
         val dot = 6 * d
-        val dx = cx + r * 0.72f
+        // Avec bouclier et pastilles d'état à droite, la pastille de connexion passe à gauche.
+        val dx = if (parent && sideBadges.size >= 2) cx - r * 0.72f else cx + r * 0.72f
         val dy = cy + r * 0.72f
         canvas.drawCircle(dx, dy, dot + 2 * d, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.WHITE })
         canvas.drawCircle(dx, dy, dot, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = status })
