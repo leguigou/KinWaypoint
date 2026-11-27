@@ -104,6 +104,8 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
+          # Erreurs temporaires de GitHub (502…) : chaque appel est retenté 3 fois.
+          retry() { for i in 1 2 3; do "$@" && return 0; echo "nouvel essai ($i)…"; sleep $((i * 5)); done; return 1; }
           TAG=test-latest
           FINAL=kinwaypoint-test.apk
           TEMP="kinwaypoint-test-${GITHUB_SHA::7}.apk"
@@ -116,15 +118,15 @@ jobs:
             gh release create "$TAG" -R "$REPO" --prerelease --title "Version de test (dernier build)" --notes "$NOTES"
           fi
 
-          gh release upload "$TAG" "$RUNNER_TEMP/$TEMP" -R "$REPO" --clobber
+          retry gh release upload "$TAG" "$RUNNER_TEMP/$TEMP" -R "$REPO" --clobber
 
           ASSETS=$(gh api "repos/$REPO/releases/tags/$TAG" --jq '.assets[] | "\(.id) \(.name)"')
           NEW_ID=$(echo "$ASSETS" | awk -v n="$TEMP" '$2==n {print $1}')
           # Supprime l'ancien APK et d'éventuels restes temporaires d'un build interrompu.
           echo "$ASSETS" | awk -v n="$TEMP" '$2!=n && $2 ~ /^kinwaypoint-test/ {print $1}' | while read -r id; do
-            gh api -X DELETE "repos/$REPO/releases/assets/$id"
+            retry gh api -X DELETE "repos/$REPO/releases/assets/$id"
           done
-          gh api -X PATCH "repos/$REPO/releases/assets/$NEW_ID" -f name="$FINAL" >/dev/null
+          retry gh api -X PATCH "repos/$REPO/releases/assets/$NEW_ID" -f name="$FINAL" >/dev/null
 
           # version.json : lu par l'appli pour proposer la mise à jour.
           BT=$(ls -d "${ANDROID_HOME:-$ANDROID_SDK_ROOT}"/build-tools/* | sort -V | tail -1)
@@ -134,8 +136,8 @@ jobs:
           printf '{"versionCode": %s, "versionName": "%s", "commit": "%s", "apkUrl": "https://github.com/%s/releases/download/%s/%s"}\n' \
             "$VCODE" "$VNAME" "${GITHUB_SHA::7}" "$REPO" "$TAG" "$FINAL" > "$RUNNER_TEMP/version.json"
           cat "$RUNNER_TEMP/version.json"
-          gh release upload "$TAG" "$RUNNER_TEMP/version.json" -R "$REPO" --clobber
-          gh release edit "$TAG" -R "$REPO" --notes "$NOTES"
+          retry gh release upload "$TAG" "$RUNNER_TEMP/version.json" -R "$REPO" --clobber
+          retry gh release edit "$TAG" -R "$REPO" --notes "$NOTES"
           echo "Publié : https://github.com/${REPO}/releases/download/${TAG}/${FINAL}"
 
       - name: Publier la release

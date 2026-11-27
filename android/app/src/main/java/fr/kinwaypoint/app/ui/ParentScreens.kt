@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.NotificationsActive
@@ -514,6 +515,12 @@ fun ParentHomeScreen(
         FamilyMapScreen(
             places = places,
             sosIds = sosIds,
+            onDismissSos = { deviceId ->
+                // Ferme toutes les alertes SOS en cours de ce membre.
+                alarms.filter { it.deviceId == deviceId }.maxOfOrNull { it.id }?.let { id ->
+                    scope.launch { repository.acknowledgeAlarm(id) }
+                }
+            },
             traces = todayTraces,
             ownDeviceId = ownDeviceId,
             onOpenHistory = { historyFocus = null; historyOpen = true },
@@ -637,10 +644,16 @@ fun ParentHomeScreen(
                                         colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Danger),
                                     ) { Text("Voir sur la carte") }
                                 }
-                                TextButton(
+                                OutlinedButton(
                                     onClick = { scope.launch { repository.acknowledgeAlarm(alarm.id) } },
-                                    colors = ButtonDefaults.textButtonColors(contentColor = Color.White),
-                                ) { Text("J'ai vu") }
+                                    shape = CircleShape,
+                                    border = androidx.compose.foundation.BorderStroke(1.5.dp, Color.White),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                                ) {
+                                    Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.size(6.dp))
+                                    Text("J'ai vu, fermer")
+                                }
                             }
                         }
                     }
@@ -725,6 +738,7 @@ fun ParentHomeScreen(
                         }
                     },
                     isMe = member.id == ownDeviceId,
+                    place = member.position?.let { placeAt(it.latitude, it.longitude, places) },
                     photo = photos[member.id],
                     onChangePhoto = { changePhoto(member) },
                     onRemovePhoto = if (member.photo != null) {
@@ -817,6 +831,7 @@ fun ParentHomeScreen(
 
 }
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun MemberCard(
     member: Member,
@@ -829,6 +844,8 @@ private fun MemberCard(
     onRing: () -> Unit = {},
     onLocate: () -> Unit = {},
     isMe: Boolean = false,
+    /** Lieu où se trouve le membre (maison, école…), ou null. */
+    place: fr.kinwaypoint.app.net.Place? = null,
     onChangePhoto: () -> Unit = {},
     onRemovePhoto: (() -> Unit)? = null,
 ) {
@@ -919,7 +936,13 @@ private fun MemberCard(
             }
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        // FlowRow : les gélules passent à la ligne au lieu de déborder sur petit écran.
+        androidx.compose.foundation.layout.FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            // Dans un lieu : gélule « 🏠 Maison » à la couleur du lieu, en premier.
+            place?.let { StatusPill("${placeEmoji(it.icon)} ${it.name}", parseHex(it.color) ?: MaterialTheme.colorScheme.primary, icon = null, showDot = false) }
             StatusPill(if (member.online) "En ligne" else "Hors ligne", if (member.online) Ok else Idle)
             battery?.let {
                 StatusPill(

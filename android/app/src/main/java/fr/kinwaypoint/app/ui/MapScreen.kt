@@ -40,6 +40,8 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Route
 import androidx.compose.material.icons.filled.ZoomOutMap
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
@@ -62,6 +64,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
@@ -80,8 +83,7 @@ import org.maplibre.geojson.Point
 
 private const val ME_ID = -1L
 
-/** Hauteur commune des fiches en bas de la carte. */
-private val ENTRY_CARD_HEIGHT = 300.dp
+
 
 /** Un point affiché : un membre de la famille, ou « Moi » (ce téléphone). */
 private data class MapEntry(
@@ -121,6 +123,8 @@ fun FamilyMapScreen(
     places: List<fr.kinwaypoint.app.net.Place> = emptyList(),
     /** Membres avec un SOS en cours (non acquitté). */
     sosIds: Set<Long> = emptySet(),
+    /** Fermer l'alerte SOS d'un membre (= « J'ai vu »). Null : pas de bouton fermer. */
+    onDismissSos: ((Long) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -166,6 +170,20 @@ fun FamilyMapScreen(
         }
     }
 
+    // Hauteur commune des fiches, ajustée à ce qu'elles contiennent vraiment
+    // (pas d'espace vide quand aucune fiche n'affiche de pas ni d'arrivée).
+    // Estimation de départ, puis hauteur réellement mesurée : la plus haute des
+    // fiches (lieu, pas, arrivée, grande police…) fixe la hauteur de toutes.
+    val density0 = LocalDensity.current
+    val neededHeights = remember { androidx.compose.runtime.mutableStateMapOf<Long, Int>() }
+    val estimated = 196.dp +
+        (if (labels.values.any { it != null && it != "SOS" && !it.startsWith("→") }) 24.dp else 0.dp) +
+        (if (entries.any { it.member?.position?.steps != null }) 46.dp else 0.dp) +
+        (if (etas.values.any { it != null }) 28.dp else 0.dp)
+    val maxCard = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp * 0.5f).dp
+    val measured = entries.mapNotNull { neededHeights[it.id] }.maxOrNull()
+    val cardHeight = (measured?.let { with(density0) { it.toDp() } } ?: estimated).coerceIn(150.dp, maxCard)
+
     // Zones mortes : la barre du haut (+ hauteur d'un avatar, dessiné AU-DESSUS du
     // point) et les fiches du bas. Le cadrage et le centrage restent dans la partie visible.
     val density = LocalDensity.current
@@ -173,31 +191,30 @@ fun FamilyMapScreen(
         MapInsets(
             top = WindowInsets.statusBars.getTop(density) + (72.dp + 96.dp).roundToPx(),
             bottom = WindowInsets.navigationBars.getBottom(density) +
-                (if (entries.isEmpty()) 24.dp else ENTRY_CARD_HEIGHT + 16.dp + 24.dp).roundToPx(),
+                (if (entries.isEmpty()) 24.dp else cardHeight + 16.dp + 24.dp).roundToPx(),
             side = 56.dp.roundToPx(),
         )
     }
     // Marge appliquée à la caméra : un centrage sur une personne la place au milieu de la zone visible.
-    LaunchedEffect(state.map, insets) {
-        state.map?.moveCamera(
-            CameraUpdateFactory.paddingTo(insets.side.toDouble(), insets.top.toDouble(), insets.side.toDouble(), insets.bottom.toDouble()),
-        )
-    }
+    val screenHeightPx = with(density) { androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp.roundToPx() }
 
     val pagerState = rememberPagerState(
         initialPage = entries.indexOfFirst { it.id == focusId }.coerceAtLeast(0),
     ) { entries.size }
     val selectedId = entries.getOrNull(pagerState.currentPage)?.id
+    // Dès que l'utilisateur bouge la carte (doigt, fiche glissée, avatar touché),
+    // on ne recadre plus automatiquement.
+    var userMoved by remember { mutableStateOf(false) }
 
     // Toucher un avatar → sa fiche passe au premier plan.
     LaunchedEffect(state.map) {
         val m = state.map ?: return@LaunchedEffect
         m.addOnMapClickListener { point ->
             val screen = m.projection.toScreenLocation(point)
-            val id = m.queryRenderedFeatures(screen, AVATAR_LAYER).firstOrNull()
+            val id = runCatching { m.queryRenderedFeatures(screen, AVATAR_LAYER).firstOrNull() }.getOrNull()
                 ?.getNumberProperty("id")?.toLong() ?: return@addOnMapClickListener false
             val index = currentEntries.indexOfFirst { it.id == id }
-            if (index >= 0) scope.launch { pagerState.animateScrollToPage(index) }
+            if (index >= 0) { userMoved = true; scope.launch { pagerState.animateScrollToPage(index) } }
             true
         }
     }
@@ -206,7 +223,7 @@ fun FamilyMapScreen(
     val markerKey = entries.map { listOf(it.id, it.name, it.member?.online, it.colorHex, labels[it.id]) } to photos.values.map { it.generationId }
     LaunchedEffect(state.style, markerKey) {
         val st = state.style ?: return@LaunchedEffect
-        entries.forEach { e ->
+        st.safely { entries.forEach { e ->
             val bitmap = markerBitmap(
                 context = context,
                 name = e.name,
@@ -222,8 +239,8 @@ fun FamilyMapScreen(
                 sos = e.id in sosIds,
                 badge = activityEmoji(e.member?.position?.activity),
             )
-            st.addImage("avatar-${e.id}", bitmap)
-        }
+            addImage("avatar-${e.id}", bitmap)
+        } }
     }
 
     LaunchedEffect(state.style, places) {
@@ -242,22 +259,39 @@ fun FamilyMapScreen(
                 addNumberProperty("sort", if (e.id == selectedId) 1 else 0)
             }
         }
-        st.getSourceAs<GeoJsonSource>(FAMILY_SOURCE)?.setGeoJson(FeatureCollection.fromFeatures(features))
+        st.safely { getSourceAs<GeoJsonSource>(FAMILY_SOURCE)?.setGeoJson(FeatureCollection.fromFeatures(features)) }
         st.setTraces(mapTraces, colors)
     }
 
-    // Cadrage initial : la personne demandée, sinon toute la famille.
-    var framed by remember { mutableStateOf(false) }
-    LaunchedEffect(state.map, entries.size) {
-        val m = state.map ?: return@LaunchedEffect
-        if (framed || entries.isEmpty()) return@LaunchedEffect
-        val target = entries.firstOrNull { it.id == focusId }
-        if (target != null) {
-            m.animateCamera(CameraUpdateFactory.newLatLngZoom(target.latLng, 16.0))
-        } else {
-            frameAll(m, entries.map { it.latLng }, insets = insets)
+    LaunchedEffect(state.map) {
+        state.map?.addOnCameraMoveStartedListener { reason ->
+            if (reason == org.maplibre.android.maps.MapLibreMap.OnCameraMoveStartedListener.REASON_API_GESTURE) userMoved = true
         }
-        framed = true
+    }
+
+    // Marges de la caméra (zones mortes), puis cadrage : la personne demandée,
+    // sinon toute la famille. Changer les marges interrompt une animation en
+    // cours (d'où l'ancien « pas de zoom sur la personne ») : on recadre donc
+    // après chaque changement de marges tant que l'utilisateur n'a pas bougé.
+    LaunchedEffect(state.map, insets, entries.size) {
+        val m = state.map ?: return@LaunchedEffect
+        // Seulement si les marges laissent une vraie zone visible (sinon cadrages invalides).
+        if (insets.top + insets.bottom <= screenHeightPx * 0.8) {
+            runCatching {
+                m.moveCamera(
+                    CameraUpdateFactory.paddingTo(insets.side.toDouble(), insets.top.toDouble(), insets.side.toDouble(), insets.bottom.toDouble()),
+                )
+            }
+        }
+        if (userMoved || entries.isEmpty()) return@LaunchedEffect
+        val target = entries.firstOrNull { it.id == focusId }
+        runCatching {
+            if (target != null) {
+                m.animateCamera(CameraUpdateFactory.newLatLngZoom(target.latLng, 16.0), 500)
+            } else {
+                frameAll(m, entries.map { it.latLng }, insets = insets)
+            }
+        }
     }
 
     // Faire glisser les fiches → la carte se recentre sur la personne affichée.
@@ -267,6 +301,7 @@ fun FamilyMapScreen(
             .distinctUntilChanged()
             .drop(1)
             .collect { page ->
+                userMoved = true
                 currentEntries.getOrNull(page)?.let { e ->
                     m.animateCamera(CameraUpdateFactory.newLatLngZoom(e.latLng, maxOf(m.cameraPosition.zoom, 15.0)), 600)
                 }
@@ -331,6 +366,15 @@ fun FamilyMapScreen(
                                 Text("${e.name} a besoin d'aide", style = MaterialTheme.typography.titleMedium, color = Color.White)
                                 Text("SOS actif · touche pour centrer", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.9f))
                             }
+                            if (onDismissSos != null) {
+                                FilledTonalIconButton(
+                                    onClick = { onDismissSos(e.id) },
+                                    colors = androidx.compose.material3.IconButtonDefaults.filledTonalIconButtonColors(
+                                        containerColor = Color.White.copy(alpha = 0.22f),
+                                        contentColor = Color.White,
+                                    ),
+                                ) { Icon(Icons.Default.Close, contentDescription = "Fermer l'alerte (j'ai vu)") }
+                            }
                         }
                     }
                 }
@@ -344,10 +388,13 @@ fun FamilyMapScreen(
                 pageSpacing = 12.dp,
                 // Hauteur commune à toutes les fiches, alignées en bas.
                 verticalAlignment = Alignment.Bottom,
+                // Toutes les fiches sont mesurées (même hors écran) pour une hauteur commune.
+                beyondViewportPageCount = entries.size,
                 modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(bottom = 16.dp)
-                    .height(ENTRY_CARD_HEIGHT),
+                    .height(cardHeight),
             ) { page ->
-                val entry = entries[page]
+                // La liste peut changer pendant le défilement (position reçue en direct).
+                val entry = entries.getOrNull(page) ?: return@HorizontalPager
                 EntryCard(
                     place = placeOf[entry.id],
                     placeLabel = labels[entry.id],
@@ -358,6 +405,10 @@ fun FamilyMapScreen(
                     me = me,
                     actions = actions,
                     arrival = etas[entry.id],
+                    onNeededHeight = { px ->
+                        val old = neededHeights[entry.id]
+                        if (old == null || kotlin.math.abs(old - px) > 2) neededHeights[entry.id] = px
+                    },
                 )
             }
         }
@@ -377,9 +428,17 @@ private fun EntryCard(
     me: Location?,
     actions: PlatformActions,
     arrival: Eta.Arrival? = null,
+    /** Hauteur (px) dont la fiche a besoin pour tout afficher sans défiler. */
+    onNeededHeight: (Int) -> Unit = {},
 ) {
+    var cardPx by remember { mutableStateOf(0) }
+    var viewportPx by remember { mutableStateOf(0) }
+    var contentPx by remember { mutableStateOf(0) }
+    LaunchedEffect(cardPx, viewportPx, contentPx) {
+        if (cardPx > 0 && viewportPx > 0 && contentPx > 0) onNeededHeight(cardPx - viewportPx + contentPx)
+    }
     Card(
-        modifier = Modifier.fillMaxWidth().fillMaxHeight(),
+        modifier = Modifier.fillMaxWidth().fillMaxHeight().onSizeChanged { cardPx = it.height },
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(containerColor = CardSurface),
         elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
@@ -388,7 +447,14 @@ private fun EntryCard(
         Box(Modifier.fillMaxWidth().height(5.dp).background(color))
         Column(Modifier.fillMaxSize().padding(18.dp)) {
         // Contenu trop long (beaucoup de pastilles) : il défile ; le bouton reste en bas.
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(
+            Modifier.weight(1f)
+                .onSizeChanged { viewportPx = it.height }
+                .verticalScroll(rememberScrollState())
+                // Mesurée après le défilement : hauteur naturelle du contenu.
+                .onSizeChanged { contentPx = it.height },
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 if (entry.isMe && photo == null) {
                     IconBadge(Icons.Default.MyLocation, color, size = 48.dp)
@@ -413,7 +479,7 @@ private fun EntryCard(
                 }
             }
             // Pastilles sur plusieurs lignes si besoin (statut, batterie, distance, tracé).
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 val member = entry.member
                 if (member != null) {
                     StatusPill(if (member.online) "En ligne" else "Hors ligne", if (member.online) Ok else Idle)

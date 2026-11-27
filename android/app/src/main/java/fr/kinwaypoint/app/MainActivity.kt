@@ -83,6 +83,7 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        CrashReport.install(this)
         // Barres système transparentes : l'appli dessine jusqu'aux bords (clair et sombre).
         enableEdgeToEdge()
         permissionsState = snapshotPermissions()
@@ -132,6 +133,7 @@ class MainActivity : FragmentActivity() {
         setContent {
             KinWaypointTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
+                    CrashReportDialog()
                     AppRoot(
                         repository = repository,
                         permissions = permissionsState,

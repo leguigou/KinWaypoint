@@ -67,7 +67,7 @@ fun SectionCard(
 
 /** Petite pastille colorée : « En ligne », « 73 % », etc. */
 @Composable
-fun StatusPill(text: String, color: Color, icon: ImageVector? = null) {
+fun StatusPill(text: String, color: Color, icon: ImageVector? = null, showDot: Boolean = true) {
     Row(
         modifier = Modifier
             .clip(CircleShape)
@@ -78,7 +78,7 @@ fun StatusPill(text: String, color: Color, icon: ImageVector? = null) {
     ) {
         if (icon != null) {
             Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(14.dp))
-        } else {
+        } else if (showDot) {
             Box(Modifier.size(7.dp).clip(CircleShape).background(color))
         }
         Text(text, color = color, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
