@@ -64,6 +64,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
@@ -171,9 +172,17 @@ fun FamilyMapScreen(
 
     // Hauteur commune des fiches, ajustée à ce qu'elles contiennent vraiment
     // (pas d'espace vide quand aucune fiche n'affiche de pas ni d'arrivée).
-    val cardHeight = 196.dp +
+    // Estimation de départ, puis hauteur réellement mesurée : la plus haute des
+    // fiches (lieu, pas, arrivée, grande police…) fixe la hauteur de toutes.
+    val density0 = LocalDensity.current
+    val neededHeights = remember { androidx.compose.runtime.mutableStateMapOf<Long, Int>() }
+    val estimated = 196.dp +
+        (if (labels.values.any { it != null && it != "SOS" && !it.startsWith("→") }) 24.dp else 0.dp) +
         (if (entries.any { it.member?.position?.steps != null }) 46.dp else 0.dp) +
         (if (etas.values.any { it != null }) 28.dp else 0.dp)
+    val maxCard = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp * 0.5f).dp
+    val measured = entries.mapNotNull { neededHeights[it.id] }.maxOrNull()
+    val cardHeight = (measured?.let { with(density0) { it.toDp() } } ?: estimated).coerceIn(150.dp, maxCard)
 
     // Zones mortes : la barre du haut (+ hauteur d'un avatar, dessiné AU-DESSUS du
     // point) et les fiches du bas. Le cadrage et le centrage restent dans la partie visible.
@@ -188,15 +197,6 @@ fun FamilyMapScreen(
     }
     // Marge appliquée à la caméra : un centrage sur une personne la place au milieu de la zone visible.
     val screenHeightPx = with(density) { androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp.roundToPx() }
-    LaunchedEffect(state.map, insets) {
-        // Seulement si les marges laissent une vraie zone visible (sinon cadrages invalides).
-        if (insets.top + insets.bottom > screenHeightPx * 0.8) return@LaunchedEffect
-        runCatching {
-            state.map?.moveCamera(
-                CameraUpdateFactory.paddingTo(insets.side.toDouble(), insets.top.toDouble(), insets.side.toDouble(), insets.bottom.toDouble()),
-            )
-        }
-    }
 
     val pagerState = rememberPagerState(
         initialPage = entries.indexOfFirst { it.id == focusId }.coerceAtLeast(0),
@@ -211,7 +211,7 @@ fun FamilyMapScreen(
             val id = runCatching { m.queryRenderedFeatures(screen, AVATAR_LAYER).firstOrNull() }.getOrNull()
                 ?.getNumberProperty("id")?.toLong() ?: return@addOnMapClickListener false
             val index = currentEntries.indexOfFirst { it.id == id }
-            if (index >= 0) scope.launch { pagerState.animateScrollToPage(index) }
+            if (index >= 0) { userMoved = true; scope.launch { pagerState.animateScrollToPage(index) } }
             true
         }
     }
@@ -260,18 +260,38 @@ fun FamilyMapScreen(
         st.setTraces(mapTraces, colors)
     }
 
-    // Cadrage initial : la personne demandée, sinon toute la famille.
-    var framed by remember { mutableStateOf(false) }
-    LaunchedEffect(state.map, entries.size) {
-        val m = state.map ?: return@LaunchedEffect
-        if (framed || entries.isEmpty()) return@LaunchedEffect
-        val target = entries.firstOrNull { it.id == focusId }
-        if (target != null) {
-            m.animateCamera(CameraUpdateFactory.newLatLngZoom(target.latLng, 16.0))
-        } else {
-            frameAll(m, entries.map { it.latLng }, insets = insets)
+    // Dès que l'utilisateur bouge la carte (doigt, fiche glissée, avatar touché),
+    // on ne recadre plus automatiquement.
+    var userMoved by remember { mutableStateOf(false) }
+    LaunchedEffect(state.map) {
+        state.map?.addOnCameraMoveStartedListener { reason ->
+            if (reason == org.maplibre.android.maps.MapLibreMap.OnCameraMoveStartedListener.REASON_API_GESTURE) userMoved = true
         }
-        framed = true
+    }
+
+    // Marges de la caméra (zones mortes), puis cadrage : la personne demandée,
+    // sinon toute la famille. Changer les marges interrompt une animation en
+    // cours (d'où l'ancien « pas de zoom sur la personne ») : on recadre donc
+    // après chaque changement de marges tant que l'utilisateur n'a pas bougé.
+    LaunchedEffect(state.map, insets, entries.size) {
+        val m = state.map ?: return@LaunchedEffect
+        // Seulement si les marges laissent une vraie zone visible (sinon cadrages invalides).
+        if (insets.top + insets.bottom <= screenHeightPx * 0.8) {
+            runCatching {
+                m.moveCamera(
+                    CameraUpdateFactory.paddingTo(insets.side.toDouble(), insets.top.toDouble(), insets.side.toDouble(), insets.bottom.toDouble()),
+                )
+            }
+        }
+        if (userMoved || entries.isEmpty()) return@LaunchedEffect
+        val target = entries.firstOrNull { it.id == focusId }
+        runCatching {
+            if (target != null) {
+                m.animateCamera(CameraUpdateFactory.newLatLngZoom(target.latLng, 16.0), 500)
+            } else {
+                frameAll(m, entries.map { it.latLng }, insets = insets)
+            }
+        }
     }
 
     // Faire glisser les fiches → la carte se recentre sur la personne affichée.
@@ -281,6 +301,7 @@ fun FamilyMapScreen(
             .distinctUntilChanged()
             .drop(1)
             .collect { page ->
+                userMoved = true
                 currentEntries.getOrNull(page)?.let { e ->
                     m.animateCamera(CameraUpdateFactory.newLatLngZoom(e.latLng, maxOf(m.cameraPosition.zoom, 15.0)), 600)
                 }
@@ -367,6 +388,8 @@ fun FamilyMapScreen(
                 pageSpacing = 12.dp,
                 // Hauteur commune à toutes les fiches, alignées en bas.
                 verticalAlignment = Alignment.Bottom,
+                // Toutes les fiches sont mesurées (même hors écran) pour une hauteur commune.
+                beyondViewportPageCount = entries.size,
                 modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(bottom = 16.dp)
                     .height(cardHeight),
             ) { page ->
@@ -382,6 +405,10 @@ fun FamilyMapScreen(
                     me = me,
                     actions = actions,
                     arrival = etas[entry.id],
+                    onNeededHeight = { px ->
+                        val old = neededHeights[entry.id]
+                        if (old == null || kotlin.math.abs(old - px) > 2) neededHeights[entry.id] = px
+                    },
                 )
             }
         }
@@ -401,9 +428,17 @@ private fun EntryCard(
     me: Location?,
     actions: PlatformActions,
     arrival: Eta.Arrival? = null,
+    /** Hauteur (px) dont la fiche a besoin pour tout afficher sans défiler. */
+    onNeededHeight: (Int) -> Unit = {},
 ) {
+    var cardPx by remember { mutableStateOf(0) }
+    var viewportPx by remember { mutableStateOf(0) }
+    var contentPx by remember { mutableStateOf(0) }
+    LaunchedEffect(cardPx, viewportPx, contentPx) {
+        if (cardPx > 0 && viewportPx > 0 && contentPx > 0) onNeededHeight(cardPx - viewportPx + contentPx)
+    }
     Card(
-        modifier = Modifier.fillMaxWidth().fillMaxHeight(),
+        modifier = Modifier.fillMaxWidth().fillMaxHeight().onSizeChanged { cardPx = it.height },
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(containerColor = CardSurface),
         elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
@@ -412,7 +447,14 @@ private fun EntryCard(
         Box(Modifier.fillMaxWidth().height(5.dp).background(color))
         Column(Modifier.fillMaxSize().padding(18.dp)) {
         // Contenu trop long (beaucoup de pastilles) : il défile ; le bouton reste en bas.
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(
+            Modifier.weight(1f)
+                .onSizeChanged { viewportPx = it.height }
+                .verticalScroll(rememberScrollState())
+                // Mesurée après le défilement : hauteur naturelle du contenu.
+                .onSizeChanged { contentPx = it.height },
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 if (entry.isMe && photo == null) {
                     IconBadge(Icons.Default.MyLocation, color, size = 48.dp)

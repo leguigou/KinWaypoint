@@ -13,8 +13,8 @@ android {
         applicationId = "fr.kinwaypoint.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 20
-        versionName = "0.16.3"
+        versionCode = 21
+        versionName = "0.16.4"
 
         // Téléphones réels uniquement (ARM) : divise par ~2 la taille due à la carte.
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
