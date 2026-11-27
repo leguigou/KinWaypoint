@@ -37,7 +37,7 @@ demande pas de mise à jour. En cas de doute, mettre à jour.
 | `android/app/src/test/` | Tests unitaires JVM (lancés par la CI) |
 | `docker-compose.yml` | Traccar 6.17 + TimescaleDB + relais audio (déployé par Dokploy) |
 | `server/traccar/templates/fr/` | Textes des notifications (Velocity), montés dans Traccar |
-| `server/config-api/` | Dépôt d'APK, `server.json`, codes de configuration (Python, sans dépendance) |
+| `server/config-api/` | Dépôt d'APK, `server.json`, codes de configuration et d'invitation (Python, sans dépendance) |
 | `server/audio-relay/` | Relais WebSocket de l'écoute en direct (Python, `websockets`) |
 | `.github/workflows/android.yml` | Tests, compilation, signature, publication |
 | `docs/` | Documentation détaillée |
@@ -123,6 +123,12 @@ demande pas de mise à jour. En cas de doute, mettre à jour.
     (`shareFamilyWithParents` : appareils hors mode fantôme et lieux) tourne
     dans la synchro de l'accueil ; il ne fait rien depuis un compte non
     administrateur (liste des comptes refusée).
+12. **Codes d'invitation** : même format que les codes de configuration
+    (`RemoteConfig`), déposés par `POST /apk/invite` (jeton Traccar vérifié par
+    le serveur) et rendus une fois par `POST /apk/invite/redeem`. Une invitation
+    parent contient la clé de connexion (`parent.token`) du compte créé, jamais
+    de mot de passe. Toute modification de ces routes se teste en local avec un
+    faux Traccar (essais limités, usage unique, administrateur pour un parent).
 
 ## Git
 

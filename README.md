@@ -85,12 +85,17 @@ Un serveur **Traccar** collecte, stocke et déclenche les alertes.
 ### Côté parent
 - Connexion par **e-mail et mot de passe** : les adresses du serveur sont
   découvertes automatiquement, sinon elles se saisissent dans les réglages avancés.
-- Ajout d'un enfant : l'application crée l'appareil et affiche un **QR code** à
-  scanner sur le téléphone de l'enfant.
-- **Ajout d'un autre parent** (Paramètres → Famille) : l'application crée son
-  compte, non administrateur, avec un mot de passe provisoire affiché une fois,
-  et lui partage toute la famille. Chaque ajout suivant (enfant, lieu) lui est
-  partagé automatiquement.
+- Ajout d'un enfant : l'application crée l'appareil puis propose, au choix, un
+  **QR code** à scanner sur place ou un **code d'invitation** de 8 chiffres à
+  transmettre à distance.
+- **Ajout d'un autre parent, à distance** (Paramètres → Famille) : saisir son
+  prénom suffit. L'application crée son compte (non administrateur), lui partage
+  toute la famille et affiche un **code d'invitation** de 8 chiffres. Sur son
+  téléphone : « J'ai un code d'invitation », les 8 chiffres, et c'est tout (ni
+  adresse, ni e-mail, ni mot de passe). Chaque ajout suivant (enfant, lieu) lui
+  est partagé automatiquement.
+- **Codes d'invitation** : valables 1 h, à usage unique, essais limités ; à ne
+  transmettre qu'à la bonne personne.
 - Partage de sa propre position (optionnel) et **mode fantôme** (invisible des
   enfants et des autres parents).
 - Couleurs de profil (palette ou sélecteur libre), photos, objectifs de pas,
@@ -267,6 +272,7 @@ chemin `/apk`. Définis un code d'accès propre à ton instance (`KW_APK_CODE`).
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | compose | notifications Telegram (optionnel) |
 | `KW_TRACCAR_API_URL`, `KW_TRACCAR_TRACK_URL` | config-api | adresses annoncées à l'application (`server.json`) |
 | `KW_AUDIO_RELAY_URL` | config-api | adresse `wss://` du relais audio |
+| `KW_TRACCAR_INTERNAL_URL` | config-api | facultatif : adresse interne de Traccar pour vérifier la connexion des parents qui créent un code d'invitation (sinon `KW_TRACCAR_API_URL`) |
 | `KW_APK_CODE`, `KW_ADMIN_TOKEN` | config-api | code d'accès au dépôt d'APK (à changer), jeton de dépôt |
 | `KW_APK_BASE_URL`, `KW_BASE_URL` | config-api | adresses publiques du dépôt et des codes (facultatif : déduites des requêtes sinon) |
 
@@ -312,7 +318,8 @@ Secrets GitHub nécessaires :
    Famille) → prénom → un QR code s'affiche.
    Le compte Traccar du parent doit pouvoir créer des appareils.
 3. **Téléphone enfant** : installer l'APK, choisir « Enfant » (même PIN), puis
-   Réglages (cadenas) → **Suivi** → « Scanner le QR code » → démarrer le suivi.
+   Réglages (cadenas) → **Suivi** → « Scanner le QR code » (ou, à distance,
+   « J'ai un code d'invitation » et les 8 chiffres) → démarrer le suivi.
 4. Sur le téléphone de l'enfant, accorder :
    - la localisation **« Toujours autoriser »** ;
    - l'activité physique (podomètre) ;
@@ -325,9 +332,9 @@ Secrets GitHub nécessaires :
    réseau.
 5. Créer les lieux (Paramètres → **Lieux**) et activer les alertes voulues
    (Paramètres → **Alertes**).
-6. **Deuxième parent** : Paramètres → Famille → « Ajouter un parent » (prénom,
-   e-mail). Sur son téléphone : installer l'APK, choisir « Parent », se
-   connecter avec l'e-mail et le mot de passe provisoire affichés.
+6. **Deuxième parent** : Paramètres → Famille → « Ajouter un parent » (prénom)
+   → transmettre le code d'invitation. Sur son téléphone : installer l'APK,
+   « J'ai un code d'invitation », taper les 8 chiffres, créer son PIN.
 
 Le QR code contient le secret d'envoi de l'appareil : le garder comme un mot de
 passe. Voir aussi [Configuration à distance](docs/CONFIG-DISTANTE.md) et
@@ -345,6 +352,10 @@ passe. Voir aussi [Configuration à distance](docs/CONFIG-DISTANTE.md) et
 - Interface / API (8082) : jamais exposée sans authentification. L'application
   ne conserve qu'un jeton (valable 1 an), jamais le mot de passe.
 - Les enfants voient la famille via un compte **en lecture seule** dédié.
+- Codes d'invitation : 8 chiffres, 1 h, usage unique, 10 essais ratés par
+  connexion et 200 au total par tranche de 10 min ; création réservée à un
+  parent connecté (administrateur pour inviter un parent). Pendant 1 h, le code
+  vaut accès à la famille : le transmettre en privé.
 - PIN stocké sous forme d'empreinte (PBKDF2 salé), blocage progressif après
   5 essais.
 - Écoute en direct : toujours visible sur le téléphone de l'enfant, sans
