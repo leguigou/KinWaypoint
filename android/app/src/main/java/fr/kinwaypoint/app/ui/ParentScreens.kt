@@ -314,6 +314,9 @@ fun ParentHomeScreen(
     var todayTraces by remember { mutableStateOf<Map<Long, List<fr.kinwaypoint.app.net.TracePoint>>>(emptyMap()) }
     val ownDeviceId by repository.ownDeviceId.collectAsState(initial = 0L)
     val trackingContext = LocalContext.current
+    // Position de CE téléphone (le parent) : sert à l'alerte de proximité.
+    val myLocation = rememberMyLocation(enabled = permissions.fineLocation)
+    val proximityConfig by repository.proximityAlert.collectAsState(initial = ProximityConfig())
 
     // « Partager ma position » : si Android a arrêté le suivi, on le relance.
     LaunchedEffect(tracking, permissions.fineLocation, status.running) {
@@ -450,6 +453,14 @@ fun ParentHomeScreen(
     val names = members.associate { it.id to it.name }
     val newAlarms = alarms.filter { it.id > acknowledgedAlarmId }
 
+    // Alerte de proximité : un enfant redevenu proche après s'être éloigné.
+    val (proximityArrivals, dismissProximity) = rememberProximityAlerts(
+        config = proximityConfig,
+        parent = myLocation,
+        members = members,
+        ownDeviceId = ownDeviceId,
+    )
+
     val sosIds = alarms.filter { it.id > acknowledgedAlarmId }.map { it.deviceId }.toSet()
 
     if (weeklyOpen) {
@@ -499,6 +510,8 @@ fun ParentHomeScreen(
             onLock = onLock,
             onChangePin = onChangePin,
             onChangeMode = onChangeMode,
+            proximity = proximityConfig,
+            onProximityChange = { scope.launch { repository.setProximityAlert(it) } },
         )
     } else if (historyOpen) {
         HistoryScreen(
@@ -605,6 +618,29 @@ fun ParentHomeScreen(
                             Text("Pas, objectif, distance, temps passé à l'école…", style = MaterialTheme.typography.bodySmall, color = Muted)
                         }
                         Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = Muted)
+                    }
+                }
+            }
+
+            items(proximityArrivals, key = { "prox-${it.memberId}" }) { arrival ->
+                val d = if (arrival.meters < 1000) "${arrival.meters} m" else formatDistance(arrival.meters.toFloat())
+                SectionCard(container = SoftGreen) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        IconBadge(Icons.Default.MyLocation, AppTheme.colors.success)
+                        Column(Modifier.weight(1f)) {
+                            Text("${arrival.name} est proche", style = MaterialTheme.typography.titleMedium)
+                            Text("À environ $d · ${formatTime(arrival.time)}", style = MaterialTheme.typography.bodySmall, color = Muted)
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilledTonalButton(onClick = { openMap(arrival.memberId) }, shape = CircleShape) {
+                            Text("Voir sur la carte")
+                        }
+                        OutlinedButton(onClick = { dismissProximity(arrival.memberId) }, shape = CircleShape) {
+                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.size(6.dp))
+                            Text("J'ai vu")
+                        }
                     }
                 }
             }

@@ -122,6 +122,8 @@ fun ParentSettingsScreen(
     onChangePin: () -> Unit,
     onChangeMode: () -> Unit,
     onOpenPlaces: () -> Unit = {},
+    proximity: fr.kinwaypoint.app.ui.ProximityConfig = fr.kinwaypoint.app.ui.ProximityConfig(),
+    onProximityChange: (fr.kinwaypoint.app.ui.ProximityConfig) -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -284,6 +286,34 @@ fun ParentSettingsScreen(
                             }
                         },
                         valueRange = 20f..130f,
+                    )
+                }
+            }
+
+            // --- Alerte de proximité -------------------------------------------------
+            SectionCard {
+                ToggleRow(
+                    icon = Icons.Default.MyLocation,
+                    title = "Alerte de proximité",
+                    detail = "Prévenir quand un enfant redevient proche de toi après s'être éloigné.",
+                    checked = proximity.enabled,
+                    enabled = !busy,
+                    onChange = { onProximityChange(proximity.copy(enabled = it)) },
+                )
+                if (proximity.enabled) {
+                    Text(
+                        "Distance de déclenchement : ${proximity.radiusMeters} m",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    androidx.compose.material3.Slider(
+                        value = proximity.radiusMeters.toFloat(),
+                        onValueChange = { onProximityChange(proximity.copy(radiusMeters = Math.round(it / 50f) * 50)) },
+                        valueRange = 100f..1000f,
+                    )
+                    Text(
+                        "Calculé sur ton téléphone : l'appli doit rester active (ouverte ou en tâche de fond). Ce n'est pas un suivi permanent en arrière-plan.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Muted,
                     )
                 }
             }

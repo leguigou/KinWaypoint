@@ -94,6 +94,9 @@ class SettingsRepository(private val context: Context) {
 
         /** Jeton FCM du téléphone, enregistré sur le compte Traccar. */
         val PUSH_TOKEN = stringPreferencesKey("push_token")
+
+        val PROXIMITY_ON = booleanPreferencesKey("proximity_alert_on")
+        val PROXIMITY_RADIUS = intPreferencesKey("proximity_alert_radius")
     }
 
     val mode: Flow<AppMode> = context.dataStore.data.map { prefs ->
@@ -153,6 +156,21 @@ class SettingsRepository(private val context: Context) {
 
     /** Identifiant de la dernière alerte SOS marquée « vue » par le parent. */
     val acknowledgedAlarm: Flow<Long> = context.dataStore.data.map { prefs -> prefs[Keys.ACK_ALARM] ?: 0L }
+
+    /** Alerte de proximité (parent) : prévenir quand un enfant redevient proche. */
+    val proximityAlert: Flow<fr.kinwaypoint.app.ui.ProximityConfig> = context.dataStore.data.map { prefs ->
+        fr.kinwaypoint.app.ui.ProximityConfig(
+            enabled = prefs[Keys.PROXIMITY_ON] ?: false,
+            radiusMeters = prefs[Keys.PROXIMITY_RADIUS] ?: 150,
+        )
+    }
+
+    suspend fun setProximityAlert(config: fr.kinwaypoint.app.ui.ProximityConfig) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.PROXIMITY_ON] = config.enabled
+            prefs[Keys.PROXIMITY_RADIUS] = config.radiusMeters
+        }
+    }
 
     /** Jeton FCM courant (null tant que Firebase n'a pas répondu). */
     val pushToken: Flow<String?> = context.dataStore.data.map { prefs -> prefs[Keys.PUSH_TOKEN] }
