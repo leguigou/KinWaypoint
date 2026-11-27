@@ -23,8 +23,12 @@ class FixQueue private constructor(context: Context) :
         fun get(context: Context): FixQueue =
             instance ?: synchronized(this) { instance ?: FixQueue(context).also { instance = it } }
 
-        /** ~3,5 jours à une position par minute : au-delà, on jette les plus anciennes. */
-        private const val MAX_ROWS = 5000
+        /**
+         * Positions gardées sans réseau : 20 000 ≈ 3,5 jours de déplacement continu
+         * à 15 s, ou 2 mois à 5 min (≈ 4 Mo). Au-delà, les plus anciennes partent
+         * (jamais les alertes).
+         */
+        private const val MAX_ROWS = 20_000
         /** Aligné sur la rétention serveur : inutile d'envoyer ce qui serait aussitôt purgé. */
         private const val MAX_AGE_MS = 30L * 24 * 3600 * 1000
     }

@@ -80,6 +80,8 @@ class TrackingService : Service(), LocationListener {
         const val ACTION_PING = "fr.kinwaypoint.app.action.PING"
         /** L'enfant signale « je suis bien arrivé·e ». */
         const val ACTION_CHECKIN = "fr.kinwaypoint.app.action.CHECKIN"
+        /** Notification balayée par l'utilisateur : on la réaffiche (le suivi continue). */
+        const val ACTION_RESHOW = "fr.kinwaypoint.app.action.RESHOW"
         private const val CHANNEL_ID = "tracking"
         private const val NOTIFICATION_ID = 42
         private const val TAG = "KinWaypoint"
@@ -350,7 +352,8 @@ class TrackingService : Service(), LocationListener {
         }
 
         try {
-            val notification = buildNotification("En attente d'une position…")
+            // Texte courant gardé : une notification réaffichée (ACTION_RESHOW) ne repart pas à zéro.
+            val notification = buildNotification(notificationText)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
             } else {
@@ -363,6 +366,7 @@ class TrackingService : Service(), LocationListener {
         }
 
         TrackingStatus.update { it.copy(running = true) }
+        if (runningSince == 0L) runningSince = System.currentTimeMillis()
 
         if (!started) {
             started = true
@@ -403,6 +407,8 @@ class TrackingService : Service(), LocationListener {
             refreshQueueStatus()
             // Mises à jour : tâche Android planifiée (aussi relancée ici après une mise à jour du téléphone).
             runCatching { fr.kinwaypoint.app.ui.scheduleUpdateChecks(applicationContext) }
+            // Chien de garde : relance le suivi s'il est arrêté par Android ou depuis le volet des notifications.
+            runCatching { TrackingWatchdog.schedule(applicationContext) }
             withContext(Dispatchers.Main) {
                 registerLocation()
                 registerNetwork()
@@ -881,16 +887,51 @@ class TrackingService : Service(), LocationListener {
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setContentIntent(open)
+            // Android 14+ laisse balayer la notification d'un service au premier plan :
+            // le suivi continue, et la notification revient aussitôt pour rester visible.
+            .setDeleteIntent(
+                PendingIntent.getService(
+                    this,
+                    1,
+                    Intent(this, TrackingService::class.java).setAction(ACTION_RESHOW),
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                ),
+            )
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
     }
 
+    private var notificationText = "En attente d'une position…"
+    /** Début du fonctionnement au premier plan (0 = jamais démarré correctement). */
+    private var runningSince = 0L
+
     private fun notify(text: String) {
+        notificationText = text
         val manager = getSystemService(NotificationManager::class.java)
         manager.notify(NOTIFICATION_ID, buildNotification(text))
     }
 
+    /**
+     * Appli balayée des applis récentes : le service continue normalement, mais
+     * certaines surcouches (Xiaomi, Huawei, Samsung…) le tuent quand même. On
+     * programme un contrôle dans 30 s qui le relance si besoin.
+     */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        runCatching { TrackingWatchdog.checkSoon(applicationContext) }
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onDestroy() {
+        // Arrêt non demandé par l'appli (Android, volet « Applications actives ») :
+        // le chien de garde vérifiera dans 30 s. S'il a été arrêté volontairement
+        // (suivi désactivé), il ne fera rien.
+        // Seulement après un vrai fonctionnement (> 1 min) : un démarrage refusé par
+        // Android ne doit pas boucler toutes les 30 s.
+        if (runningSince > 0L && System.currentTimeMillis() - runningSince > 60_000L) {
+            runCatching { TrackingWatchdog.checkSoon(applicationContext) }
+        }
         runCatching { locationManager.removeUpdates(this) }
         motionSensor?.let { sensor -> runCatching { sensorManager?.cancelTriggerSensor(motionListener, sensor) } }
         stepCounter.stop()

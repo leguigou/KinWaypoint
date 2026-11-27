@@ -125,6 +125,11 @@ demande pas de mise à jour. En cas de doute, mettre à jour.
    `TZID` ; format couvert par `PlaceScheduleTest`.
 6. **Android coupe le suivi**, pas le serveur : service au premier plan,
    localisation « toujours », exemption batterie, tests sur vrais téléphones.
+   `TrackingWatchdog` (WorkManager) relance le service s'il est activé mais
+   arrêté ; il ne relance jamais un suivi désactivé volontairement
+   (`config.enabled`). Toujours passer `enabled = false` AVANT d'arrêter le
+   service pour un arrêt voulu. « Forcer l'arrêt » annule tout jusqu'à la
+   réouverture de l'appli : rien à faire côté code.
 7. **Docker / Dokploy** : volumes avec `name:` fixe ; service base nommé
    `tracker-db` (l'alias `db` est déjà pris) ; heap Traccar réglé par
    `entrypoint` + `command`, pas `JAVA_OPTS`.

@@ -35,6 +35,7 @@ class BootReceiver : BroadcastReceiver() {
                 // Enfant, ou parent ayant activé « Partager ma position ».
                 if (mode != AppMode.UNSET && config.enabled && config.isValid && hasLocation) {
                     TrackingService.start(context)
+                    TrackingWatchdog.schedule(context)
                 }
             } catch (e: Exception) {
                 Log.e("KinWaypoint", "relance au démarrage impossible", e)

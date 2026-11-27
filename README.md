@@ -51,7 +51,16 @@ Un serveur **Traccar** collecte, stocke et déclenche les alertes.
 - **Fréquence réglable à distance**, par personne (Paramètres → Famille →
   Fréquence de suivi) : Économe, Équilibré (par défaut), Précis, ou réglage
   libre des trois délais. Le téléphone l'applique à son prochain envoi.
-- File locale en cas de coupure réseau ; reprise après redémarrage du téléphone.
+- **Sans réseau, rien n'est perdu** : les positions sont gardées sur le
+  téléphone (jusqu'à 20 000, soit plusieurs jours de déplacement) puis envoyées
+  dès le retour de la connexion, alertes SOS en premier.
+- **Suivi toujours actif** : il reprend seul après un redémarrage du téléphone
+  ou une mise à jour ; un chien de garde le relance (sous 15 min) s'il est
+  arrêté depuis le volet « Applications actives » d'Android ou par une
+  surcouche ; la notification revient si elle est balayée. Seul « Forcer
+  l'arrêt » dans les réglages Android l'arrête jusqu'à la réouverture de
+  l'appli (règle d'Android) : l'alerte « pas de nouvelles depuis 1 h » prévient
+  alors les parents.
 
 ### Lieux et alertes
 - Lieux (maison, école…) avec icône, couleur, rayon, **personnes concernées**

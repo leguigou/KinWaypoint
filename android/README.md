@@ -33,7 +33,8 @@ est créé à ce moment-là. Présentation générale et installation du serveur
 | `service/ListenService.kt`, `ListenActivity.kt` | Écoute en direct, côté enfant (service `microphone` + écran visible) |
 | `service/RingAlarm.kt` | « Faire sonner » (canal alarme, même en silencieux ou « Ne pas déranger » avec l'autorisation ; arrêt par une touche de volume) |
 | `service/RemoteActions.kt` | Lit les demandes du parent posées sur l'appareil Traccar : sonner, écouter, fréquence de suivi |
-| `data/FixQueue.kt` | File SQLite : sans réseau, les positions attendent (≤ 5000, ≤ 30 j) ; les SOS passent en premier |
+| `data/FixQueue.kt` | File SQLite : sans réseau, les positions attendent (≤ 20 000, ≤ 30 j) ; les SOS passent en premier |
+| `service/TrackingWatchdog.kt` | Chien de garde (WorkManager, 15 min, et 30 s après un arrêt) : relance le suivi s'il est activé mais arrêté |
 | `data/Settings.kt` | Réglages (DataStore) |
 | `net/TrackerClient.kt` | Envoi des positions (protocole OsmAnd) |
 | `net/TraccarApi.kt` | API Traccar : membres, positions, lieux, calendriers, alertes, commandes, proximité |
@@ -63,6 +64,15 @@ est créé à ce moment-là. Présentation générale et installation du serveur
   attendre. L'écran affiche « en cours d'envoi », puis « reçue à HH:MM ».
 - **Redémarrage** du téléphone ou mise à jour de l'appli : le suivi reprend seul
   (`service/BootReceiver.kt`).
+- **Arrêt par Android ou par l'utilisateur** (volet « Applications actives »,
+  appli balayée sur certaines surcouches) : `TrackingWatchdog` relance le suivi
+  sous 30 s à 15 min s'il est toujours activé. La notification balayée (Android
+  14+) revient aussitôt. Pour que la relance depuis l'arrière-plan soit permise,
+  il faut « Toujours autoriser » la localisation et retirer la restriction
+  batterie. « Forcer l'arrêt » reste définitif jusqu'à la réouverture de l'appli.
+- **Hors connexion** : chaque position est d'abord écrite dans `FixQueue`, puis
+  envoyée ; en cas d'échec, nouvel essai après 30 s, 1 min, 2 min… (5 min au
+  plus) et immédiatement au retour du réseau.
 
 ## Adresse du serveur familial
 
