@@ -65,6 +65,8 @@ private const val FALLBACK_STYLE = """
 internal const val FAMILY_SOURCE = "family"
 internal const val TRACE_SOURCE = "traces"
 internal const val HIGHLIGHT_SOURCE = "highlight"
+/** Cercle de précision de la personne affichée (rayon = précision GPS). */
+internal const val ACCURACY_SOURCE = "accuracy"
 internal const val AVATAR_LAYER = "family-avatar"
 internal const val PLACE_AREA_SOURCE = "places-area"
 internal const val PLACE_PIN_SOURCE = "places-pin"
@@ -170,6 +172,22 @@ private fun prepareLayers(style: Style): Style {
             PropertyFactory.textHaloColor("#FFFFFF"),
             PropertyFactory.textHaloWidth(2f),
             PropertyFactory.textOptional(true),
+        ),
+    )
+
+    // Précision de la position affichée : disque translucide, sous les tracés.
+    style.addSource(GeoJsonSource(ACCURACY_SOURCE))
+    style.addLayer(
+        FillLayer("accuracy-fill", ACCURACY_SOURCE).withProperties(
+            PropertyFactory.fillColor(Expression.toColor(Expression.get("color"))),
+            PropertyFactory.fillOpacity(0.15f),
+        ),
+    )
+    style.addLayer(
+        LineLayer("accuracy-outline", ACCURACY_SOURCE).withProperties(
+            PropertyFactory.lineColor(Expression.toColor(Expression.get("color"))),
+            PropertyFactory.lineWidth(1.5f),
+            PropertyFactory.lineOpacity(0.7f),
         ),
     )
 
@@ -611,6 +629,39 @@ private fun placeBitmap(context: Context, icon: String, colorHex: String): Bitma
 }
 
 /** Affiche les lieux sur la carte. */
+/** Affiche (ou efface, meters = null) le cercle de précision autour d'une position. */
+internal fun Style.setAccuracy(lat: Double, lon: Double, meters: Double?, color: Int) {
+    safely {
+        val features = meters?.takeIf { it >= 5 }?.let {
+            listOf(Feature.fromGeometry(circlePolygon(lat, lon, it.coerceAtMost(3000.0))).apply { addStringProperty("color", hex(color)) })
+        } ?: emptyList()
+        getSourceAs<GeoJsonSource>(ACCURACY_SOURCE)?.setGeoJson(FeatureCollection.fromFeatures(features))
+    }
+}
+
+// --- Fraîcheur et précision des positions ---------------------------------------------
+
+/** Couleur selon l'ancienneté : vert < 15 min, orange < 1 h, rouge au-delà. */
+internal fun freshnessColor(fixTime: Long, now: Long = System.currentTimeMillis()): Int = when {
+    now - fixTime < 15 * 60_000L -> 0xFF12B886.toInt()
+    now - fixTime < 60 * 60_000L -> 0xFFF59F00.toInt()
+    else -> 0xFFE5484D.toInt()
+}
+
+/** Couleur selon la précision : vert ≤ 30 m, orange ≤ 100 m, rouge au-delà. */
+internal fun accuracyColor(meters: Double): Int = when {
+    meters <= 30 -> 0xFF12B886.toInt()
+    meters <= 100 -> 0xFFF59F00.toInt()
+    else -> 0xFFE5484D.toInt()
+}
+
+/** « précise », « approximative », « peu précise ». */
+internal fun accuracyWord(meters: Double): String = when {
+    meters <= 30 -> "précise"
+    meters <= 100 -> "approximative"
+    else -> "peu précise"
+}
+
 internal fun Style.setPlaces(context: Context, places: List<Place>) {
     safely {
         places.forEach { addImage("place-${it.id}", placeBitmap(context, it.icon, it.color)) }
