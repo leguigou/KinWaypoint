@@ -168,6 +168,7 @@ extérieurs interviennent, en option ou pour l'affichage :
 | `server/audio-relay/` | Relais WebSocket de l'écoute en direct |
 | `.github/workflows/android.yml` | Compilation, tests, signature et publication de l'APK |
 | `docs/` | Documentation détaillée (voir plus bas) |
+| `AGENTS.md`, `CLAUDE.md` | Consignes pour les assistants de code |
 
 ---
 
@@ -394,3 +395,4 @@ des chantiers distincts, hors du périmètre actuel.
 | [docs/ECOUTE-DIRECTE.md](docs/ECOUTE-DIRECTE.md) | Écoute en direct : fonctionnement, déploiement, cadre |
 | [docs/PLAN.md](docs/PLAN.md) | Décisions de départ et feuille de route initiale |
 | [docs/P0-validation.md](docs/P0-validation.md) | Validation du socle serveur |
+| [AGENTS.md](AGENTS.md) | Consignes pour les assistants de code (à tenir à jour avec ce README) |
