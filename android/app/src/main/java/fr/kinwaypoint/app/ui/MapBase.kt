@@ -282,22 +282,21 @@ internal fun traceLength(points: List<TracePoint>): Float {
 }
 
 /** Distance parcourue, répartie par mode de déplacement (en mètres). */
-internal data class TravelSplit(val foot: Float = 0f, val bike: Float = 0f, val vehicle: Float = 0f) {
-    val total: Float get() = foot + bike + vehicle
-    operator fun plus(o: TravelSplit) = TravelSplit(foot + o.foot, bike + o.bike, vehicle + o.vehicle)
+internal data class TravelSplit(val foot: Float = 0f, val vehicle: Float = 0f) {
+    val total: Float get() = foot + vehicle
+    operator fun plus(o: TravelSplit) = TravelSplit(foot + o.foot, vehicle + o.vehicle)
 }
 
 /**
- * Répartit la distance d'un tracé entre marche, vélo/trottinette et véhicule.
+ * Répartit la distance d'un tracé entre « à pied » et « en voiture ».
  * Chaque tronçon entre deux points est classé selon l'activité détectée par le
- * téléphone, sinon selon sa vitesse (> 15 km/h : véhicule, comme l'icône 🚗 ;
- * 8 à 15 km/h : vélo ; en dessous : à pied).
+ * téléphone, sinon selon sa vitesse (> 15 km/h : voiture, comme l'icône 🚗 ;
+ * en dessous : à pied, vélo et trottinette compris).
  * Ignorés : les petits écarts dus au bruit GPS à l'arrêt, les sauts aberrants
  * (> 250 km/h) et les longs trous lents (téléphone éteint, pas de mesure).
  */
 internal fun travelSplit(points: List<TracePoint>): TravelSplit {
     var foot = 0.0
-    var bike = 0.0
     var vehicle = 0.0
     val result = FloatArray(1)
     points.sortedBy { it.time }.zipWithNext().forEach { (a, b) ->
@@ -312,19 +311,14 @@ internal fun travelSplit(points: List<TracePoint>): TravelSplit {
         val reported = maxOf(a.speedKmh, b.speedKmh)
         val isVehicle = activity == "vehicle" || kmh > 15 || (activity == null && reported > 15)
         if (!isVehicle && seconds > 30 * 60) return@forEach
-        when {
-            isVehicle -> vehicle += d
-            activity == "bike" || kmh > 8 -> bike += d
-            else -> foot += d
-        }
+        if (isVehicle) vehicle += d else foot += d
     }
-    return TravelSplit(foot.toFloat(), bike.toFloat(), vehicle.toFloat())
+    return TravelSplit(foot.toFloat(), vehicle.toFloat())
 }
 
-/** « 🚶 2,1 km », « 🚲 800 m », « 🚗 14 km » : modes réellement utilisés (≥ 50 m). */
+/** « 🚶 2,1 km », « 🚗 14 km » : modes réellement utilisés (≥ 50 m). */
 internal fun travelParts(split: TravelSplit): List<Pair<String, String>> = listOfNotNull(
     split.foot.takeIf { it >= 50 }?.let { "🚶" to formatDistance(it) },
-    split.bike.takeIf { it >= 50 }?.let { "🚲" to formatDistance(it) },
     split.vehicle.takeIf { it >= 50 }?.let { "🚗" to formatDistance(it) },
 )
 
