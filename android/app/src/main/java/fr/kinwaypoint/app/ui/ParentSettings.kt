@@ -22,6 +22,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Sms
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
@@ -177,6 +178,11 @@ fun ParentSettingsScreen(
         rules = loaded ?: emptySet()
     }
     val pushToken by repository.pushToken.collectAsState(initial = null)
+    // Numéro de ce parent pour les SMS de SOS (null = pas encore lu).
+    var ownPhone by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) {
+        ownPhone = withContext(Dispatchers.IO) { runCatching { api.ownPhone(config.token) }.getOrNull() }
+    }
     val sharing = tracking.enabled && ownDeviceId != 0L
 
     // Catégorie ouverte (null = liste des catégories) ; retour = revenir à la liste.
@@ -260,6 +266,14 @@ fun ParentSettingsScreen(
                         ok = rules?.contains("sos") != false,
                     ),
                 )
+                add(
+                    CheckItem(
+                        Icons.Default.Sms, "Mon numéro pour les SMS de SOS",
+                        if (!ownPhone.isNullOrBlank()) "Un SOS t'arrive aussi par SMS, même sans Internet chez l'enfant." else "Renseigne-le dans Compte pour recevoir aussi les SOS par SMS.",
+                        ok = !ownPhone.isNullOrBlank(), optional = true,
+                        fixLabel = "Renseigner", fix = { category = "account" },
+                    ),
+                )
                 if (sharing) {
                     add(
                         CheckItem(
@@ -268,7 +282,7 @@ fun ParentSettingsScreen(
                             ok = status.running, fixLabel = "Démarrer", fix = { fr.kinwaypoint.app.service.TrackingService.start(context) },
                         ),
                     )
-                    addAll(permissionChecks(permissions, actions, withListen = false).filter { it.title != "Notifications" })
+                    addAll(permissionChecks(permissions, actions, withListen = false).filter { it.title != "Notifications" && it.title != "SMS de secours" })
                 }
             }
             var checkupOpen by remember { mutableStateOf(false) }
@@ -693,6 +707,47 @@ fun ParentSettingsScreen(
                 Text("Compte", style = MaterialTheme.typography.titleMedium)
                 Text("Connecté : ${config.email}", style = MaterialTheme.typography.bodyMedium)
                 Text(config.apiUrl, style = MaterialTheme.typography.bodySmall, color = Muted)
+            }
+            // Numéro pour les SMS de secours : le téléphone de l'enfant l'enregistre et
+            // envoie un SMS avec sa position à ce numéro au moment d'un SOS.
+            SectionCard {
+                Text("SMS de secours", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "Au moment d'un SOS, le téléphone de l'enfant envoie un SMS avec sa position (lien Google Maps), " +
+                        "même sans Internet, à chaque parent qui a renseigné son numéro.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Muted,
+                )
+                var phoneField by remember(ownPhone) { mutableStateOf(ownPhone.orEmpty()) }
+                OutlinedTextField(
+                    value = phoneField,
+                    onValueChange = { phoneField = it.filter { c -> c.isDigit() || c == '+' || c == ' ' }.take(20) },
+                    label = { Text("Mon numéro de portable") },
+                    placeholder = { Text("06 12 34 56 78") },
+                    singleLine = true,
+                    enabled = ownPhone != null && !busy,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Phone),
+                    shape = MaterialTheme.shapes.small,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Button(
+                    onClick = {
+                        val clean = normalizePhone(phoneField)
+                        launchOp {
+                            withContext(Dispatchers.IO) {
+                                api.setOwnPhone(config.token, clean)
+                                // Tout de suite sur les téléphones des enfants (sinon à la prochaine synchro).
+                                runCatching { api.shareSosPhone(config.token, children.map { it.id }) }
+                            }
+                            ownPhone = clean
+                        }
+                    },
+                    enabled = ownPhone != null && !busy && normalizePhone(phoneField) != ownPhone,
+                    shape = CircleShape,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(if (phoneField.isBlank()) "Retirer mon numéro" else "Enregistrer") }
+            }
+            SectionCard {
                 OutlinedButton(
                     onClick = { scope.launch { repository.saveParent(config.copy(token = "")) } },
                     modifier = Modifier.fillMaxWidth(),
@@ -1109,4 +1164,17 @@ private fun CadenceDialog(member: Member, onDismiss: () -> Unit, onSave: (fr.kin
         confirmButton = { TextButton(onClick = { onSave(current) }) { Text("Enregistrer") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Annuler") } },
     )
+}
+
+
+/** « 06 12 34 56 78 » → « +33612345678 » (numéros français) ; autres formats gardés sans espaces. */
+internal fun normalizePhone(raw: String): String {
+    val compact = raw.filter { it.isDigit() || it == '+' }
+    return when {
+        compact.isBlank() -> ""
+        compact.startsWith("+") -> compact
+        compact.startsWith("00") -> "+" + compact.drop(2)
+        compact.length == 10 && compact.startsWith("0") -> "+33" + compact.drop(1)
+        else -> compact
+    }
 }

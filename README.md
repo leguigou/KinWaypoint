@@ -108,6 +108,13 @@ Un serveur **Traccar** collecte, stocke et déclenche les alertes.
 ### Sécurité de l'enfant
 - **SOS** par appui long (3 s) : part immédiatement, même sans réseau (file
   d'attente persistante).
+- **SMS de secours** : au moment d'un SOS, le téléphone de l'enfant envoie aussi
+  un SMS à chaque parent qui a renseigné son numéro (Paramètres → Compte), avec
+  un lien Google Maps, l'heure, la précision et la batterie. Il passe par le
+  réseau téléphonique, **sans Internet** ; si la position est absente ou
+  ancienne, un 2e SMS suit avec la position fraîche. Autorisation « SMS » à
+  accorder sur le téléphone de l'enfant (proposée à la liaison et dans le
+  check-up).
 - **Faire sonner** le téléphone à distance et **demander sa position** tout de
   suite. La sonnerie passe même en silencieux ; en « Ne pas déranger » aussi si
   l'autorisation « Accès Ne pas déranger » est accordée (réglages enfant →

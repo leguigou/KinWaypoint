@@ -197,6 +197,8 @@ class TrackingService : Service(), LocationListener {
     private var lastQueuedFixTime = 0L
     private var sendNextImmediately = false
     @Volatile private var sosWaitingForFix = false
+    /** SOS envoyé sans position fraîche : heure après laquelle une mesure déclenche le 2e SMS (0 = aucun). */
+    @Volatile private var smsFollowUpAfter = 0L
 
     // Fréquence adaptative (thread principal uniquement).
     private var still = false
@@ -554,6 +556,12 @@ class TrackingService : Service(), LocationListener {
 
     override fun onLocationChanged(location: Location) {
         if (isBetter(location, best)) best = location
+        // SOS avec une position absente ou ancienne : 2e SMS dès la première mesure fraîche.
+        if (smsFollowUpAfter != 0L && location.time > smsFollowUpAfter) {
+            smsFollowUpAfter = 0L
+            val battery = runCatching { readBattery().first }.getOrNull()
+            scope.launch { SosSms.send(applicationContext, location, battery, followUp = true) }
+        }
         val candidate = best ?: return
 
         TrackingStatus.update { it.copy(accuracy = candidate.accuracy) }
@@ -786,6 +794,11 @@ class TrackingService : Service(), LocationListener {
         // Un SOS rallume le GPS pour obtenir au plus vite une position fraîche.
         enterMoving()
         val known = best ?: lastKnownLocation()
+        // SMS aux parents (réseau téléphonique seul) ; si la position est absente ou
+        // ancienne, un 2e SMS part avec la première mesure fraîche.
+        val battery = runCatching { readBattery().first }.getOrNull()
+        scope.launch { SosSms.send(applicationContext, known, battery) }
+        smsFollowUpAfter = if (known == null || now - known.time > 2 * 60_000L) now else 0L
         if (known != null) {
             enqueue(known, alarm = "SOS", sosNow = now)
             // Puis la prochaine mesure fraîche part sans attendre l'intervalle.

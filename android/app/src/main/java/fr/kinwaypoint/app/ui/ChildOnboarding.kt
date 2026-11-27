@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.Sms
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -288,6 +289,10 @@ internal fun permissionSteps(p: PermissionSnapshot, a: PlatformActions): List<Pe
     ),
     PermissionStep(Icons.AutoMirrored.Filled.DirectionsWalk, "Activité physique", "Compte les pas et repère la marche.", p.activityRecognition, true, "Autoriser l'activité physique", a.requestLocation, askedAtRuntime = true),
     PermissionStep(Icons.Default.Notifications, "Notifications", "Pour voir que le suivi est actif.", p.notifications, true, "Autoriser les notifications", a.requestLocation, askedAtRuntime = true),
+    PermissionStep(
+        Icons.Default.Sms, "SMS de secours", "En cas de SOS, un SMS avec la position part vers les parents, même sans Internet.",
+        p.sms, true, "Autoriser les SMS", a.requestSms, askedAtRuntime = true,
+    ),
     PermissionStep(Icons.Default.BatteryChargingFull, "Batterie sans restriction", "Sinon Android coupe le suivi écran éteint.", !p.batteryOptimized, true, "Retirer la restriction batterie", a.openBatterySettings),
     PermissionStep(Icons.Default.Hearing, "Micro (facultatif)", "Pour l'écoute en direct, toujours visible ici.", p.microphone, false, "Autoriser le micro", a.requestMicrophone, askedAtRuntime = true),
     PermissionStep(Icons.Default.Hearing, "Affichage par-dessus (facultatif)", "Ouvre l'écran d'écoute sans toucher le téléphone.", p.overlay, false, "Autoriser l'affichage par-dessus", a.openOverlaySettings),

@@ -18,6 +18,8 @@ data class PermissionSnapshot(
     val overlay: Boolean = false,
     /** Accès « Ne pas déranger » : « Faire sonner » passe outre le mode Ne pas déranger. */
     val dndAccess: Boolean = true,
+    /** Envoi de SMS (SMS de secours au SOS) ; vrai sur un appareil sans téléphonie. */
+    val sms: Boolean = true,
 )
 
 /** Actions qui demandent l'activité Android (autorisations, réglages, carte). */
@@ -40,6 +42,8 @@ class PlatformActions(
     val openOverlaySettings: () -> Unit = {},
     /** Ouvre le réglage « Accès Ne pas déranger ». */
     val openDndSettings: () -> Unit = {},
+    /** Demande l'envoi de SMS (SMS de secours aux parents au moment d'un SOS). */
+    val requestSms: () -> Unit = {},
     /** Demande la localisation « Toujours autoriser » (Android ouvre sa page dédiée). */
     val requestBackgroundLocation: () -> Unit = openAppSettings,
 )

@@ -217,6 +217,14 @@ demande pas de mise à jour. En cas de doute, mettre à jour.
     `registerLocation()` pour réappliquer l'intervalle. La cadence « en
     déplacement » des parents s'applique à la voiture.
 
+22. **SMS de secours** : chaque appli parent écrit son numéro (attribut
+    `kwPhone` de son compte, `setOwnPhone`) dans l'attribut `kwSosPhones`
+    (JSON `{"idCompte": "numéro"}`) de chaque appareil d'enfant
+    (`shareSosPhone`, à chaque synchro de l'accueil). Le téléphone de l'enfant
+    le lit via `RemoteActions` et le garde (`SosSms.remember`) pour envoyer le
+    SMS sans Internet au moment du SOS (`SosSms.send`, autorisation
+    `SEND_SMS`). Seulement pour le SOS, jamais pour « bien arrivé ».
+
 ## Git
 
 - Travailler sur la branche indiquée par la session ; ne jamais réécrire

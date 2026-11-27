@@ -70,6 +70,10 @@ class MainActivity : FragmentActivity() {
         permissionsState = snapshotPermissions()
     }
 
+    private val requestSms = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+        permissionsState = snapshotPermissions()
+    }
+
     private val requestMicrophone = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
         permissionsState = snapshotPermissions()
     }
@@ -148,6 +152,7 @@ class MainActivity : FragmentActivity() {
                 imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
             },
             requestMicrophone = { requestMicrophone.launch(Manifest.permission.RECORD_AUDIO) },
+            requestSms = { requestSms.launch(Manifest.permission.SEND_SMS) },
             requestBackgroundLocation = {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     runCatching { requestBackground.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION) }
@@ -234,6 +239,7 @@ class MainActivity : FragmentActivity() {
             microphone = granted(Manifest.permission.RECORD_AUDIO),
             overlay = Settings.canDrawOverlays(this),
             dndAccess = getSystemService(android.app.NotificationManager::class.java).isNotificationPolicyAccessGranted,
+            sms = !fr.kinwaypoint.app.service.SosSms.hasTelephony(this) || granted(Manifest.permission.SEND_SMS),
         )
     }
 

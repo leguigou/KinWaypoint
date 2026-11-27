@@ -505,6 +505,8 @@ fun ParentHomeScreen(
                 runCatching { api.setProximity(config.token, children, ownDeviceId, proximityConfig.radiusMeters) }
             }
             runCatching { api.shareChildrenWithEachOther(config.token, members) }
+            // SMS de secours : le numéro de ce parent est inscrit sur chaque téléphone d'enfant.
+            runCatching { api.shareSosPhone(config.token, members.filter { !it.isParent && it.id != ownDeviceId }.map { it.id }) }
             // Les autres parents voient toute la famille (appareils hors mode fantôme, et lieux).
             runCatching { api.shareFamilyWithParents(config.token, members.filter { !it.ghost }.map { it.id }, places.map { it.id }) }
             // Chaque lieu s'applique à tous les appareils (y compris un enfant ajouté après le lieu).

@@ -348,6 +348,15 @@ fun ChildSettingsScreen(
                     if (config.canSeeParents) "Sonnerie, écoute et fréquence à distance possibles." else "Relie de nouveau avec le QR code pour les actions à distance.",
                     ok = config.canSeeParents, fixLabel = "Relier", fix = onRelink,
                 ),
+                CheckItem(
+                    Icons.Default.Link, "Numéros des parents (SMS de SOS)",
+                    fr.kinwaypoint.app.service.SosSms.phones(context).size.let { n ->
+                        if (n == 0) "Aucun parent n'a encore renseigné son numéro (Paramètres → Compte sur son téléphone)."
+                        else "$n parent${if (n > 1) "s" else ""} prévenu${if (n > 1) "s" else ""} par SMS en cas de SOS."
+                    },
+                    ok = fr.kinwaypoint.app.service.SosSms.phones(context).isNotEmpty(),
+                    optional = true,
+                ),
             ) + permissionChecks(permissions, actions, withListen = allowListen)
             var checkupOpen by remember { mutableStateOf(false) }
             if (checkupOpen) CheckupDialog("Check-up du téléphone", checks, onDismiss = { checkupOpen = false })

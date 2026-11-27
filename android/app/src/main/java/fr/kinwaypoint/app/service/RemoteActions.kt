@@ -39,10 +39,14 @@ object RemoteActions {
             tracking.canSeeParents -> tracking.apiUrl to tracking.viewerToken
             else -> return
         }
-        val attrs = runCatching { TraccarApi(apiUrl).pendingActions(token, tracking.deviceId) }
+        val device = runCatching { TraccarApi(apiUrl).ownDevice(token, tracking.deviceId) }
             .onFailure { Log.w(TAG, "demandes à distance illisibles : ${it.message}") }
             .getOrNull() ?: return
+        val attrs = device.optJSONObject("attributes") ?: org.json.JSONObject()
         val prefs = context.getSharedPreferences("remote_actions", Context.MODE_PRIVATE)
+
+        // SMS de secours : numéros des parents et prénom, gardés pour un SOS sans Internet.
+        SosSms.remember(context.applicationContext, device.optString("name"), attrs.optString("kwSosPhones"))
 
         // Cadences réglées par un parent (kwIntNormal / kwIntMoving / kwIntStill).
         val normal = attrs.optInt("kwIntNormal", 0)

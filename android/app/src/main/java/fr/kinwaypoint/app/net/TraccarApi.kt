@@ -804,11 +804,13 @@ class TraccarApi(baseUrl: String) {
     }
 
     /** Demandes en attente pour CET appareil (sonnerie, écoute), lues dans ses attributs. */
-    fun pendingActions(token: String, uniqueId: String): JSONObject? {
+    fun pendingActions(token: String, uniqueId: String): JSONObject? = ownDevice(token, uniqueId)?.optJSONObject("attributes")
+
+    /** L'appareil de CE téléphone (nom, attributs), vu avec le jeton parent ou lecteur. */
+    fun ownDevice(token: String, uniqueId: String): JSONObject? {
         val devices = getArray(token, url("api/devices"))
         return (0 until devices.length()).map { devices.getJSONObject(it) }
             .firstOrNull { it.optString("uniqueId") == uniqueId }
-            ?.optJSONObject("attributes")
     }
 
     /**
@@ -906,6 +908,55 @@ class TraccarApi(baseUrl: String) {
         attributes.put("timezone", timezone)
         user.put("attributes", attributes)
         putObject(token, url("api/users/$userId"), user.toString())
+    }
+
+    // --- SMS de secours (SOS) ------------------------------------------------------
+
+    /** Compte connecté (objet utilisateur complet). */
+    private fun ownUser(token: String): JSONObject {
+        val sessionUrl = url("api/session").newBuilder().addQueryParameter("token", token).build()
+        val userId = getObject(token, sessionUrl).getLong("id")
+        return getObject(token, url("api/users/$userId"))
+    }
+
+    /** Numéro du parent connecté pour les SMS de SOS (attribut kwPhone du compte), ou "". */
+    fun ownPhone(token: String): String =
+        ownUser(token).optJSONObject("attributes")?.optString("kwPhone").orEmpty()
+
+    /** Enregistre (ou efface, "") le numéro du parent connecté. PUT complet du compte. */
+    fun setOwnPhone(token: String, phone: String) {
+        val user = ownUser(token)
+        val attributes = user.optJSONObject("attributes") ?: JSONObject()
+        if (phone.isBlank()) attributes.remove("kwPhone") else attributes.put("kwPhone", phone)
+        user.put("attributes", attributes)
+        putObject(token, url("api/users/${user.getLong("id")}"), user.toString())
+    }
+
+    /**
+     * Inscrit le numéro du parent connecté sur chaque téléphone d'enfant
+     * (attribut kwSosPhones : {"idCompte": "numéro"}), où l'appli enfant le
+     * lit et le garde pour envoyer un SMS au moment d'un SOS, même sans
+     * Internet. Chaque parent ne touche que sa propre entrée.
+     */
+    fun shareSosPhone(token: String, childIds: List<Long>) {
+        val user = ownUser(token)
+        val userId = user.getLong("id").toString()
+        val phone = user.optJSONObject("attributes")?.optString("kwPhone").orEmpty()
+        childIds.forEach { child ->
+            val current = runCatching {
+                authorized(token, Request.Builder().url(url("api/devices/$child")).get()).use { response ->
+                    check(response)
+                    JSONObject(response.body?.string().orEmpty()).optJSONObject("attributes")?.optString("kwSosPhones")
+                }
+            }.getOrNull().orEmpty()
+            val map = runCatching { JSONObject(current) }.getOrDefault(JSONObject())
+            val wanted = phone.takeIf { it.isNotBlank() }
+            if (map.optString(userId).ifBlank { null } == wanted) return@forEach // déjà à jour
+            if (wanted == null) map.remove(userId) else map.put(userId, wanted)
+            updateAttributes(token, child) { attrs ->
+                if (map.length() == 0) attrs.remove("kwSosPhones") else attrs.put("kwSosPhones", map.toString())
+            }
+        }
     }
 
     /** Limite de vitesse d'un appareil (km/h) : au-delà, Traccar génère « excès de vitesse ». */
