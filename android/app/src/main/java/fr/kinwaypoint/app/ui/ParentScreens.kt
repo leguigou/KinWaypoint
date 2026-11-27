@@ -45,6 +45,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.BatteryAlert
+import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
+import androidx.compose.material.icons.filled.DirectionsCar
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Map
@@ -614,7 +619,7 @@ fun ParentHomeScreen(
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
-            // Marge sous le dernier bouton (« Ajouter un enfant ») : il ne colle plus au bas de l'écran.
+            // Marge sous la dernière carte : elle ne colle pas au bas de l'écran.
             contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 40.dp),
         ) {
             item {
@@ -799,7 +804,7 @@ fun ParentHomeScreen(
                 item {
                     InfoCard(
                         title = "Aucun appareil",
-                        detail = "Utilise « Ajouter un enfant » ci-dessous, puis scanne le QR code avec son téléphone en mode enfant.",
+                        detail = "Ajoute un enfant depuis Paramètres → Famille, puis scanne le QR code (ou saisis le code d'invitation) sur son téléphone en mode enfant.",
                         container = SoftGreen,
                         icon = Icons.Default.PersonAdd,
                     )
@@ -862,17 +867,6 @@ fun ParentHomeScreen(
                 )
             }
 
-            item {
-                OutlinedButton(
-                    onClick = { showAddChild = true },
-                    modifier = Modifier.fillMaxWidth().height(56.dp),
-                    shape = CircleShape,
-                ) {
-                    Icon(Icons.Default.PersonAdd, contentDescription = null)
-                    Spacer(Modifier.size(10.dp))
-                    Text("Ajouter un enfant")
-                }
-            }
 
         }
     }
@@ -943,7 +937,6 @@ fun ParentHomeScreen(
 
 }
 
-@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun MemberCard(
     member: Member,
@@ -960,7 +953,7 @@ private fun MemberCard(
     isMe: Boolean = false,
     /** Lieu où se trouve le membre (maison, école…), ou null. */
     place: fr.kinwaypoint.app.net.Place? = null,
-    /** Arrivée dans ce lieu (pour « Maison · 2 h 26 »), ou null si inconnue. */
+    /** Arrivée dans ce lieu (pour « Depuis 2 h 26 »), ou null si inconnue. */
     placeSince: Long? = null,
     /** Distance du jour par mode de déplacement. */
     travel: TravelSplit? = null,
@@ -969,39 +962,34 @@ private fun MemberCard(
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     val position = member.position
-    val battery = position?.battery
-    val charging = position?.charging == true
-    val lowBattery = battery != null && battery < 20 && !charging
+    val memberColor = profileColor(member.name, member.color)
 
     SectionCard {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        // --- En-tête : avatar, prénom, état, batterie, menu -------------------------
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Box {
                 Box(Modifier.clip(CircleShape).clickable(onClick = onChangePhoto)) {
                     Avatar(member.name, size = 52.dp, photo = photo, colorHex = member.color)
                 }
-                // Pastille en ligne / hors ligne sur l'avatar
-                Box(
-                    Modifier.align(Alignment.BottomEnd).size(16.dp).clip(CircleShape).background(CardSurface).padding(3.dp)
-                        .clip(CircleShape).background(if (member.online) Ok else Idle),
-                )
                 // Bouclier en haut à droite : compte parent.
                 if (member.isParent) ParentShield(Modifier.align(Alignment.TopEnd))
             }
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(if (isMe) "${member.name} (moi)" else member.name, style = MaterialTheme.typography.titleMedium)
-                Text(
-                    when {
-                        position != null -> "Vu ${relative(position.fixTime)}"
-                        else -> "Aucune position reçue"
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Muted,
-                )
-            }
-            Box {
-                IconButton(onClick = { menuOpen = true }) {
-                    Icon(Icons.Default.MoreVert, contentDescription = "Actions pour ${member.name}", tint = Muted)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        member.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    if (isMe) Text("Moi", style = MaterialTheme.typography.bodyMedium, color = Muted)
                 }
+                MemberStatusLine(member.online, position?.fixTime)
+            }
+            position?.battery?.let { BatteryBadge(it, position?.charging == true) }
+            IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(36.dp)) {
+                Icon(Icons.Default.MoreVert, contentDescription = "Actions pour ${member.name}", tint = Muted)
             }
             // Actions du membre : feuille qui monte du bas, aux couleurs de l'appli.
             if (menuOpen) {
@@ -1024,58 +1012,211 @@ private fun MemberCard(
             }
         }
 
-        // FlowRow : les gélules passent à la ligne au lieu de déborder sur petit écran.
-        androidx.compose.foundation.layout.FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+        // --- Position actuelle : lieu ou précision, puis Wi-Fi et sonnerie ---------
+        Column(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp))
+                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            // Dans un lieu : gélule « 🏠 Maison » à la couleur du lieu, en premier.
-            place?.let {
-                val since = placeSince?.let { t -> " · " + shortDuration(System.currentTimeMillis() - t) }.orEmpty()
-                val viaWifi = if (inPlaceByWifi(position, it)) " · Wi-Fi" else ""
-                StatusPill("${placeEmoji(it.icon)} ${it.name}$since$viaWifi", parseHex(it.color) ?: MaterialTheme.colorScheme.primary, icon = null, showDot = false)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (place != null) {
+                    Text(placeEmoji(place.icon), fontSize = 20.sp)
+                } else {
+                    Icon(Icons.Default.LocationOn, contentDescription = null, tint = memberColor, modifier = Modifier.size(22.dp))
+                }
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        place?.name ?: if (position != null) "Position actuelle" else "Aucune position reçue",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    val detail = when {
+                        position == null -> "Le téléphone n'a encore rien envoyé"
+                        place != null -> listOfNotNull(
+                            placeSince?.let { "Depuis " + shortDuration(System.currentTimeMillis() - it) },
+                            "reconnu par le Wi-Fi".takeIf { inPlaceByWifi(position, place) },
+                        ).joinToString(" · ").ifEmpty { "Dans ce lieu" }.replaceFirstChar { it.uppercase() }
+                        position.accuracy > 0 -> "Localisation ${accuracyWord(position.accuracy)}"
+                        else -> "Précision inconnue"
+                    }
+                    Text(detail, style = MaterialTheme.typography.bodySmall, color = Muted)
+                }
+                // Précision : vert ≤ 30 m, orange ≤ 100 m, rouge au-delà.
+                position?.takeIf { it.accuracy > 0 }?.let {
+                    Text("± ${it.accuracy.toInt()} m", style = MaterialTheme.typography.labelLarge, color = Color(accuracyColor(it.accuracy)))
+                }
             }
-            StatusPill(if (member.online) "En ligne" else "Hors ligne", if (member.online) Ok else Idle)
-            // Ancienneté de la position : vert < 15 min, orange < 1 h, rouge au-delà.
-            position?.let { StatusPill("🕒 ${relativeTime(it.fixTime)}", Color(freshnessColor(it.fixTime)), showDot = false) }
-            battery?.let {
-                StatusPill(
-                    "$it %" + if (charging) " · en charge" else "",
+            if (position != null) {
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    // Wi-Fi : réseau connecté, activé sans réseau, ou coupé (gris = information neutre).
                     when {
-                        lowBattery -> Danger
-                        charging -> Ok
-                        else -> MaterialTheme.colorScheme.primary
-                    },
-                    icon = if (charging) Icons.Default.BatteryChargingFull else Icons.Default.BatteryFull,
+                        position.wifi != null -> InfoChip(Icons.Default.Wifi, position.wifi, MaterialTheme.colorScheme.onSurface, Modifier.weight(1f, fill = false))
+                        position.wifiOn == true -> InfoChip(Icons.Default.Wifi, "Wi-Fi activé, non connecté", Muted)
+                        position.wifiOn == false -> InfoChip(Icons.Default.WifiOff, "Wi-Fi coupé", Muted)
+                    }
+                    // Sonnerie coupée : utile avant d'appeler.
+                    when (position.ringer) {
+                        "silent" -> InfoChip(Icons.AutoMirrored.Filled.VolumeOff, "Silencieux", Warning)
+                        "vibrate" -> InfoChip(Icons.Default.Vibration, "Vibreur", Muted)
+                    }
+                }
+            }
+        }
+
+        // --- Activité du jour : pas, à pied, en voiture, objectif ------------------
+        val steps = position?.steps
+        if (steps != null || travel != null) {
+            Text(
+                "ACTIVITÉ DU JOUR",
+                style = MaterialTheme.typography.labelMedium,
+                color = Muted,
+                letterSpacing = 1.sp,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+            Row(Modifier.fillMaxWidth()) {
+                ActivityStat(
+                    icon = { Icon(androidx.compose.ui.res.painterResource(fr.kinwaypoint.app.R.drawable.ic_footprints), contentDescription = null, tint = memberColor, modifier = Modifier.size(22.dp)) },
+                    value = steps?.let { formatSteps(it) } ?: "—",
+                    label = "Pas",
+                    modifier = Modifier.weight(1f),
+                )
+                ActivityStat(
+                    icon = { Icon(Icons.AutoMirrored.Filled.DirectionsWalk, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(22.dp)) },
+                    value = travel?.let { formatDistance(it.foot) } ?: "—",
+                    label = "À pied",
+                    modifier = Modifier.weight(1f),
+                )
+                ActivityStat(
+                    icon = { Icon(Icons.Default.DirectionsCar, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(22.dp)) },
+                    value = travel?.let { formatDistance(it.vehicle) } ?: "—",
+                    label = "En voiture",
+                    modifier = Modifier.weight(1f),
                 )
             }
-            // Wi-Fi : réseau connecté, activé sans réseau, ou coupé.
-            when {
-                position?.wifi != null -> StatusPill(position.wifi, MaterialTheme.colorScheme.primary, icon = Icons.Default.Wifi)
-                position?.wifiOn == true -> StatusPill("Wi-Fi activé", Muted, icon = Icons.Default.Wifi)
-                position?.wifiOn == false -> StatusPill("Wi-Fi coupé", Idle, icon = Icons.Default.WifiOff)
+            if (steps != null && member.stepGoal > 0) {
+                val progress = (steps.toFloat() / member.stepGoal).coerceIn(0f, 1f)
+                val reached = steps >= member.stepGoal
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        (if (reached) "🎉 " else "") + "Objectif : ${formatSteps(member.stepGoal)} pas",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Muted,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(
+                        "${(progress * 100).toInt()} %",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = if (reached) Ok else memberColor,
+                    )
+                }
+                androidx.compose.material3.LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier.fillMaxWidth().height(6.dp).clip(CircleShape),
+                    color = if (reached) Ok else memberColor,
+                    trackColor = memberColor.copy(alpha = 0.15f),
+                    strokeCap = androidx.compose.ui.graphics.StrokeCap.Round,
+                    gapSize = 0.dp,
+                    drawStopIndicator = {},
+                )
             }
-            // Sonnerie coupée : utile avant d'appeler.
-            when (position?.ringer) {
-                "silent" -> StatusPill("Silencieux", Warning, icon = Icons.AutoMirrored.Filled.VolumeOff)
-                "vibrate" -> StatusPill("Vibreur", Muted, icon = Icons.Default.Vibration)
-            }
-            // Précision : vert ≤ 30 m, orange ≤ 100 m, rouge au-delà.
-            position?.takeIf { it.accuracy > 0 }?.let {
-                StatusPill("± ${it.accuracy.toInt()} m · ${accuracyWord(it.accuracy)}", Color(accuracyColor(it.accuracy)), icon = Icons.Default.GpsFixed)
-            }
-            // Distance parcourue aujourd'hui : à pied, vélo, véhicule.
-            travel?.let { t -> travelParts(t).forEach { (emoji, km) -> StatusPill("$emoji $km", MaterialTheme.colorScheme.tertiary, showDot = false) } }
         }
-        position?.steps?.let { StepGoalBar(it, member.stepGoal, profileColor(member.name, member.color)) }
 
+        // --- Action principale, à la couleur du membre ------------------------------
         if (position != null) {
-            FilledTonalButton(onClick = onShowMap, modifier = Modifier.fillMaxWidth(), shape = CircleShape) {
+            FilledTonalButton(
+                onClick = onShowMap,
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp).height(48.dp),
+                shape = CircleShape,
+                colors = androidx.compose.material3.ButtonDefaults.filledTonalButtonColors(
+                    containerColor = memberColor.copy(alpha = 0.14f),
+                    contentColor = memberColor,
+                ),
+            ) {
                 Icon(Icons.Default.Map, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.size(8.dp))
-                Text("Voir sur la carte")
+                Text("Voir sur la carte", fontWeight = FontWeight.SemiBold)
             }
         }
+    }
+}
+
+/**
+ * « ● En ligne · Position il y a 3 min » sur une seule ligne. Couleurs :
+ * vert = position récente, orange = position de plus de 15 min, rouge = plus
+ * d'1 h, gris = hors ligne.
+ */
+@Composable
+private fun MemberStatusLine(online: Boolean, fixTime: Long?) {
+    val color = when {
+        !online -> Idle
+        fixTime == null -> Idle
+        else -> Color(freshnessColor(fixTime))
+    }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Box(Modifier.size(8.dp).clip(CircleShape).background(color))
+        Text(
+            androidx.compose.ui.text.buildAnnotatedString {
+                pushStyle(androidx.compose.ui.text.SpanStyle(color = color, fontWeight = FontWeight.SemiBold))
+                append(if (online) "En ligne" else "Hors ligne")
+                pop()
+                append(" · ")
+                append(fixTime?.let { "Position " + relativeTime(it) } ?: "Aucune position")
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = Muted,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+        )
+    }
+}
+
+/** Batterie en haut à droite : rouge < 10 %, orange < 20 %, vert en charge. */
+@Composable
+private fun BatteryBadge(level: Int, charging: Boolean) {
+    val color = when {
+        charging -> Ok
+        level < 10 -> Danger
+        level < 20 -> Warning
+        else -> MaterialTheme.colorScheme.onSurface
+    }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Icon(
+            when {
+                charging -> Icons.Default.BatteryChargingFull
+                level < 20 -> Icons.Default.BatteryAlert
+                else -> Icons.Default.BatteryFull
+            },
+            contentDescription = if (charging) "En charge" else "Batterie",
+            tint = if (color == MaterialTheme.colorScheme.onSurface) Muted else color,
+            modifier = Modifier.size(18.dp),
+        )
+        Text("$level %", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = color)
+    }
+}
+
+/** Petit pictogramme + texte (Wi-Fi, sonnerie) dans le bloc position. */
+@Composable
+private fun InfoChip(icon: ImageVector, text: String, color: Color, modifier: Modifier = Modifier) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(16.dp))
+        Text(
+            text,
+            style = MaterialTheme.typography.bodySmall,
+            color = color,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+        )
+    }
+}
+
+/** Une colonne de l'activité du jour : pictogramme, valeur, libellé. */
+@Composable
+private fun ActivityStat(icon: @Composable () -> Unit, value: String, label: String, modifier: Modifier = Modifier) {
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        icon()
+        Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 1)
+        Text(label, style = MaterialTheme.typography.bodySmall, color = Muted)
     }
 }
 
@@ -1084,16 +1225,6 @@ private fun greeting(): String = when (java.util.Calendar.getInstance().get(java
     in 5..11 -> "Bonjour 👋"
     in 12..17 -> "Bon après-midi 👋"
     else -> "Bonsoir 👋"
-}
-
-private fun relative(millis: Long): String {
-    val minutes = (System.currentTimeMillis() - millis) / 60_000L
-    return when {
-        minutes < 1 -> "à l'instant"
-        minutes < 60 -> "il y a $minutes min"
-        minutes < 48 * 60 -> "il y a ${minutes / 60} h"
-        else -> "il y a ${minutes / (24 * 60)} j"
-    }
 }
 
 /**

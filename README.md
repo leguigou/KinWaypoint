@@ -95,7 +95,13 @@ Un serveur **Traccar** collecte, stocke et déclenche les alertes.
 ### Côté parent
 - Connexion par **e-mail et mot de passe** : les adresses du serveur sont
   découvertes automatiquement, sinon elles se saisissent dans les réglages avancés.
-- Ajout d'un enfant : l'application crée l'appareil puis propose, au choix, un
+- **Carte de chaque membre** sur l'accueil, en trois blocs : en-tête (état en
+  ligne et ancienneté de la position, batterie), position actuelle (lieu ou
+  précision, Wi-Fi, sonnerie), activité du jour (pas, à pied, en voiture,
+  objectif). Code couleur : vert = normal, orange = position approximative ou
+  batterie faible, rouge = position ancienne ou batterie critique, gris = hors
+  ligne ; la couleur du membre sert à l'objectif et au bouton « Voir sur la carte ».
+- Ajout d'un enfant (Paramètres → Famille) : l'application crée l'appareil puis propose, au choix, un
   **QR code** à scanner sur place ou un **code d'invitation** de 8 chiffres à
   transmettre à distance.
 - **Ajout d'un autre parent, à distance** (Paramètres → Famille) : saisir son
@@ -326,8 +332,8 @@ Secrets GitHub nécessaires :
 
 1. **Téléphone parent** : installer l'APK, choisir « Parent », créer le PIN, se
    connecter avec l'e-mail et le mot de passe Traccar.
-2. **Ajouter un enfant** : « Ajouter un enfant » (accueil, ou Paramètres →
-   Famille) → prénom → un QR code s'affiche.
+2. **Ajouter un enfant** : Paramètres → Famille → « Ajouter un enfant » →
+   prénom → un QR code (ou un code d'invitation) s'affiche.
    Le compte Traccar du parent doit pouvoir créer des appareils.
 3. **Téléphone enfant** : installer l'APK, choisir « Enfant » (même PIN), puis
    Réglages (cadenas) → **Suivi** → « Scanner le QR code » (ou, à distance,
