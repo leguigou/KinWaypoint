@@ -94,13 +94,18 @@ Un serveur **Traccar** collecte, stocke et déclenche les alertes.
 - Verrouillage par **PIN** ou **empreinte**, délai de reverrouillage réglable
   (1 min → jamais).
 - **Mise à jour depuis l'application** : notification quand une version sort,
-  téléchargement, vérification SHA-256, installation.
+  téléchargement, vérification SHA-256, installation ; recherche à la demande
+  dans Paramètres → À propos.
+- Paramètres rangés **par catégories**, comme sur Android : Ma position,
+  Alertes, Lieux, Famille, Sécurité, Compte, À propos (chaque ligne résume
+  l'état actuel).
 
 ### Côté enfant
 - Écran simple : état du suivi, pas du jour, SOS, « je suis bien arrivé·e ».
 - Carte de la famille : l'enfant s'y voit, avec ses frères et sœurs et les
   parents qui partagent leur position.
-- Réglages protégés par le PIN parent.
+- Réglages protégés par le PIN parent, rangés par catégories : Suivi, Écoute en
+  direct, Sécurité, À propos.
 
 ### Garder la position du parent privée
 
@@ -302,7 +307,7 @@ Secrets GitHub nécessaires :
 2. **Ajouter un enfant** : « Ajouter un enfant » → prénom → un QR code s'affiche.
    Le compte Traccar du parent doit pouvoir créer des appareils.
 3. **Téléphone enfant** : installer l'APK, choisir « Enfant » (même PIN), puis
-   Réglages (cadenas) → « Scanner le QR code » → démarrer le suivi.
+   Réglages (cadenas) → **Suivi** → « Scanner le QR code » → démarrer le suivi.
 4. Sur le téléphone de l'enfant, accorder :
    - la localisation **« Toujours autoriser »** ;
    - l'activité physique (podomètre) ;
@@ -313,8 +318,8 @@ Secrets GitHub nécessaires :
 
    Vérifier qu'une position arrive écran éteint et remonte après une coupure
    réseau.
-5. Créer les lieux (Paramètres → Gérer les lieux) et activer les alertes
-   voulues (Paramètres → Alertes).
+5. Créer les lieux (Paramètres → **Lieux**) et activer les alertes voulues
+   (Paramètres → **Alertes**).
 
 Le QR code contient le secret d'envoi de l'appareil : le garder comme un mot de
 passe. Voir aussi [Configuration à distance](docs/CONFIG-DISTANTE.md) et

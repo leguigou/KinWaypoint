@@ -112,7 +112,7 @@ de mots de passe). Ne jamais les committer.
 
 1. Installer l'APK (autoriser l'installation depuis cette source).
 2. Choisir **Enfant**, créer le PIN parent.
-3. Réglages (cadenas) → « Scanner le QR code » affiché par l'appli parent
+3. Réglages (cadenas) → **Suivi** → « Scanner le QR code » affiché par l'appli parent
    (membre → ⋮ → QR code).
 4. Accorder :
    - la localisation **« Toujours autoriser »** ;

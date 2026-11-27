@@ -46,6 +46,9 @@ import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Hearing
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.runtime.collectAsState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -265,7 +268,10 @@ fun ChildSettingsScreen(
     var showConfigCode by remember { mutableStateOf(false) }
     var scannedLink by remember { mutableStateOf<String?>(null) }
 
-    BackHandler(onBack = onClose)
+    // Catégorie ouverte (null = liste) ; retour = revenir à la liste, puis verrouiller.
+    var category by remember { mutableStateOf<String?>(null) }
+    val allowListen by repository.allowListen.collectAsState(initial = true)
+    BackHandler { if (category != null) category = null else onClose() }
 
     fun save(enabled: Boolean, then: () -> Unit = {}) {
         scope.launch {
@@ -289,16 +295,47 @@ fun ChildSettingsScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Verrouiller") }
+                IconButton(onClick = { if (category != null) category = null else onClose() }) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = if (category != null) "Retour" else "Verrouiller")
+                }
                 Column {
-                    Text("Réglages parent", style = MaterialTheme.typography.headlineSmall)
+                    Text(
+                        when (category) {
+                            "tracking" -> "Suivi"
+                            "listen" -> "Écoute en direct"
+                            "security" -> "Sécurité"
+                            "about" -> "À propos"
+                            else -> "Réglages parent"
+                        },
+                        style = MaterialTheme.typography.headlineSmall,
+                    )
                     Text("Suivi de cet appareil", style = MaterialTheme.typography.bodySmall, color = Muted)
                 }
             }
 
-            StatusCard(status = status, permissions = permissions)
+            // --- Liste des catégories ------------------------------------------------
+            if (category == null) {
+                UpdateBanner()
+                SectionCard {
+                    ChildCategoryRow(Icons.Default.MyLocation, MaterialTheme.colorScheme.primary, "Suivi",
+                        when {
+                            !config.isValid -> "Non configuré"
+                            status.running -> "Actif · envoi toutes les ${config.intervalSeconds / 60} min"
+                            else -> "Arrêté"
+                        }) { category = "tracking" }
+                    ChildCategoryRow(Icons.Default.Hearing, androidx.compose.ui.graphics.Color(0xFF8B5CF6), "Écoute en direct",
+                        when {
+                            !allowListen -> "Désactivée"
+                            !permissions.microphone || !permissions.overlay -> "Autorisations à donner"
+                            else -> "Autorisée"
+                        }) { category = "listen" }
+                    ChildCategoryRow(Icons.Default.Lock, Danger, "Sécurité", "Code PIN, mode de l'appareil") { category = "security" }
+                    ChildCategoryRow(Icons.Default.Info, Muted, "À propos", "Version ${fr.kinwaypoint.app.BuildConfig.VERSION_NAME}") { category = "about" }
+                }
+            }
 
-            UpdateBanner()
+            if (category == "tracking") {
+            StatusCard(status = status, permissions = permissions)
 
             Button(
                 onClick = {
@@ -407,8 +444,10 @@ fun ChildSettingsScreen(
                 ) { Text("Arrêter le suivi") }
             }
 
+            }
+
+            if (category == "listen") {
             // --- Écoute en direct par un parent ---------------------------------------
-            val allowListen by repository.allowListen.collectAsState(initial = true)
             SectionCard {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Column(Modifier.weight(1f)) {
@@ -447,6 +486,9 @@ fun ChildSettingsScreen(
                 )
             }
 
+            }
+
+            if (category == "security") {
             SectionCard {
                 Text("Sécurité", style = MaterialTheme.typography.titleMedium)
                 OutlinedButton(onClick = onChangePin, modifier = Modifier.fillMaxWidth(), shape = CircleShape) {
@@ -457,10 +499,31 @@ fun ChildSettingsScreen(
                 }
             }
 
+            }
+
+            if (category == "about") {
+                SectionCard {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        BrandMark(size = 52.dp)
+                        Column(Modifier.weight(1f)) {
+                            Text("KinWaypoint", style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                "Version ${fr.kinwaypoint.app.BuildConfig.VERSION_NAME} (${fr.kinwaypoint.app.BuildConfig.VERSION_CODE})",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Muted,
+                            )
+                        }
+                    }
+                }
+                UpdateBanner()
+            }
+
+            if (category == null) {
             TextButton(onClick = onClose, modifier = Modifier.align(Alignment.CenterHorizontally)) {
                 Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.size(6.dp))
                 Text("Terminé — verrouiller")
+            }
             }
         }
     }
@@ -823,5 +886,22 @@ private fun ChildParentsMap(
                 Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(start = 16.dp, end = 16.dp, top = 72.dp),
             ) { InfoCard(title = "Ma famille", detail = it, container = CardSurface, icon = Icons.Default.People) }
         }
+    }
+}
+
+/** Ligne de catégorie des réglages enfant : icône teintée, titre, résumé, chevron. */
+@Composable
+private fun ChildCategoryRow(icon: ImageVector, tint: Color, title: String, summary: String, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium).clickable(onClick = onClick).padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        IconBadge(icon, tint, size = 42.dp)
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleSmall)
+            Text(summary, style = MaterialTheme.typography.bodySmall, color = Muted, maxLines = 1)
+        }
+        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = Muted)
     }
 }
