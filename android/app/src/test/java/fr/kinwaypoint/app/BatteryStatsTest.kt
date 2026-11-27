@@ -23,7 +23,7 @@ class BatteryStatsTest {
         val stats = batteryStats(
             listOf(
                 p(8.0, 90), p(9.0, 85), p(10.0, 80), // −10 % en 2 h
-                p(10.5, 79, charging = true), p(11.5, 95, charging = true), // 1 h en charge
+                p(10.5, 79, charging = true), p(11.5, 95, charging = true), // en charge
                 p(12.0, 96), p(13.0, 92), // −4 % en 1 h
             ),
         )!!
@@ -31,10 +31,12 @@ class BatteryStatsTest {
         assertEquals(96, stats.max)
         assertEquals(92, stats.last)
         assertEquals(1, stats.chargeSessions)
-        assertEquals(60L, stats.chargingMinutes)
-        // (10 + 1 + 4) % sur 3,5 h hors charge (8 h→10 h 30 et 12 h→13 h).
+        // En charge de 10 h 30 à 12 h (le point de 11 h 30 est encore en charge).
+        assertEquals(90L, stats.chargingMinutes)
+        // Hors charge : 10 % de 8 h à 10 h, puis 4 % de 12 h à 13 h → 14 % sur 3 h.
+        // (10 h → 10 h 30 précède une mise en charge : non compté.)
         assertNotNull(stats.dischargePerHour)
-        assertEquals(15.0 / 3.5, stats.dischargePerHour!!, 0.01)
+        assertEquals(14.0 / 3.0, stats.dischargePerHour!!, 0.01)
     }
 
     @Test
