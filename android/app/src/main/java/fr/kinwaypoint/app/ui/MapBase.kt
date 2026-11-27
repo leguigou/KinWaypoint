@@ -409,6 +409,8 @@ internal fun markerBitmap(
     badge: String? = null,
     /** Pastilles d'état à droite de l'avatar, de haut en bas (🔇 silencieux, 🪫 batterie faible). */
     sideBadges: List<String> = emptyList(),
+    /** Vitesse affichée à côté du badge (« 42 km/h ») : le badge devient une pastille. */
+    badgeText: String? = null,
 ): Bitmap {
     val d = context.resources.displayMetrics.density
     val circle = 52 * d
@@ -429,7 +431,16 @@ internal fun markerBitmap(
 
     // Pastilles à droite : on élargit l'image des deux côtés pour garder la pointe centrée.
     val sideExtra = if (sideBadges.isNotEmpty()) 14 * d else 0f
-    val w = maxOf(circle + pad * 2 + sideExtra * 2, labelW + pad * 2).toInt()
+    // Pastille de vitesse en haut à gauche : elle déborde à gauche de l'avatar.
+    val speedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xFF16172B.toInt()
+        textSize = 11 * d
+        typeface = Typeface.DEFAULT_BOLD
+    }
+    val badgeR = (circle / 2 - border - d) * 0.78f
+    val pillW = if (badge != null && badgeText != null) 26 * d + speedPaint.measureText(badgeText) else 0f
+    val pillHalf = if (pillW > 0) badgeR - 11 * d + pillW + pad else 0f
+    val w = maxOf(circle + pad * 2 + sideExtra * 2, labelW + pad * 2, pillHalf * 2).toInt()
     val top = pad + labelH + gap
     val h = (top + circle + pointer).toInt()
     val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
@@ -484,12 +495,23 @@ internal fun markerBitmap(
     if (badge != null) {
         val bx = cx - r * 0.78f
         val by = cy - r * 0.78f
-        canvas.drawCircle(bx, by, 11 * d, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        val bubble = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = android.graphics.Color.WHITE
             setShadowLayer(2 * d, 0f, 1 * d, 0x44000000)
-        })
+        }
         val emoji = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 13 * d; textAlign = Paint.Align.CENTER }
-        canvas.drawText(badge, bx, by - (emoji.descent() + emoji.ascent()) / 2, emoji)
+        if (badgeText != null) {
+            // Pastille « 🚗 42 km/h » : son bord droit reste là où était le badge rond.
+            val right = bx + 11 * d
+            val rect = RectF(right - pillW, by - 11 * d, right, by + 11 * d)
+            canvas.drawRoundRect(rect, 11 * d, 11 * d, bubble)
+            val ex = rect.left + 13 * d
+            canvas.drawText(badge, ex, by - (emoji.descent() + emoji.ascent()) / 2, emoji)
+            canvas.drawText(badgeText, ex + 11 * d, by - (speedPaint.descent() + speedPaint.ascent()) / 2, speedPaint)
+        } else {
+            canvas.drawCircle(bx, by, 11 * d, bubble)
+            canvas.drawText(badge, bx, by - (emoji.descent() + emoji.ascent()) / 2, emoji)
+        }
     }
 
     sideBadges.take(2).forEachIndexed { i, emojiText ->
@@ -525,6 +547,13 @@ internal fun statusBadges(position: fr.kinwaypoint.app.net.MemberPosition?): Lis
     if (position?.ringer == "silent") "🔇" else null,
     if ((position?.battery ?: 100) < 20 && position?.charging != true) LowBatteryEmoji else null,
 )
+
+/** Vitesse à afficher à côté du badge 🚗 / 🚶 de l'avatar, ou null à l'arrêt. */
+internal fun speedText(position: fr.kinwaypoint.app.net.MemberPosition?): String? {
+    val p = position ?: return null
+    if (p.activity !in setOf("walking", "bike", "vehicle")) return null
+    return p.kmh?.takeIf { it >= 1 }?.let { "${it.toInt()} km/h" }
+}
 
 /** Emoji d'un type de lieu (dessiné sur la carte) et libellé. */
 internal fun placeEmoji(icon: String) = PlaceIcons.firstOrNull { it.key == icon }?.emoji ?: "📍"

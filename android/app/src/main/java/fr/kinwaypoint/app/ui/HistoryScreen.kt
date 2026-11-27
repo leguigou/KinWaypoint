@@ -81,17 +81,18 @@ private sealed interface HistoryRow {
         override val point get() = points.first()
         override val start get() = points.first().time
         override val end get() = points.last().time
-        val distance: Float get() = traceLength(points)
+        val distance: Float get() = traceLength(cleanTrace(points))
         /** Vitesse moyenne en km/h, sur la durée du trajet. */
         val averageKmh: Double get() = if (end > start) distance / 1000.0 / ((end - start) / 3_600_000.0) else 0.0
+        /** Vitesse maximale mesurée pendant le trajet (km/h), ou null. */
+        val maxKmh: Double? get() = points.maxOfOrNull { it.speedKmh }?.takeIf { it >= 1 }
     }
 }
 
 /** Mode de déplacement déduit de la vitesse moyenne (estimation, sans capteur). */
 private fun tripMode(kmh: Double): Pair<String, String> = when {
-    kmh < 7 -> "🚶" to "Marche"
-    kmh <= 15 -> "🚲" to "Vélo / trottinette"
-    else -> "🚗" to "Véhicule"
+    kmh <= 15 -> "🚶" to "Marche"
+    else -> "🚗" to "Voiture"
 }
 
 /**
@@ -184,7 +185,7 @@ fun HistoryScreen(
 
     val visible = if (focus == null) traces else traces.filterKeys { it == focus }
     val rows = remember(visible) {
-        visible.flatMap { (id, points) -> buildRows(id, points) }.sortedBy { it.start }
+        visible.flatMap { (id, points) -> buildRows(id, points) }.sortedByDescending { it.start }
     }
 
     // Carte : tracés visibles, point mis en avant, cadrage sur la journée.
@@ -338,7 +339,7 @@ private fun TimelineRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(hhmm(row.start), style = MaterialTheme.typography.labelLarge, modifier = Modifier.width(44.dp))
+        Text(hhmm(row.start), style = MaterialTheme.typography.labelLarge, maxLines = 1, softWrap = false, modifier = Modifier.width(52.dp))
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Box(Modifier.width(2.dp).height(6.dp).background(color.copy(alpha = 0.4f)))
             Box(
@@ -362,9 +363,18 @@ private fun TimelineRow(
                 }
                 is HistoryRow.Trip -> {
                     val (emoji, mode) = tripMode(row.averageKmh)
-                    Text("$who$emoji $mode", style = MaterialTheme.typography.bodyMedium)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("$who$emoji $mode", style = MaterialTheme.typography.bodyMedium)
+                        // Vitesse moyenne du trajet, dans une pastille à côté du mode.
+                        StatusPill("${row.averageKmh.toInt()} km/h", color, showDot = false)
+                    }
                     Text(
-                        "${formatDistance(row.distance)} · ${durationLabel((row.end - row.start) / 60_000)}",
+                        listOfNotNull(
+                            formatDistance(row.distance),
+                            durationLabel((row.end - row.start) / 60_000),
+                            "moy. ${row.averageKmh.toInt()} km/h",
+                            row.maxKmh?.let { "max ${it.toInt()} km/h" },
+                        ).joinToString(" · "),
                         style = MaterialTheme.typography.bodySmall,
                         color = Muted,
                     )
