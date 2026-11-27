@@ -96,6 +96,11 @@ demande pas de mise à jour. En cas de doute, mettre à jour.
   derniers boutons passent sous la barre de navigation.
 - Lieu affiché d'une personne : toujours via `placeFor` (Wi-Fi du lieu d'abord,
   puis position).
+- Couleurs porteuses de sens (cartes membres, pastilles) : vert = normal, orange
+  = approximatif / batterie faible, rouge = ancien / SOS / batterie critique,
+  gris = hors ligne ou neutre ; la couleur du membre est réservée à l'avatar, à
+  l'objectif de pas et à l'action principale. « Ajouter un enfant » n'existe que
+  dans Paramètres → Famille.
 
 ## Pièges connus
 
