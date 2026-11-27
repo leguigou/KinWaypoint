@@ -114,6 +114,10 @@ demande pas de mise à jour. En cas de doute, mettre à jour.
    administrateurs, appareil détaché des lieux). Un administrateur Traccar voit
    tout côté serveur : on ne peut que le masquer dans l'appli. Toute nouvelle
    vue des membres doit partir de la liste déjà filtrée de l'accueil parent.
+10. **Podomètre** : `TYPE_STEP_COUNTER` ne donne rien tant qu'on ne marche
+    pas. La valeur du jour est relue dans les préférences (`stepsToday`) pour
+    que chaque position parte avec ses pas ; côté parent, une position sans pas
+    garde ceux de la précédente du même jour (`keepSteps`).
 
 ## Git
 

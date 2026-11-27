@@ -364,7 +364,9 @@ fun ParentHomeScreen(
         withContext(Dispatchers.IO) { runCatching { api.places(config.token) } }.onSuccess { places = it }
         result.onSuccess { (list, recent) ->
             // Parent en mode fantôme : invisible ici, sauf pour lui-même.
-            members = list.filter { !it.ghost || it.id == ownDeviceId }
+            members = list.filter { !it.ghost || it.id == ownDeviceId }.map { fresh ->
+                fresh.copy(position = fresh.position?.keepSteps(members.firstOrNull { it.id == fresh.id }?.position))
+            }
             alarms = recent
             error = null
             refreshedAt = System.currentTimeMillis()
@@ -386,7 +388,7 @@ fun ParentHomeScreen(
             members = members.map { m ->
                 val p = message.positions[m.id]
                 when {
-                    p != null -> m.copy(position = p, online = true, lastUpdate = p.fixTime)
+                    p != null -> m.copy(position = p.keepSteps(m.position), online = true, lastUpdate = p.fixTime)
                     message.online[m.id] != null -> m.copy(online = message.online[m.id]!!)
                     else -> m
                 }
@@ -1097,4 +1099,17 @@ private fun relative(millis: Long): String {
         minutes < 48 * 60 -> "il y a ${minutes / 60} h"
         else -> "il y a ${minutes / (24 * 60)} j"
     }
+}
+
+/**
+ * Position sans nombre de pas (podomètre pas encore relu, ancienne version de
+ * l'appli enfant) : on garde celui de la position précédente du même jour,
+ * plutôt que de faire disparaître la barre de pas.
+ */
+private fun fr.kinwaypoint.app.net.MemberPosition.keepSteps(previous: fr.kinwaypoint.app.net.MemberPosition?): fr.kinwaypoint.app.net.MemberPosition {
+    if (steps != null || previous?.steps == null) return this
+    val zone = java.time.ZoneId.systemDefault()
+    val sameDay = java.time.Instant.ofEpochMilli(previous.fixTime).atZone(zone).toLocalDate() ==
+        java.time.Instant.ofEpochMilli(fixTime).atZone(zone).toLocalDate()
+    return if (sameDay) copy(steps = previous.steps) else this
 }
