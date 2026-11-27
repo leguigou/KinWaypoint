@@ -1,10 +1,16 @@
 # Dépôt d'APK
 
-Chaque APK produit s'archive sur `https://famille.deloffre.fr/apk/`, du plus
-récent au plus ancien, avec sa version, sa taille et son empreinte SHA-256.
+Chaque APK produit s'archive sur `https://<domaine-famille>/apk/` (exemple :
+`https://famille.exemple.fr/apk/`), du plus récent au plus ancien, avec sa
+version, sa taille et son empreinte SHA-256.
 
-L'accès se fait par un **code** saisi dans un champ unique (`KW_APK_CODE`,
-`azerty` par défaut). Une fois validé, le serveur dépose un cookie signé
+L'adresse du serveur familial n'est écrite nulle part dans le dépôt : l'appli la
+reçoit à la compilation (secret GitHub `KW_FAMILY_HUB`, voir le README), et le
+serveur déduit ses propres adresses des requêtes reçues (ou de `KW_APK_BASE_URL`
+et `KW_BASE_URL` s'ils sont définis).
+
+L'accès se fait par un **code** saisi dans un champ unique, à définir dans
+`KW_APK_CODE` (ne pas garder la valeur par défaut du code). Une fois validé, le serveur dépose un cookie signé
 (HMAC, 30 jours, `HttpOnly`, `Secure`) : plus rien à retaper ensuite.
 `/apk/logout` efface le cookie.
 
@@ -12,7 +18,7 @@ L'accès se fait par un **code** saisi dans un champ unique (`KW_APK_CODE`,
 
 ```bash
 # le code peut aussi passer en query, pratique pour un script
-curl "https://famille.deloffre.fr/apk/index.json?code=azerty"
+curl "https://famille.exemple.fr/apk/index.json?code=<code>"
 ```
 
 `GET /apk/index.json` renvoie la liste en JSON. `GET /apk/<fichier>` sert le
@@ -28,8 +34,8 @@ version (le plus grand `versionCode`, lu dans « 0.14.1 (15) ») :
 | `GET /apk/latest.json` | `{"versionCode": 15, "versionName": "0.14.1", "sha256": "…", "apkUrl": "…/apk/latest.apk", …}` |
 | `GET /apk/latest.apk` | le dernier APK |
 
-L'appli consulte `latest.json` au lancement et toutes les 12 h (service de
-suivi), télécharge l'APK, **vérifie son SHA-256**, puis lance l'installeur
+L'appli consulte `latest.json` au lancement et toutes les 4 h (tâche Android
+planifiée, même appli fermée : une notification par nouvelle version), télécharge l'APK, **vérifie son SHA-256**, puis lance l'installeur
 Android (confirmation obligatoire). GitHub (`test-latest/version.json`) sert de
 secours si le dépôt ne répond pas. La liste complète et les anciennes versions
 restent derrière le code.
@@ -72,7 +78,7 @@ curl -X POST --data-binary @app-release.apk \
   -H "X-Filename: kinwaypoint-1.0.0.apk" \
   -H "X-Version: 1.0.0 (20)" \
   -H "X-Note: 62d0217 · première version stable" \
-  https://famille.deloffre.fr/apk/upload
+  https://famille.exemple.fr/apk/upload
 ```
 
 Un fichier déposé directement dans le volume (`/data/apk/`) apparaît aussi dans

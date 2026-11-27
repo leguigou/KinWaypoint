@@ -52,8 +52,8 @@ import java.util.concurrent.TimeUnit
  * /apk/latest.json, voir server/config-api), puis GitHub en secours.
  * Format : {"versionCode": 15, "versionName": "0.14.1", "apkUrl": "…", "sha256": "…"}
  */
-private val UPDATE_SOURCES = listOf(
-    "$FAMILY_HUB/apk/latest.json",
+private val UPDATE_SOURCES = listOfNotNull(
+    FAMILY_HUB.takeIf { it.startsWith("https://") }?.let { "$it/apk/latest.json" },
     "https://github.com/leguigou/KinWaypoint/releases/download/test-latest/version.json",
 )
 

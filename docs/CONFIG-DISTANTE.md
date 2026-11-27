@@ -55,7 +55,7 @@ Accept: application/json
 {
   "version": 1,
   "mode": "parent",
-  "label": "Téléphone de Guillaume",
+  "label": "Téléphone de Camille",
   "parent": {
     "apiUrl": "https://api.exemple.fr",
     "trackUrl": "https://track.exemple.fr",
@@ -126,7 +126,7 @@ premier usage.
 ## Implémentation du serveur (déployée)
 
 Le serveur décrit ci-dessus est implémenté dans `server/config-api/` et tourne
-sur `https://famille.deloffre.fr/config` (image `kinwaypoint-config:1.0`, volume
+sur `https://famille.exemple.fr/config` (image `kinwaypoint-config:1.0`, volume
 `kwconfig_data` pour la persistance, 128 Mo de RAM max).
 
 | Route | Rôle |
@@ -138,10 +138,10 @@ sur `https://famille.deloffre.fr/config` (image `kinwaypoint-config:1.0`, volume
 Créer un code :
 
 ```bash
-curl -s -X POST https://famille.deloffre.fr/config/api/codes \
+curl -s -X POST https://famille.exemple.fr/config/api/codes \
   -H "X-Admin-Token: $KW_ADMIN_TOKEN" -H 'content-type: application/json' \
   -d '{"mode":"child","label":"Téléphone de Léa",
-       "child":{"serverUrl":"https://ingest.deloffre.fr",
+       "child":{"serverUrl":"https://track.exemple.fr",
                 "deviceId":"<identifiant Traccar>","intervalSeconds":300}}'
 ```
 

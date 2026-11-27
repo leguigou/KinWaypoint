@@ -198,7 +198,8 @@ injecte.
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | compose | notifications Telegram (optionnel) |
 | `KW_TRACCAR_API_URL`, `KW_TRACCAR_TRACK_URL` | config-api | adresses annoncées à l'application (`server.json`) |
 | `KW_AUDIO_RELAY_URL` | config-api | adresse `wss://` du relais audio |
-| `KW_APK_CODE`, `KW_ADMIN_TOKEN` | config-api | code d'accès au dépôt d'APK, jeton de dépôt |
+| `KW_APK_CODE`, `KW_ADMIN_TOKEN` | config-api | code d'accès au dépôt d'APK (à changer), jeton de dépôt |
+| `KW_APK_BASE_URL`, `KW_BASE_URL` | config-api | adresses publiques du dépôt et des codes (facultatif : déduites des requêtes sinon) |
 
 Les secrets restent dans l'environnement Dokploy, **jamais dans le dépôt**.
 
@@ -213,8 +214,12 @@ qu'en x86-64). À chaque push :
 2. publication dans la release `test-latest` (avec `version.json`) ;
 3. dépôt sur le dépôt d'APK, d'où l'application se met à jour.
 
-Secrets GitHub nécessaires : `KW_KEYSTORE_BASE64`, `KW_KEYSTORE_PASSWORD`,
-`KW_KEY_ALIAS`, `KW_KEY_PASSWORD` (clé de signature) et `KW_HUB_TOKEN` (dépôt).
+Secrets GitHub nécessaires :
+- `KW_KEYSTORE_BASE64`, `KW_KEYSTORE_PASSWORD`, `KW_KEY_ALIAS`, `KW_KEY_PASSWORD` : clé de signature ;
+- `KW_FAMILY_HUB` : adresse du serveur familial (`https://…`), compilée dans
+  l'application. Elle n'est écrite nulle part dans le dépôt, et sans elle la CI
+  refuse de produire l'APK ;
+- `KW_HUB_TOKEN` : jeton de dépôt des APK.
 
 > **Garder une copie de la clé de signature.** Android n'accepte une mise à
 > jour que signée par la même clé : la perdre oblige à désinstaller

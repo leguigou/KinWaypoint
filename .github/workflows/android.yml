@@ -58,7 +58,15 @@ jobs:
           KW_KEYSTORE_PASSWORD: ${{ secrets.KW_KEYSTORE_PASSWORD }}
           KW_KEY_ALIAS: ${{ secrets.KW_KEY_ALIAS }}
           KW_KEY_PASSWORD: ${{ secrets.KW_KEY_PASSWORD }}
+          # Adresse du serveur familial, hors du dépôt (ex. https://famille.exemple.fr).
+          KW_FAMILY_HUB: ${{ secrets.KW_FAMILY_HUB }}
         run: |
+          # Sans elle, l'APK ne trouverait ni le serveur, ni les mises à jour :
+          # on refuse de le publier plutôt que de casser les téléphones.
+          if [[ "${KW_FAMILY_HUB}" != https://* ]]; then
+            echo "::error::Secret KW_FAMILY_HUB absent ou invalide (attendu : https://…). Ajoute-le dans Settings → Secrets and variables → Actions."
+            exit 1
+          fi
           chmod +x gradlew
           ./gradlew --no-daemon --stacktrace testReleaseUnitTest assembleRelease
           mv app/build/outputs/apk/release/app-release.apk "app/build/outputs/apk/release/kinwaypoint-${GITHUB_SHA::7}.apk"
@@ -154,6 +162,7 @@ jobs:
         continue-on-error: true
         env:
           KW_HUB_TOKEN: ${{ secrets.KW_HUB_TOKEN }}
+          KW_FAMILY_HUB: ${{ secrets.KW_FAMILY_HUB }}
         run: |
           if [ -z "${KW_HUB_TOKEN}" ]; then
             echo "Secret KW_HUB_TOKEN absent : dépôt ignoré."
@@ -168,5 +177,5 @@ jobs:
             -H "X-Filename: kinwaypoint-${VERSION}.apk" \
             -H "X-Version: ${VERSION} (${CODE})" \
             -H "X-Note: ${GITHUB_SHA::7} · ${NOTE}" \
-            "https://famille.deloffre.fr/apk/upload"
+            "${KW_FAMILY_HUB%/}/apk/upload"
           echo

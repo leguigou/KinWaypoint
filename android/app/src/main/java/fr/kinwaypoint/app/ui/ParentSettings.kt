@@ -88,7 +88,7 @@ suspend fun enableParentSharing(
     var uniqueId = members.firstOrNull { it.id == ownId }?.uniqueId
     withContext(Dispatchers.IO) {
         if (ownId == 0L || uniqueId == null) {
-            // Nom affiché : la partie avant @ de l'e-mail (« guillaume » → « Guillaume »), modifiable ensuite.
+            // Nom affiché : la partie avant @ de l'e-mail (« camille » → « Camille »), modifiable ensuite.
             val name = config.email.substringBefore('@').replaceFirstChar { it.uppercase() }.ifBlank { "Parent" }
             uniqueId = generateDeviceId()
             ownId = api.createDevice(config.token, name, uniqueId!!)
