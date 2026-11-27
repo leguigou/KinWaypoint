@@ -464,23 +464,21 @@ fun ParentSettingsScreen(
                     Text("Fréquence de suivi", style = MaterialTheme.typography.titleMedium)
                 }
                 Text(
-                    "Toutes les combien le téléphone envoie sa position : en temps normal, en déplacement, à l'arrêt. " +
-                        "Plus c'est fréquent, plus la batterie se vide vite.",
+                    "Plus c'est fréquent, plus la position est précise… et plus la batterie se vide vite. Touche un membre pour la régler.",
                     style = MaterialTheme.typography.bodySmall,
                     color = Muted,
                 )
+                // Même présentation que l'objectif de pas : avatar, prénom, réglage choisi (le détail est dans la fenêtre).
                 members.forEach { m ->
                     val c = m.cadence ?: fr.kinwaypoint.app.net.Cadence.BALANCED
                     Row(
                         modifier = Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small).clickable { cadenceFor = m }.padding(vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        Text(m.name, modifier = Modifier.weight(1f))
-                        Text(
-                            (c.presetName() ?: "Personnalisé") + " · " + cadenceLabel(c),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
+                        Avatar(m.name, size = 36.dp, photo = photos[m.id], colorHex = m.color)
+                        Text(if (m.id == ownDeviceId) "${m.name} (moi)" else m.name, modifier = Modifier.weight(1f))
+                        Text(c.presetName() ?: "Personnalisé", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                     }
                 }
             }
@@ -947,12 +945,6 @@ private fun ReorderableMembers(members: List<Member>, photos: Map<Long, Bitmap>,
             }
         }
     }
-}
-
-/** « 5 min · 15 s · 10 min » (normal · en mouvement · à l'arrêt). */
-private fun cadenceLabel(c: fr.kinwaypoint.app.net.Cadence): String {
-    fun d(seconds: Int) = if (seconds < 60) "$seconds s" else "${seconds / 60} min"
-    return "${d(c.normal)} · ${d(c.moving)} · ${d(c.still)}"
 }
 
 /** Réglage des cadences d'un membre : trois préréglages ou des valeurs sur mesure. */
