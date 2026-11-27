@@ -265,7 +265,7 @@ fun ChildLinkScreen(
 }
 
 /** Une autorisation du parcours : faite ou non, indispensable ou facultative. */
-private class PermissionStep(
+internal class PermissionStep(
     val icon: ImageVector,
     val title: String,
     val detail: String,
@@ -277,7 +277,7 @@ private class PermissionStep(
     val askedAtRuntime: Boolean = false,
 )
 
-private fun permissionSteps(p: PermissionSnapshot, a: PlatformActions): List<PermissionStep> = listOf(
+internal fun permissionSteps(p: PermissionSnapshot, a: PlatformActions): List<PermissionStep> = listOf(
     PermissionStep(Icons.Default.LocationOn, "Localisation", "Indispensable au suivi.", p.fineLocation, true, "Autoriser la localisation", a.requestLocation, askedAtRuntime = true),
     PermissionStep(
         Icons.Default.MyLocation, "Localisation « Toujours »", "Choisis « Toujours autoriser » : le suivi continue écran éteint.",

@@ -320,7 +320,40 @@ fun ChildSettingsScreen(
             }
 
             // --- Liste des catégories ------------------------------------------------
+            // Check-up du téléphone : tout ce qu'il faut pour un suivi fiable, en un coup d'œil.
+            val checks = listOf(
+                CheckItem(
+                    Icons.Default.QrCodeScanner, "Relié à la famille",
+                    if (config.isValid) "Les positions partent vers le serveur familial." else "Pas encore relié : QR code ou code d'invitation.",
+                    ok = config.isValid, fixLabel = "Relier", fix = onRelink,
+                ),
+                CheckItem(
+                    Icons.Default.MyLocation, "Suivi actif",
+                    if (status.running) "Le suivi tourne en arrière-plan." else "Le suivi est arrêté.",
+                    ok = status.running && config.enabled,
+                    fixLabel = "Démarrer",
+                    fix = { if (config.isValid) save(enabled = true) { TrackingService.start(context) } else onRelink() },
+                ),
+                CheckItem(
+                    Icons.Default.CloudOff, "Dernier envoi réussi",
+                    when {
+                        status.lastOk == true && status.lastSentAt != null -> "Position reçue par le serveur ${relativeTime(status.lastSentAt!!)}."
+                        status.lastOk == false -> "Échec : ${status.lastError ?: "réseau"}" + if (status.queued > 0) " · ${status.queued} en attente" else ""
+                        else -> "Pas encore d'envoi depuis l'ouverture de l'appli."
+                    },
+                    ok = status.lastOk != false,
+                ),
+                CheckItem(
+                    Icons.Default.Link, "Accès famille",
+                    if (config.canSeeParents) "Sonnerie, écoute et fréquence à distance possibles." else "Relie de nouveau avec le QR code pour les actions à distance.",
+                    ok = config.canSeeParents, fixLabel = "Relier", fix = onRelink,
+                ),
+            ) + permissionChecks(permissions, actions, withListen = allowListen)
+            var checkupOpen by remember { mutableStateOf(false) }
+            if (checkupOpen) CheckupDialog("Check-up du téléphone", checks, onDismiss = { checkupOpen = false })
+
             if (category == null) {
+                CheckupRow(checks) { checkupOpen = true }
                 UpdateBanner()
                 SectionCard {
                     ChildCategoryRow(Icons.Default.MyLocation, MaterialTheme.colorScheme.primary, "Suivi",

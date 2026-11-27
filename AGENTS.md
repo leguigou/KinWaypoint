@@ -108,6 +108,13 @@ demande pas de mise à jour. En cas de doute, mettre à jour.
 - Fiches de la carte (`EntryCard`) : structure fixe, une information absente
   s'affiche « — » au lieu de faire disparaître sa ligne ; pas de pastilles ni de
   date complète. Un seul tracé dessiné : celui de la fiche affichée.
+- Check-up (`Checkup.kt`) : `CheckItem` (bon / à corriger / facultatif, bouton
+  « Corriger »), affiché par `CheckupRow` + `CheckupDialog` en tête des
+  réglages enfant et parent. Toute nouvelle autorisation ou condition de bon
+  fonctionnement s'y ajoute (et dans `permissionSteps` pour la liaison).
+- QR code : `QrScanActivity` (portrait, cadre central = seule zone lue,
+  `framingRectSize`), appelée par `PlatformActions.scanQr`. Ne pas revenir à
+  l'écran zxing par défaut (paysage).
 - Curseurs : toujours `KwSlider` (poignée ronde contourée, piste fine), jamais
   le `Slider` Material brut. Rangées de gélules (`FilterChip`) dans un
   `FlowRow` pour qu'elles passent à la ligne au lieu d'être écrasées.

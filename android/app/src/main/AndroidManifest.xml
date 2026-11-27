@@ -16,6 +16,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Lecture du QR code de liaison (écran QrScanActivity). -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- Écoute en direct (visible) par un parent : micro, service « micro »,
@@ -56,6 +59,12 @@
             android:exported="false"
             android:foregroundServiceType="microphone" />
 
+        <!-- Lecture de QR code : écran maison en portrait, petit cadre de visée. -->
+        <activity
+            android:name=".ui.QrScanActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.KinWaypoint" />
         <activity
             android:name=".ListenActivity"
             android:exported="false"

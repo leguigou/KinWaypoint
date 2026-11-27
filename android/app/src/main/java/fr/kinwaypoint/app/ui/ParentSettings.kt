@@ -169,9 +169,14 @@ fun ParentSettingsScreen(
         mutableStateOf((children.firstNotNullOfOrNull { it.speedLimitKmh } ?: 50).toFloat())
     }
 
+    // null = vérification en cours (check-up : connexion au serveur).
+    var serverOk by remember { mutableStateOf<Boolean?>(null) }
     LaunchedEffect(Unit) {
-        rules = withContext(Dispatchers.IO) { runCatching { api.alertRules(config.token).keys }.getOrNull() } ?: emptySet()
+        val loaded = withContext(Dispatchers.IO) { runCatching { api.alertRules(config.token).keys }.getOrNull() }
+        serverOk = loaded != null
+        rules = loaded ?: emptySet()
     }
+    val pushToken by repository.pushToken.collectAsState(initial = null)
     val sharing = tracking.enabled && ownDeviceId != 0L
 
     // Catégorie ouverte (null = liste des catégories) ; retour = revenir à la liste.
@@ -225,7 +230,52 @@ fun ParentSettingsScreen(
             }
 
             // --- Liste des catégories (écran principal) ------------------------------
+            // Check-up : ce qu'il faut pour recevoir les alertes (et, si partagée, envoyer sa position).
+            val checks = buildList {
+                add(
+                    CheckItem(
+                        Icons.Default.CloudOff, "Connexion au serveur",
+                        when (serverOk) { null -> "Vérification…"; true -> "Le serveur familial répond."; else -> "Serveur injoignable : réseau ou adresse." },
+                        ok = serverOk != false,
+                    ),
+                )
+                add(
+                    CheckItem(
+                        Icons.Default.NotificationsActive, "Notifications autorisées",
+                        "Indispensable pour recevoir les SOS et les alertes, même appli fermée.",
+                        ok = permissions.notifications, fixLabel = "Autoriser", fix = actions.requestLocation,
+                    ),
+                )
+                add(
+                    CheckItem(
+                        Icons.Default.NotificationsActive, "Téléphone inscrit aux alertes",
+                        if (pushToken != null) "Le serveur sait où envoyer les notifications." else "Pas encore inscrit : ouvre l'accueil avec du réseau.",
+                        ok = pushToken != null,
+                    ),
+                )
+                add(
+                    CheckItem(
+                        Icons.Default.Warning, "Alerte SOS active",
+                        if (rules?.contains("sos") == true) "Un SOS d'un enfant te prévient tout de suite." else "Pas encore active : ouvre l'accueil pour l'activer.",
+                        ok = rules?.contains("sos") != false,
+                    ),
+                )
+                if (sharing) {
+                    add(
+                        CheckItem(
+                            Icons.Default.MyLocation, "Partage de ma position actif",
+                            if (status.running) "Ta position part en arrière-plan." else "Le suivi de ce téléphone est arrêté.",
+                            ok = status.running, fixLabel = "Démarrer", fix = { fr.kinwaypoint.app.service.TrackingService.start(context) },
+                        ),
+                    )
+                    addAll(permissionChecks(permissions, actions, withListen = false).filter { it.title != "Notifications" })
+                }
+            }
+            var checkupOpen by remember { mutableStateOf(false) }
+            if (checkupOpen) CheckupDialog("Check-up du téléphone", checks, onDismiss = { checkupOpen = false })
+
             if (category == null) {
+                CheckupRow(checks) { checkupOpen = true }
                 SectionCard {
                     CategoryRow(Icons.Default.MyLocation, MaterialTheme.colorScheme.primary, "Ma position",
                         when { !sharing -> "Non partagée"; ghost == true -> "Partagée · mode fantôme"; else -> "Partagée" }) { category = "position" }

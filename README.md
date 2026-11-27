@@ -148,6 +148,9 @@ Un serveur **Traccar** collecte, stocke et déclenche les alertes.
 - **Désactiver un membre** provisoirement (Paramètres → Famille → Membres
   affichés) : il disparaît de l'accueil et de la carte pour toute la famille.
   Son suivi et ses alertes continuent ; un SOS le fait réapparaître.
+- **Check-up du téléphone** (Paramètres, en tête) : connexion au serveur,
+  notifications autorisées, téléphone inscrit aux alertes, alerte SOS active,
+  et, si la position est partagée, suivi actif et autorisations.
 - Verrouillage par **PIN** ou **empreinte**, délai de reverrouillage réglable
   (1 min → jamais). **Modifier le code PIN parent** : Paramètres → Sécurité.
 - **Mise à jour depuis l'application** : notification quand une version sort,
@@ -163,6 +166,13 @@ Un serveur **Traccar** collecte, stocke et déclenche les alertes.
   (téléchargement et installation en deux touches).
 - Carte de la famille : l'enfant s'y voit, avec ses frères et sœurs et les
   parents qui partagent leur position.
+- **Check-up du téléphone** (réglages, en tête) : tout ce qu'il faut pour un
+  suivi fiable, au vert ou à corriger d'un bouton — liaison, suivi actif,
+  dernier envoi, accès famille, localisation « Toujours », activité,
+  notifications, batterie, et en facultatif micro / affichage par-dessus /
+  « Ne pas déranger ».
+- **Lecture du QR code** en portrait, avec un cadre de visée au centre, une
+  lampe et une lecture automatique.
 - **Liaison sans configuration** : « Enfant », code PIN parent, puis QR code ou
   code d'invitation ; les autorisations s'enchaînent ensuite avec un seul
   bouton. Aucune adresse ni clé n'est affichée, ni côté enfant ni dans le QR

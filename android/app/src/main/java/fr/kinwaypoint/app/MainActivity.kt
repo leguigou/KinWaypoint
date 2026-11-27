@@ -30,8 +30,6 @@ import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.google.firebase.messaging.FirebaseMessaging
-import com.journeyapps.barcodescanner.ScanContract
-import com.journeyapps.barcodescanner.ScanOptions
 import org.maplibre.android.MapLibre
 import fr.kinwaypoint.app.data.SettingsRepository
 import fr.kinwaypoint.app.net.TraccarApi
@@ -77,8 +75,9 @@ class MainActivity : FragmentActivity() {
     }
 
     private var onScanResult: ((String?) -> Unit)? = null
-    private val scanLauncher = registerForActivityResult(ScanContract()) { result ->
-        onScanResult?.invoke(result.contents)
+    // Lecture de QR code : écran maison en portrait (cadre de visée centré).
+    private val scanLauncher = registerForActivityResult(fr.kinwaypoint.app.ui.QrScanActivity.Scan()) { text ->
+        onScanResult?.invoke(text)
         onScanResult = null
     }
 
@@ -283,12 +282,7 @@ class MainActivity : FragmentActivity() {
 
     private fun scanQr(callback: (String?) -> Unit) {
         onScanResult = callback
-        val options = ScanOptions()
-            .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
-            .setPrompt("Vise le QR code affiché sur le téléphone du parent")
-            .setBeepEnabled(false)
-            .setOrientationLocked(false)
-        scanLauncher.launch(options)
+        scanLauncher.launch("Place le QR code affiché par le parent dans le cadre")
     }
 
     /** Ouvre la position dans l'appli de cartes installée (Google Maps, OsmAnd, Organic Maps…). */
