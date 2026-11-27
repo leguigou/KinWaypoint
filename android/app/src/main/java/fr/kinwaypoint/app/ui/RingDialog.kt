@@ -160,7 +160,7 @@ fun RingDialog(member: Member, photo: Bitmap?, api: TraccarApi, token: String, o
                         } else {
                             "Téléphone pas joignable tout de suite : il sonnera à son prochain envoi de position (10 min au plus)."
                         }
-                        RingState.STOPPED -> "Sonnerie arrêtée. Elle s'arrête dans les secondes qui suivent sur son téléphone."
+                        RingState.STOPPED -> "Demande d'arrêt envoyée : la sonnerie se coupe en quelques secondes sur son téléphone."
                         RingState.ENDED -> "La sonnerie s'est arrêtée toute seule après 1 min."
                     },
                     style = MaterialTheme.typography.bodyMedium,
@@ -233,7 +233,7 @@ fun RingDialog(member: Member, photo: Bitmap?, api: TraccarApi, token: String, o
                         ) {
                             Icon(Icons.Default.NotificationsOff, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.size(8.dp))
-                            Text("Arrêter une sonnerie en cours")
+                            Text("Couper la sonnerie", maxLines = 1)
                         }
                     }
                 }

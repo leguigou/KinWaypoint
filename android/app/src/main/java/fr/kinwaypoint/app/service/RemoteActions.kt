@@ -67,7 +67,9 @@ object RemoteActions {
         }
 
         // Sonnerie : demande récente, pas encore traitée, et pas annulée depuis.
-        if (ring > ringStop && ring > prefs.getLong("ring", 0L) && now - ring in -60_000L..MAX_AGE_MS) {
+        if (ring > ringStop && ring > prefs.getLong("ring", 0L) && ring > RingAlarm.lastStoppedAt &&
+            now - ring in -60_000L..MAX_AGE_MS
+        ) {
             prefs.edit().putLong("ring", ring).apply()
             Log.i(TAG, "demande à distance : faire sonner")
             RingAlarm.start(context.applicationContext)

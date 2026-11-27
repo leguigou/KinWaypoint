@@ -5,6 +5,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
+import kotlinx.coroutines.launch
 import android.content.Intent
 import android.media.AudioAttributes
 import android.media.AudioManager
@@ -36,6 +37,13 @@ object RingAlarm {
     /** État « Ne pas déranger » et mode sonnerie d'avant, rétablis à l'arrêt (-1 = inchangé). */
     private var previousFilter = -1
     private var previousRingerMode = -1
+    /** Changement de volume (touche haut ou bas) pendant la sonnerie = arrêt. */
+    private var volumeReceiver: BroadcastReceiver? = null
+    /** Heure du dernier arrêt (touche, bouton, parent) : une demande plus ancienne ne relance pas la sonnerie. */
+    @Volatile var lastStoppedAt = 0L
+        private set
+    /** Vérification régulière d'un arrêt demandé à distance par un parent. */
+    private var stopPoller: kotlinx.coroutines.Job? = null
 
     fun start(context: Context) = main.post { startOnMain(context.applicationContext) }
 
@@ -88,11 +96,18 @@ object RingAlarm {
         }.onFailure { Log.e("KinWaypoint", "sonnerie impossible", it) }.getOrNull()
         showNotification(context)
         listenVolumeKeys(context)
+        watchVolumeChanges(context)
+        pollRemoteStop(context)
         main.postDelayed({ stopOnMain(context) }, DURATION_MS)
     }
 
     private fun stopOnMain(context: Context) {
+        if (player != null) lastStoppedAt = System.currentTimeMillis()
         main.removeCallbacksAndMessages(null)
+        stopPoller?.cancel()
+        stopPoller = null
+        volumeReceiver?.let { runCatching { context.unregisterReceiver(it) } }
+        volumeReceiver = null
         player?.let { runCatching { it.stop(); it.release() } }
         player = null
         session?.let { runCatching { it.isActive = false; it.release() } }
@@ -138,6 +153,47 @@ object RingAlarm {
         }.onFailure { Log.w("KinWaypoint", "touches de volume non captées", it) }.getOrNull()
     }
 
+    /**
+     * Touches de volume, version fiable : toute variation de volume (le son de
+     * l'alarme en cours, la sonnerie…) arrête la sonnerie. La session média
+     * ci-dessus ne reçoit pas les touches sur tous les téléphones. Les variations
+     * de la première seconde sont ignorées : c'est nous qui montons le volume.
+     */
+    private fun watchVolumeChanges(context: Context) {
+        val armedAt = android.os.SystemClock.elapsedRealtime() + 1_000L
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(c: Context, intent: Intent) {
+                if (android.os.SystemClock.elapsedRealtime() < armedAt) return
+                Log.i("KinWaypoint", "touche de volume : arrêt de la sonnerie")
+                stop(context)
+            }
+        }
+        runCatching {
+            androidx.core.content.ContextCompat.registerReceiver(
+                context,
+                receiver,
+                android.content.IntentFilter("android.media.VOLUME_CHANGED_ACTION"),
+                androidx.core.content.ContextCompat.RECEIVER_EXPORTED,
+            )
+            volumeReceiver = receiver
+        }.onFailure { Log.w("KinWaypoint", "variations de volume non suivies", it) }
+    }
+
+    /**
+     * Arrêt à distance sans attendre le réveil Firebase (parfois retardé par
+     * Android) : tant que ça sonne, le téléphone relit toutes les 3 s la demande
+     * « arrêter » posée par le parent (attribut kwRingStop).
+     */
+    private fun pollRemoteStop(context: Context) {
+        stopPoller?.cancel()
+        stopPoller = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            while (true) {
+                kotlinx.coroutines.delay(3_000)
+                runCatching { RemoteActions.check(context, force = true) }
+            }
+        }
+    }
+
     private fun showNotification(context: Context) {
         val manager = context.getSystemService(NotificationManager::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -156,6 +212,7 @@ object RingAlarm {
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("Ta famille cherche ce téléphone")
             .setContentText("Appuie sur une touche de volume, ou sur « Arrêter », pour couper la sonnerie.")
+            .setStyle(NotificationCompat.BigTextStyle().bigText("Appuie sur une touche de volume, ou sur « Arrêter », pour couper la sonnerie."))
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setOngoing(true)

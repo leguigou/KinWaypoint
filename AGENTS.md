@@ -175,8 +175,13 @@ demande pas de mise à jour. En cas de doute, mettre à jour.
 16. **Sonnerie** (`RingAlarm`) : forcer le son en « Ne pas déranger » exige
     l'autorisation `ACCESS_NOTIFICATION_POLICY` accordée à la main par
     l'utilisateur ; le mode sonnerie et le filtre sont rétablis à l'arrêt. Les
-    touches de volume sont captées par une `MediaSession` active pendant la
-    sonnerie (marche écran allumé ; écran éteint, cela dépend du fabricant).
+    touches de volume sont détectées par la diffusion
+    `android.media.VOLUME_CHANGED_ACTION` (toute variation de volume après la
+    première seconde arrête la sonnerie) et, en plus, par une `MediaSession`
+    (qui ne reçoit pas les touches sur tous les téléphones). Pendant la
+    sonnerie, le téléphone relit `kwRingStop` toutes les 3 s : l'arrêt à
+    distance ne dépend pas du réveil Firebase, parfois retardé. Une demande
+    `kwRing` antérieure au dernier arrêt n'est jamais rejouée.
 17. **Membre désactivé** : attribut `kwHidden` de l'appareil (`setHidden`),
     filtré seulement à l'affichage (accueil, carte) via `shownMembers` ; le
     suivi, les alertes, l'historique et les réglages gardent la liste complète.
