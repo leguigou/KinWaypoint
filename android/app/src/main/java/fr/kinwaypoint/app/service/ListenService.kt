@@ -51,6 +51,20 @@ class ListenService : Service() {
     companion object {
         private const val TAG = "KinWaypoint"
         private const val CHANNEL_ID = "listen"
+
+        /**
+         * Prévenir l'enfant de façon PROACTIVE au démarrage d'une écoute :
+         *  - true  : écran plein « Un parent t'écoute » (notification « appel »
+         *            plein écran) qui s'ouvre tout seul, en plus du reste.
+         *  - false : pas d'écran qui s'ouvre de force, mais l'écoute reste
+         *            TOUJOURS signalée — notification permanente non
+         *            supprimable, point vert d'Android, et bandeau dans l'appli.
+         *
+         * Point de réglage unique, pour la maintenance. NE JAMAIS tout masquer :
+         * une écoute cachée est interdite (voir AGENTS.md « jamais d'écoute
+         * cachée »). Au moins un indicateur visible reste affiché quoi qu'il arrive.
+         */
+        const val ALERT_CHILD_ON_START = true
         private const val NOTIFICATION_ID = 79
         private const val REQUEST_NOTIFICATION_ID = 80
         private const val MAX_MS = 10 * 60_000L
@@ -82,8 +96,16 @@ class ListenService : Service() {
                     .putExtra(EXTRA_ROOM, room)
                     .putExtra(EXTRA_SECRET, secret)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                val opened = Settings.canDrawOverlays(app) && runCatching { app.startActivity(screen) }.isSuccess
-                if (!opened) showRequestNotification(app, screen)
+                // Écran plein d'alerte seulement si ALERT_CHILD_ON_START ; sinon on va
+                // directement au service, qui affichera la notification permanente visible.
+                val opened = ALERT_CHILD_ON_START && Settings.canDrawOverlays(app) &&
+                    runCatching { app.startActivity(screen) }.isSuccess
+                when {
+                    opened -> Unit
+                    ALERT_CHILD_ON_START -> showRequestNotification(app, screen)
+                    // Sans alerte proactive : le service démarre et pose sa notification permanente.
+                    else -> start(app, room, secret)
+                }
             }
         }
 

@@ -74,7 +74,11 @@ demande pas de mise à jour. En cas de doute, mettre à jour.
 - L'identifiant d'appareil Traccar est le secret d'envoi des positions : ne
   jamais l'écrire dans un journal ni une capture.
 - Écoute en direct : toujours visible côté enfant, jamais d'enregistrement.
-  Ne pas proposer d'écoute ou de suivi cachés.
+  Ne pas proposer d'écoute ou de suivi cachés. La constante
+  `ListenService.ALERT_CHILD_ON_START` règle seulement l'alerte PROACTIVE
+  (écran plein qui s'ouvre) ; la notification permanente, le point vert et le
+  bandeau dans l'appli restent affichés quelle que soit sa valeur. Ne jamais
+  ajouter de réglage qui masquerait TOUT indicateur.
 
 ## Conventions de code
 
