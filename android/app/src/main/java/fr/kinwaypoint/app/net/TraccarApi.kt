@@ -45,6 +45,8 @@ data class Member(
     val cadence: Cadence? = null,
     /** Désactivé par un parent (attribut kwHidden) : masqué de l'accueil et de la carte, suivi inchangé. */
     val hidden: Boolean = false,
+    /** Économie d'énergie sévère sous ce niveau de batterie (%), 0 = jamais (attribut kwSaverBelow). */
+    val saverBelow: Int = 0,
 )
 
 /**
@@ -108,6 +110,8 @@ data class MemberPosition(
     val activity: String? = null,
     /** Vitesse en km/h (lissée par le téléphone si disponible, sinon GPS). */
     val kmh: Double? = null,
+    /** Téléphone en économie d'énergie (sur le Wi-Fi d'une box, ou batterie sous le seuil). */
+    val eco: Boolean = false,
 )
 
 /** Un lieu de la famille (zone circulaire Traccar) : maison, école… */
@@ -352,6 +356,7 @@ class TraccarApi(baseUrl: String) {
                 activity = attrs?.optString("activity")?.takeIf { it.isNotBlank() }
                     ?: activityFromSpeed(p.optDouble("speed", 0.0) * 1.852),
                 kmh = attrs?.takeIf { it.has("kmh") }?.optDouble("kmh") ?: p.optDouble("speed", 0.0) * 1.852,
+                eco = attrs?.let { a -> a.optBoolean("eco", false) || a.optString("eco") == "true" } == true,
             )
     }
 
@@ -373,6 +378,7 @@ class TraccarApi(baseUrl: String) {
                 ghost = d.optJSONObject("attributes")?.optBoolean("kwGhost", false) == true,
                 order = d.optJSONObject("attributes")?.takeIf { it.has("kwOrder") }?.optInt("kwOrder"),
                 hidden = d.optJSONObject("attributes")?.optBoolean("kwHidden", false) == true,
+                saverBelow = d.optJSONObject("attributes")?.optInt("kwSaverBelow", 0) ?: 0,
                 cadence = d.optJSONObject("attributes")?.let { a ->
                     val n = a.optInt("kwIntNormal", 0); val m = a.optInt("kwIntMoving", 0); val s = a.optInt("kwIntStill", 0)
                     if (n > 0 && m > 0 && s > 0) Cadence(n, m, s) else null
@@ -599,6 +605,16 @@ class TraccarApi(baseUrl: String) {
     fun setCadence(token: String, id: Long, cadence: Cadence) {
         updateAttributes(token, id) { attrs ->
             attrs.put("kwIntNormal", cadence.normal).put("kwIntMoving", cadence.moving).put("kwIntStill", cadence.still)
+        }
+    }
+
+    /**
+     * Seuil d'économie d'énergie commun à toute la famille (attribut kwSaverBelow
+     * de chaque appareil) : chaque téléphone le lit à son prochain envoi.
+     */
+    fun setSaverBelow(token: String, ids: List<Long>, percent: Int) {
+        ids.forEach { id ->
+            updateAttributes(token, id) { attrs -> if (percent <= 0) attrs.remove("kwSaverBelow") else attrs.put("kwSaverBelow", percent) }
         }
     }
 

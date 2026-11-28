@@ -31,6 +31,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Eco
 import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -594,17 +595,18 @@ private fun EntryCard(
             Row(Modifier.fillMaxWidth()) {
                 val battery = position?.battery
                 val charging = position?.charging == true
+                // Feuille verte à la place de la pile : téléphone en économie d'énergie.
+                val eco = position?.eco == true && !charging
                 MapStat(
-                    icon = if (charging) Icons.Default.BatteryChargingFull else Icons.Default.BatteryFull,
-                    text = battery?.let { "$it %" } ?: "—",
-                    color = when {
-                        battery == null -> Muted
-                        charging -> Ok
-                        battery < 10 -> Danger
-                        battery < 20 -> Warning
-                        else -> MaterialTheme.colorScheme.onSurface
+                    icon = when {
+                        eco -> Icons.Default.Eco
+                        charging -> Icons.Default.BatteryChargingFull
+                        else -> Icons.Default.BatteryFull
                     },
+                    text = battery?.let { "$it %" } ?: "—",
+                    color = battery?.let { batteryColor(it, charging) } ?: Muted,
                     modifier = Modifier.weight(1f),
+                    iconTint = if (eco) EcoGreen else null,
                 )
                 val accuracy = if (entry.isMe) me?.accuracy?.toDouble() ?: position?.accuracy else position?.accuracy
                 MapStat(
@@ -648,9 +650,9 @@ private fun EntryCard(
 
 /** Un chiffre de la fiche carte : petit pictogramme + valeur, sur une ligne. */
 @Composable
-private fun MapStat(icon: ImageVector, text: String, color: Color, modifier: Modifier = Modifier) {
+private fun MapStat(icon: ImageVector, text: String, color: Color, modifier: Modifier = Modifier, iconTint: Color? = null) {
     Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        Icon(icon, contentDescription = null, tint = if (color == MaterialTheme.colorScheme.onSurface) Muted else color, modifier = Modifier.size(16.dp))
+        Icon(icon, contentDescription = null, tint = iconTint ?: if (color == MaterialTheme.colorScheme.onSurface) Muted else color, modifier = Modifier.size(16.dp))
         Text(text, style = MaterialTheme.typography.labelLarge, color = color, maxLines = 1, softWrap = false)
     }
 }

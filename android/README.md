@@ -53,6 +53,9 @@ est créé à ce moment-là. Présentation générale et installation du serveur
   - en voiture (> 15 km/h, 3 min de tolérance aux feux) : cadence « en
     déplacement », 1 min au plus ;
   - branché : 10 s en voiture, 1 min à pied, 2 min sinon, moitié à l'arrêt ;
+  - économie (Wi-Fi d'une box, ou batterie sous le seuil des parents ; jamais
+    branché) : réseau seul, 15 min (2 min en voiture, 30 min à l'arrêt),
+    accéléromètre coupé, pas ignorés sur le Wi-Fi ;
   - 10 min à l'arrêt, GPS coupé ;
   - hors arrêt, la position réseau (Wi-Fi, antennes) est relevée chaque minute
     pour repérer un départ en voiture sans attendre le GPS.

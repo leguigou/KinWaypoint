@@ -61,6 +61,15 @@ object RemoteActions {
             }
         }
 
+        // Économie d'énergie : seuil de batterie choisi par un parent pour toute la famille.
+        val saverBelow = attrs.optInt("kwSaverBelow", 0).coerceIn(0, 100)
+        val currentCfg = repository.config.first()
+        if (currentCfg.saverBelow != saverBelow) {
+            repository.save(currentCfg.copy(saverBelow = saverBelow))
+            Log.i(TAG, "économie d'énergie reçue des parents : sous $saverBelow %")
+            TrackingService.reload(context.applicationContext)
+        }
+
         // Arrêt de la sonnerie demandé par un parent (plus récent que la demande de sonner).
         val ring = attrs.optLong("kwRing", 0L)
         val ringStop = attrs.optLong("kwRingStop", 0L)

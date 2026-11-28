@@ -28,6 +28,8 @@ data class TrackingStatusState(
     val kmh: Double? = null,
     /** Suivi rapproché en cours (mouvement détecté : une position toutes les 15 s). */
     val boosting: Boolean = false,
+    /** Économie d'énergie active (Wi-Fi d'une box, ou batterie sous le seuil). */
+    val eco: Boolean = false,
 )
 
 /** État partagé entre le service de suivi et l'interface (volontairement simple). */

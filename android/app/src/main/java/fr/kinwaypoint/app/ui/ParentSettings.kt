@@ -581,6 +581,38 @@ fun ParentSettingsScreen(
                 }
             }
 
+            // --- Économie d'énergie (un seul réglage pour toute la famille) --------------
+            SectionCard {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Icon(Icons.Default.Eco, contentDescription = null, tint = EcoGreen)
+                    Text("Économie d'énergie", style = MaterialTheme.typography.titleMedium)
+                }
+                Text(
+                    "Sous ce niveau de batterie, chaque téléphone passe en économie sévère : position par le réseau " +
+                        "(sans GPS), toutes les 15 min (2 min en voiture). Même chose, toujours, quand il est connecté " +
+                        "au Wi-Fi d'une box (lieu sûr). Jamais quand il est branché. Une feuille verte le signale sur sa carte. " +
+                        "Appliqué à tous les téléphones à leur prochain envoi, sans mise à jour de l'appli.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Muted,
+                )
+                val saverNow = members.firstNotNullOfOrNull { it.saverBelow.takeIf { p -> p > 0 } } ?: 0
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    listOf(0 to "Jamais", 15 to "15 %", 20 to "20 %", 30 to "30 %", 40 to "40 %").forEach { (pct, label) ->
+                        androidx.compose.material3.FilterChip(
+                            selected = saverNow == pct,
+                            enabled = !busy,
+                            onClick = {
+                                launchOp {
+                                    withContext(Dispatchers.IO) { api.setSaverBelow(config.token, members.map { it.id }, pct) }
+                                    onMembersChanged()
+                                }
+                            },
+                            label = { Text(label, maxLines = 1) },
+                        )
+                    }
+                }
+            }
+
             // --- Fréquence de suivi ------------------------------------------------------
             SectionCard {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {

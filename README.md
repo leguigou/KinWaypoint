@@ -47,6 +47,13 @@ Un serveur **Traccar** collecte, stocke et déclenche les alertes.
     peu gourmande, relevée chaque minute ;
   - **téléphone branché** : bien plus serré (10 s en voiture, 1 min à pied,
     2 min sinon) ;
+  - **économie d'énergie** (jamais si branché) : sur le **Wi-Fi d'une box**
+    (lieu sûr), ou sous un **seuil de batterie** choisi une fois pour toute la
+    famille (Paramètres → Famille : jamais, 15, 20, 30 ou 40 %). Position par le
+    réseau (sans GPS), toutes les 15 min (2 min en voiture, 30 min à l'arrêt),
+    accéléromètre coupé ; les pas dans la maison ne réveillent plus le suivi,
+    c'est la perte du Wi-Fi qui signale un départ. **Feuille verte** sur la
+    batterie de la personne concernée ;
   - toutes les **10 min** à l'arrêt, GPS coupé. L'arrêt est détecté par le
     podomètre et l'accéléromètre, et la position est figée pour ne pas
     enregistrer le « tremblement » du GPS.
@@ -98,6 +105,8 @@ Un serveur **Traccar** collecte, stocke et déclenche les alertes.
   voiture) avec distance, durée, vitesses moyenne et maximale ; le trajet choisi
   est tracé en gras sur la carte.
 - **Relecture d'une journée** : lecture, pause et curseur horaire.
+- **Couleurs de batterie** : vert avec l'éclair en charge, bleu en temps
+  normal, orange clair ≤ 40 %, orange foncé ≤ 30 %, rouge ≤ 15 %.
 - **Courbe de batterie** : toucher le bouton batterie (« 71 % », en bas à droite
   du bloc position) d'une carte membre ouvre une fenêtre avec la charge et la décharge de 0 h à 24 h
   (périodes en charge en vert), minimum et maximum, décharge moyenne (% par

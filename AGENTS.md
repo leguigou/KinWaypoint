@@ -187,8 +187,8 @@ demande pas de mise à jour. En cas de doute, mettre à jour.
     par `TrackingService.reload()`. Il faut un accès famille configuré sur le
     téléphone (jeton parent ou lecteur), sinon rien n'est lu.
 15. **Wi-Fi** : `wifiOn` (activé ou non) et `ssid` (nom, seulement si la
-    localisation est accordée et activée). `FixQueue` en version 4 (colonne
-    `wifi_on`) : toute nouvelle colonne passe par une montée de version.
+    localisation est accordée et activée). `FixQueue` en version 5 (colonnes
+    `wifi_on`, `eco`) : toute nouvelle colonne passe par une montée de version.
 16. **Sonnerie** (`RingAlarm`) : forcer le son en « Ne pas déranger » exige
     l'autorisation `ACCESS_NOTIFICATION_POLICY` accordée à la main par
     l'utilisateur ; le mode sonnerie et le filtre sont rétablis à l'arrêt. Les
@@ -226,6 +226,14 @@ demande pas de mise à jour. En cas de doute, mettre à jour.
     branché (`pluggedIn`, `ACTION_POWER_CONNECTED`). Toute bascule appelle
     `registerLocation()` pour réappliquer l'intervalle. La cadence « en
     déplacement » des parents s'applique à la voiture.
+    **Économie** (`eco`, jamais branché) : Wi-Fi d'une box (`onBoxWifi`,
+    réseau Wi-Fi non facturé au volume, suivi par `networkCallback`) hors
+    voiture, ou batterie ≤ `saverBelow` (attribut `kwSaverBelow` posé sur tous
+    les appareils par `setSaverBelow`, lu par `RemoteActions`). Réseau seul
+    (pas de GPS), intervalles ≥ 15 min, accéléromètre coupé, pas ignorés sur le
+    Wi-Fi. L'état part avec chaque position (`eco`, colonne `eco` de la
+    `FixQueue` v5) et s'affiche par une feuille verte. Couleurs de batterie :
+    toujours `batteryColor()`.
 
 22. **SMS de secours** : chaque appli parent écrit son numéro (attribut
     `kwPhone` de son compte, `setOwnPhone`) dans l'attribut `kwSosPhones`

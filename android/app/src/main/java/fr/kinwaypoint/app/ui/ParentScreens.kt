@@ -45,6 +45,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Eco
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import kotlinx.coroutines.flow.first
@@ -1159,7 +1160,7 @@ private fun MemberCard(
                             "vibrate" -> InfoChip(Icons.Default.Vibration, "Vibreur", Muted)
                         }
                     }
-                    position.battery?.let { BatteryBadge(it, position.charging == true, onClick = onBattery) }
+                    position.battery?.let { BatteryBadge(it, position.charging == true, eco = position.eco, onClick = onBattery) }
                 }
             }
         }
@@ -1276,18 +1277,14 @@ private fun MemberStatusLine(online: Boolean, fixTime: Long?) {
 
 /** Batterie en haut à droite : rouge < 10 %, orange < 20 %, vert en charge. */
 @Composable
-private fun BatteryBadge(level: Int, charging: Boolean, onClick: () -> Unit = {}) {
-    val color = when {
-        charging -> Ok
-        level < 10 -> Danger
-        level < 20 -> Warning
-        else -> MaterialTheme.colorScheme.onSurface
-    }
-    // Même style qu'avant, dans une gélule contourée : on voit que c'est un bouton
-    // (il ouvre la courbe de charge / décharge).
+private fun BatteryBadge(level: Int, charging: Boolean, eco: Boolean = false, onClick: () -> Unit = {}) {
+    val color = batteryColor(level, charging)
+    // Gélule contourée de la couleur du niveau : on voit que c'est un bouton
+    // (il ouvre la courbe de charge / décharge). Feuille verte = économie d'énergie.
     Row(
         Modifier.clip(CircleShape)
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
+            .border(1.dp, color.copy(alpha = 0.45f), CircleShape)
+            .background(color.copy(alpha = 0.08f))
             .clickable(onClickLabel = "Voir la courbe de batterie", onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -1296,14 +1293,17 @@ private fun BatteryBadge(level: Int, charging: Boolean, onClick: () -> Unit = {}
         Icon(
             when {
                 charging -> Icons.Default.BatteryChargingFull
-                level < 20 -> Icons.Default.BatteryAlert
+                level <= 15 -> Icons.Default.BatteryAlert
                 else -> Icons.Default.BatteryFull
             },
             contentDescription = if (charging) "En charge" else "Batterie",
-            tint = if (color == MaterialTheme.colorScheme.onSurface) Muted else color,
+            tint = color,
             modifier = Modifier.size(18.dp),
         )
         Text("$level %", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = color)
+        if (eco && !charging) {
+            Icon(Icons.Default.Eco, contentDescription = "Économie d'énergie", tint = EcoGreen, modifier = Modifier.size(16.dp))
+        }
     }
 }
 

@@ -128,3 +128,19 @@ fun fr.kinwaypoint.app.net.MemberPosition.stepsToday(now: Long = System.currentT
     val today = java.time.Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
     return if (fixDay == today) s else 0
 }
+
+
+/**
+ * Couleur du niveau de batterie, partout dans l'appli : vert en charge, bleu
+ * en temps normal, orange clair ≤ 40 %, orange foncé ≤ 30 %, rouge ≤ 15 %.
+ */
+fun batteryColor(level: Int, charging: Boolean): androidx.compose.ui.graphics.Color = when {
+    charging -> androidx.compose.ui.graphics.Color(0xFF12B886)
+    level <= 15 -> androidx.compose.ui.graphics.Color(0xFFE5484D)
+    level <= 30 -> androidx.compose.ui.graphics.Color(0xFFE8590C)
+    level <= 40 -> androidx.compose.ui.graphics.Color(0xFFF59F00)
+    else -> androidx.compose.ui.graphics.Color(0xFF3B82F6)
+}
+
+/** Vert de la feuille « économie d'énergie ». */
+val EcoGreen = androidx.compose.ui.graphics.Color(0xFF2F9E44)

@@ -45,6 +45,11 @@ data class TrackingConfig(
     val movingSeconds: Int = DEFAULT_MOVING_SECONDS,
     /** Cadence à l'arrêt, GPS coupé (s) : 10 min par défaut. */
     val stillSeconds: Int = DEFAULT_STILL_SECONDS,
+    /**
+     * Économie d'énergie sévère sous ce niveau de batterie (%), réglée par un
+     * parent pour toute la famille (attribut kwSaverBelow) ; 0 = jamais.
+     */
+    val saverBelow: Int = 0,
 ) {
     val canSeeParents: Boolean get() = apiUrl.isNotBlank() && viewerToken.isNotBlank()
 
@@ -126,6 +131,7 @@ class SettingsRepository(private val context: Context) {
 
         val CAD_MOVING = intPreferencesKey("cadence_moving_seconds")
         val CAD_STILL = intPreferencesKey("cadence_still_seconds")
+        val SAVER_BELOW = intPreferencesKey("saver_below_percent")
     }
 
     val mode: Flow<AppMode> = context.dataStore.data.map { prefs ->
@@ -142,6 +148,7 @@ class SettingsRepository(private val context: Context) {
             viewerToken = prefs[Keys.VIEW_TOKEN].orEmpty(),
             movingSeconds = prefs[Keys.CAD_MOVING] ?: DEFAULT_MOVING_SECONDS,
             stillSeconds = prefs[Keys.CAD_STILL] ?: DEFAULT_STILL_SECONDS,
+            saverBelow = prefs[Keys.SAVER_BELOW] ?: 0,
         )
     }
 
@@ -307,6 +314,7 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.VIEW_TOKEN] = config.viewerToken
             prefs[Keys.CAD_MOVING] = config.movingSeconds
             prefs[Keys.CAD_STILL] = config.stillSeconds
+            prefs[Keys.SAVER_BELOW] = config.saverBelow
         }
     }
 

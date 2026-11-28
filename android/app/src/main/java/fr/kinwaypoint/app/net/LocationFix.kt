@@ -30,4 +30,6 @@ data class LocationFix(
     val kmh: Double? = null,
     /** Wi-Fi du téléphone activé (connecté ou non), ou null si inconnu. */
     val wifiOn: Boolean? = null,
+    /** Téléphone en économie d'énergie au moment de la mesure (feuille verte chez les parents). */
+    val eco: Boolean = false,
 )

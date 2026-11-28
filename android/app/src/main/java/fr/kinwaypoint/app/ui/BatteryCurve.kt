@@ -224,9 +224,9 @@ fun BatteryDialog(
                         Icon(
                             if (member.position?.charging == true) Icons.Default.BatteryChargingFull else Icons.Default.BatteryFull,
                             contentDescription = null,
-                            tint = if (member.position?.charging == true) AppTheme.colors.success else if (level < 20) Danger else color,
+                            tint = batteryColor(level, member.position?.charging == true),
                         )
-                        Text("$level %", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text("$level %", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = batteryColor(level, member.position?.charging == true))
                     }
                 }
 

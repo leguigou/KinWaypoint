@@ -14,7 +14,7 @@ import fr.kinwaypoint.app.net.LocationFix
  * Les alertes (SOS) passent toujours avant l'historique en retard.
  */
 class FixQueue private constructor(context: Context) :
-    SQLiteOpenHelper(context.applicationContext, "fix_queue.db", null, 4) {
+    SQLiteOpenHelper(context.applicationContext, "fix_queue.db", null, 5) {
 
     companion object {
         @Volatile private var instance: FixQueue? = null
@@ -56,7 +56,8 @@ class FixQueue private constructor(context: Context) :
                 steps INTEGER,
                 activity TEXT,
                 kmh REAL,
-                wifi_on INTEGER
+                wifi_on INTEGER,
+                eco INTEGER
             )
             """.trimIndent(),
         )
@@ -77,6 +78,10 @@ class FixQueue private constructor(context: Context) :
         // v4 : Wi-Fi activé ou coupé (même sans réseau connecté).
         if (oldVersion < 4) {
             db.execSQL("ALTER TABLE fixes ADD COLUMN wifi_on INTEGER")
+        }
+        // v5 : économie d'énergie active au moment de la mesure.
+        if (oldVersion < 5) {
+            db.execSQL("ALTER TABLE fixes ADD COLUMN eco INTEGER")
         }
     }
 
@@ -100,6 +105,7 @@ class FixQueue private constructor(context: Context) :
             put("activity", fix.activity)
             put("kmh", fix.kmh)
             put("wifi_on", fix.wifiOn?.let { if (it) 1 else 0 })
+            put("eco", if (fix.eco) 1 else 0)
         }
         val db = writableDatabase
         val id = db.insert("fixes", null, values)
@@ -112,7 +118,7 @@ class FixQueue private constructor(context: Context) :
     fun peek(limit: Int): List<Entry> {
         val result = mutableListOf<Entry>()
         readableDatabase.rawQuery(
-            "SELECT id, time, lat, lon, accuracy, altitude, speed, bearing, battery, charging, alarm, fix_age, ringer, wifi, steps, activity, kmh, wifi_on " +
+            "SELECT id, time, lat, lon, accuracy, altitude, speed, bearing, battery, charging, alarm, fix_age, ringer, wifi, steps, activity, kmh, wifi_on, eco " +
                 "FROM fixes ORDER BY (alarm IS NULL), time, id LIMIT ?",
             arrayOf(limit.toString()),
         ).use { c ->
@@ -137,6 +143,7 @@ class FixQueue private constructor(context: Context) :
                         activity = if (c.isNull(15)) null else c.getString(15),
                         kmh = if (c.isNull(16)) null else c.getDouble(16),
                         wifiOn = if (c.isNull(17)) null else c.getInt(17) == 1,
+                        eco = !c.isNull(18) && c.getInt(18) == 1,
                     ),
                 )
             }

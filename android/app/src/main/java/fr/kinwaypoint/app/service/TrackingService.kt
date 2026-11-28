@@ -93,7 +93,8 @@ class TrackingService : Service(), LocationListener {
         /** Aucun pas et téléphone immobile depuis ce temps → « à l'arrêt », sans attendre le GPS. */
         private const val CALM_STILL_MS = 3 * 60 * 1000L
         /** Pas comptés depuis la mise « à l'arrêt » qui suffisent à en sortir. */
-        private const val STEPS_TO_WAKE = 15
+        /** Pas nécessaires pour quitter « à l'arrêt » : quelques pas dans la maison ne suffisent pas. */
+        private const val STEPS_TO_WAKE = 40
         /** Écart d'accélération (m/s²) sur quelques secondes au-delà duquel le téléphone bouge. */
         private const val SHAKE_THRESHOLD = 0.6f
         /** Cadence d'envoi à l'arrêt (sert aussi de signe de vie pour les parents). */
@@ -287,9 +288,47 @@ class TrackingService : Service(), LocationListener {
      * - à pied : cadence normale, 5 min au plus ; 1 min si branché ;
      * - sinon : cadence normale (2 min au plus si branché).
      */
+    // --- Économie d'énergie ---------------------------------------------------------
+    /** Connecté au Wi-Fi d'une box (non facturé au volume) : téléphone à ~50 m de la box, en lieu sûr. */
+    @Volatile private var onBoxWifi = false
+    /** Dernier niveau de batterie lu (%), comparé au seuil choisi par les parents. */
+    @Volatile private var lastBatteryLevel = 100
+    private val mainHandler = android.os.Handler(Looper.getMainLooper())
+    /** Économie « box » : sur le Wi-Fi d'une box, et pas en voiture (Wi-Fi de bord). */
+    private val ecoWifi: Boolean get() = onBoxWifi && !inVehicle
+    /** Économie « batterie » : sous le seuil réglé par les parents (0 = jamais). */
+    private val ecoBattery: Boolean get() = (config?.saverBelow ?: 0).let { t -> t > 0 && lastBatteryLevel in 1..t }
+    /** Économie d'énergie : jamais quand le téléphone est branché. */
+    private val eco: Boolean get() = !pluggedIn && (ecoWifi || ecoBattery)
+    private var ecoApplied = false
+
+    /**
+     * Applique le mode économie s'il change : accéléromètre coupé, GPS remplacé
+     * par la position réseau (Wi-Fi / antennes), intervalles allongés. Le
+     * podomètre (puce dédiée, quasi gratuit) et le capteur de mouvement
+     * significatif restent actifs pour repérer un vrai départ.
+     */
+    private fun updateEco() {
+        val now = eco
+        if (now == ecoApplied) return
+        ecoApplied = now
+        Log.i(TAG, if (now) "économie d'énergie (${if (ecoWifi) "Wi-Fi d'une box" else "batterie faible"})" else "fin de l'économie d'énergie")
+        TrackingStatus.update { it.copy(eco = now) }
+        if (now) watchPhoneMotion(false) else if (!still) watchPhoneMotion(!eco)
+        if (started) registerLocation()
+    }
+
     private val currentIntervalMs: Long
         get() {
             val now = SystemClock.elapsedRealtime()
+            // Économie : intervalles nettement allongés (le GPS est déjà remplacé par le réseau).
+            if (eco) return when {
+                still -> maxOf(intervalMs, stillMs, 30 * 60_000L)
+                inVehicle -> maxOf(minOf(movingMs, 60_000L), 120_000L)
+                now < probeUntilElapsed -> 30_000L
+                boosting -> maxOf(intervalMs, 10 * 60_000L)
+                else -> maxOf(intervalMs, 15 * 60_000L)
+            }
             return when {
                 still -> maxOf(intervalMs, stillMs).let { if (pluggedIn) maxOf(it / 2, 120_000L) else it }
                 inVehicle -> if (pluggedIn) minOf(movingMs, 10_000L) else minOf(movingMs, 60_000L)
@@ -308,6 +347,7 @@ class TrackingService : Service(), LocationListener {
             inVehicle = next
             Log.i(TAG, if (next) "en voiture : suivi serré" else "plus en voiture")
             registerLocation()
+            updateEco()
         }
     }
 
@@ -369,6 +409,9 @@ class TrackingService : Service(), LocationListener {
         TrackingStatus.update { it.copy(steps = today) }
         if (lastStepTotal in 0 until total) lastStepElapsed = SystemClock.elapsedRealtime()
         lastStepTotal = total
+        // Sur le Wi-Fi de la box : les pas dans la maison ne comptent pas ; c'est la
+        // perte du Wi-Fi qui signale un départ (sans réveiller le GPS pour rien).
+        if (ecoWifi) return
         // « À l'arrêt » et la personne se remet à marcher : on repart tout de suite.
         if (still && stepsAtStill >= 0 && total - stepsAtStill >= STEPS_TO_WAKE) {
             Log.i(TAG, "pas détectés : fin du mode à l'arrêt")
@@ -388,6 +431,24 @@ class TrackingService : Service(), LocationListener {
         override fun onAvailable(network: Network) {
             flush()
         }
+
+        // Wi-Fi d'une box (non facturé au volume) = lieu sûr : économie d'énergie.
+        override fun onCapabilitiesChanged(network: Network, caps: android.net.NetworkCapabilities) {
+            val box = caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) &&
+                caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
+            if (box != onBoxWifi) {
+                onBoxWifi = box
+                mainHandler.post { updateEco() }
+            }
+        }
+
+        // Wi-Fi perdu (on s'éloigne de la box) : retour au suivi normal aussitôt.
+        override fun onLost(network: Network) {
+            if (onBoxWifi) {
+                onBoxWifi = false
+                mainHandler.post { updateEco() }
+            }
+        }
     }
 
     /** Branché / débranché : la cadence s'adapte aussitôt. */
@@ -398,6 +459,7 @@ class TrackingService : Service(), LocationListener {
                 pluggedIn = plugged
                 Log.i(TAG, if (plugged) "branché : suivi plus serré" else "débranché : cadence normale")
                 if (started) registerLocation()
+                updateEco()
             }
         }
     }
@@ -461,7 +523,7 @@ class TrackingService : Service(), LocationListener {
         when (intent?.action) {
             ACTION_RELOAD -> scope.launch {
                 applyCadence(SettingsRepository(applicationContext).snapshot())
-                withContext(Dispatchers.Main) { registerLocation() }
+                withContext(Dispatchers.Main) { registerLocation(); updateEco() }
             }
             ACTION_SOS -> triggerSos()
             ACTION_PING -> sendNow(alarm = null)
@@ -495,7 +557,7 @@ class TrackingService : Service(), LocationListener {
                 registerLocation()
                 registerNetwork()
                 startStepsIfAllowed()
-                watchPhoneMotion(true)
+                watchPhoneMotion(!eco)
             }
             flush()
         }
@@ -515,6 +577,7 @@ class TrackingService : Service(), LocationListener {
                 .filter { runCatching { locationManager.isProviderEnabled(it) }.getOrDefault(false) }
 
             val providers = when {
+                eco && !inVehicle && LocationManager.NETWORK_PROVIDER in enabled -> listOf(LocationManager.NETWORK_PROVIDER)
                 !still -> enabled
                 LocationManager.NETWORK_PROVIDER in enabled -> listOf(LocationManager.NETWORK_PROVIDER)
                 else -> enabled
@@ -527,7 +590,7 @@ class TrackingService : Service(), LocationListener {
             providers.forEach { provider ->
                 // Réseau (Wi-Fi, antennes, peu gourmand) : au moins chaque minute hors arrêt,
                 // pour repérer un départ en voiture sans attendre la prochaine mesure GPS.
-                val every = if (provider == LocationManager.NETWORK_PROVIDER && !still) minOf(currentIntervalMs, 60_000L) else currentIntervalMs
+                val every = if (provider == LocationManager.NETWORK_PROVIDER && !still && !eco) minOf(currentIntervalMs, 60_000L) else currentIntervalMs
                 locationManager.requestLocationUpdates(provider, every, 0f, this, Looper.getMainLooper())
             }
 
@@ -704,7 +767,7 @@ class TrackingService : Service(), LocationListener {
         motionSensor?.let { sensor -> runCatching { sensorManager?.cancelTriggerSensor(motionListener, sensor) } }
         stepsAtStill = -1L
         snapTo = null
-        watchPhoneMotion(true)
+        watchPhoneMotion(!eco)
         TrackingStatus.update { it.copy(still = false) }
         if (wasStill) {
             Log.i(TAG, "en mouvement : retour au GPS")
@@ -762,7 +825,10 @@ class TrackingService : Service(), LocationListener {
             wifiOn = runCatching {
                 (applicationContext.getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager).isWifiEnabled
             }.getOrNull(),
+            eco = eco,
         )
+        lastBatteryLevel = battery
+        updateEco()
 
         TrackingStatus.update { it.copy(battery = battery) }
         scope.launch {
@@ -943,7 +1009,8 @@ class TrackingService : Service(), LocationListener {
     private fun scheduleRetry() {
         if (retryJob?.isActive == true) return
         val wait = retryDelayMs
-        retryDelayMs = (retryDelayMs * 2).coerceAtMost(MAX_RETRY_DELAY_MS)
+        // En économie, moins de réveils radio quand le réseau manque : 15 min au plus.
+        retryDelayMs = (retryDelayMs * 2).coerceAtMost(if (eco) 15 * 60_000L else MAX_RETRY_DELAY_MS)
         retryJob = scope.launch {
             delay(wait)
             flush()
