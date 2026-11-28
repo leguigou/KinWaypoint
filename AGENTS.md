@@ -131,6 +131,9 @@ demande pas de mise à jour. En cas de doute, mettre à jour.
   Géoplateforme WMTS, sans clé) ajouté par `prepareLayers` sous le premier
   calque de texte du fond, masqué par défaut ; `KinMapState.satellite` /
   `toggleSatellite` (choix mémorisé). Hors de France, pas de photo.
+- Courbe de batterie (`BatteryCurve`) : vert = charge, décharge en dégradé
+  calé sur le niveau (`dischargeStops`, mêmes teintes que `batteryColor`) ;
+  jamais la couleur du membre (un membre vert se confondait avec la charge).
 - Curseurs : toujours `KwSlider` (poignée ronde contourée, piste fine), jamais
   le `Slider` Material brut. Rangées de gélules (`FilterChip`) dans un
   `FlowRow` pour qu'elles passent à la ligne au lieu d'être écrasées.
@@ -209,8 +212,10 @@ demande pas de mise à jour. En cas de doute, mettre à jour.
     `kwRing` antérieure au dernier arrêt n'est jamais rejouée.
 17. **Membre désactivé** : attribut `kwHidden` de l'appareil (`setHidden`),
     filtré seulement à l'affichage, pour TOUT le monde : accueil parent
-    (`shownMembers`), carte (`FamilyMapScreen` filtre `hidden`, y compris la
-    carte des enfants). Exception voulue : « Moi » reste TOUJOURS affiché sur
+    (`shownMembers`, y compris le compteur « N sur N en ligne » de
+    `MapHeroCard`), carte (`FamilyMapScreen` filtre `hidden`, y compris la
+    carte des enfants et son message « personne d'autre »). Tout compteur de
+    membres affiché part de la liste filtrée. Exception voulue : « Moi » reste TOUJOURS affiché sur
     son propre téléphone (désactivé ou fantôme), pour se situer.
     Le suivi, les alertes, l'historique et les réglages gardent la liste
     complète. Un membre avec un SOS en cours n'est jamais masqué.

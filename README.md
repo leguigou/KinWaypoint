@@ -118,7 +118,8 @@ Un serveur **Traccar** collecte, stocke et déclenche les alertes.
   normal, orange clair ≤ 40 %, orange foncé ≤ 30 %, rouge ≤ 15 %.
 - **Courbe de batterie** : toucher le bouton batterie (« 71 % », en bas à droite
   du bloc position) d'une carte membre ouvre une fenêtre avec la charge et la décharge de 0 h à 24 h
-  (périodes en charge en vert), minimum et maximum, décharge moyenne (% par
+  (charge en vert ; décharge en dégradé bleu → orange → rouge selon le niveau,
+  jamais la couleur du membre ; repère pointillé à 15 %), minimum et maximum, décharge moyenne (% par
   heure) et nombre / durée des recharges ; flèches pour les jours précédents
   (30 jours).
 - Bilan de la semaine : pas, objectif, distance, temps passé dans chaque lieu.
@@ -173,8 +174,10 @@ Un serveur **Traccar** collecte, stocke et déclenche les alertes.
 - **Désactiver un membre** provisoirement (Paramètres → Famille → Membres
   affichés) : il disparaît de l'accueil et de la carte pour toute la famille.
   Il disparaît aussi de la carte des enfants ; sur son propre téléphone, il
-  garde « Moi » pour se situer. Son suivi et ses alertes continuent ; un SOS
-  le fait réapparaître.
+  garde « Moi » pour se situer. Il ne compte plus dans « N sur N en ligne »
+  ; la ligne Famille des paramètres indique « 3 membres · 1 désactivé ». Son
+  suivi, ses alertes, son historique et le bilan continuent ; un SOS le fait
+  réapparaître.
 - **Check-up du téléphone** (Paramètres, en tête) : connexion au serveur,
   notifications autorisées, téléphone inscrit aux alertes, alerte SOS active,
   et, si la position est partagée, suivi actif et autorisations.

@@ -305,7 +305,7 @@ fun ParentSettingsScreen(
                     CategoryRow(Icons.Default.Place, Ok, "Lieux",
                         if (placesCount == 0) "Aucun lieu" else "$placesCount lieu${if (placesCount > 1) "x" else ""}", onClick = onOpenPlaces)
                     CategoryRow(Icons.Default.People, androidx.compose.ui.graphics.Color(0xFF8B5CF6), "Famille",
-                        "${members.size} membre${if (members.size > 1) "s" else ""} · pas et couleurs") { category = "family" }
+                        familySummary(members)) { category = "family" }
                 }
                 SectionCard {
                     CategoryRow(Icons.Default.Lock, Danger, "Sécurité",
@@ -1252,4 +1252,12 @@ internal fun normalizePhone(raw: String): String {
         compact.length == 10 && compact.startsWith("0") -> "+33" + compact.drop(1)
         else -> compact
     }
+}
+
+/** Résumé de la ligne Famille : membres affichés, puis désactivés à part, pour ne pas mélanger les deux. */
+private fun familySummary(members: List<Member>): String {
+    val shown = members.count { !it.hidden }
+    val hidden = members.size - shown
+    val base = "$shown membre${if (shown > 1) "s" else ""}"
+    return if (hidden == 0) "$base · pas et couleurs" else "$base · $hidden désactivé${if (hidden > 1) "s" else ""}"
 }

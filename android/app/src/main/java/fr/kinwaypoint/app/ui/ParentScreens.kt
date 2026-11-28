@@ -721,16 +721,18 @@ fun ParentHomeScreen(
 
             // Grande carte « Voir la carte » : point d'entrée principal, avec un petit plan stylisé.
             item {
-                val online = members.count { it.online }
+                // Seuls les membres affichés comptent : un membre désactivé n'est ni « en ligne »
+                // ni dans le total (sinon « 3 sur 4 » alors que 3 cartes seulement sont visibles).
+                val online = shownMembers.count { it.online }
                 MapHeroCard(
                     status = when {
                         loading -> "Chargement…"
-                        members.isEmpty() -> "Aucun membre pour l'instant"
-                        else -> "$online sur ${members.size} en ligne"
+                        shownMembers.isEmpty() -> "Aucun membre affiché"
+                        else -> "$online sur ${shownMembers.size} en ligne"
                     },
-                    subtitle = if (!loading && members.isNotEmpty()) "Actualisé à ${formatTime(refreshedAt)}" else null,
+                    subtitle = if (!loading && shownMembers.isNotEmpty()) "Actualisé à ${formatTime(refreshedAt)}" else null,
                     online = online,
-                    total = members.size,
+                    total = shownMembers.size,
                     onClick = { openMap(null) },
                 )
             }
@@ -916,7 +918,7 @@ fun ParentHomeScreen(
             }
 
             // Membres désactivés : discret rappel, pour ne pas les croire disparus.
-            val hiddenCount = members.count { it.id !in shownMembers.map { m -> m.id } }
+            val hiddenCount = members.size - shownMembers.size
             if (hiddenCount > 0) {
                 item {
                     Text(

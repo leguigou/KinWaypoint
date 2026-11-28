@@ -4,6 +4,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
@@ -82,15 +83,31 @@ fun batteryStats(points: List<TracePoint>): BatteryStats? {
 }
 
 /**
+ * Couleurs de la décharge selon le niveau, du haut (100 %) vers le bas (0 %) du graphique :
+ * bleu, puis orange clair vers 40 %, orange foncé vers 30 %, rouge sous 15 % — les mêmes
+ * teintes que batteryColor(), fondues les unes dans les autres. Jamais la couleur du membre,
+ * qui pouvait se confondre avec le vert de la charge.
+ */
+private val dischargeStops = arrayOf(
+    0.00f to Color(0xFF3B82F6),
+    0.52f to Color(0xFF3B82F6),
+    0.60f to Color(0xFFF59F00),
+    0.70f to Color(0xFFE8590C),
+    0.85f to Color(0xFFE5484D),
+    1.00f to Color(0xFFE5484D),
+)
+
+/**
  * Courbe de charge et de décharge sur la journée (0 h → 24 h), 0 à 100 %.
- * Les périodes en charge sont tracées en vert ; repères à 20 % (batterie faible).
+ * Les périodes en charge sont tracées en vert ; la décharge prend la couleur de son niveau
+ * (dégradé bleu → orange → rouge) ; repère pointillé à 15 % (batterie critique).
  */
 @Composable
-fun BatteryCurve(points: List<TracePoint>, dayStart: Long, color: Color) {
+fun BatteryCurve(points: List<TracePoint>, dayStart: Long) {
     val stats = batteryStats(points) ?: return
     val measured = points.filter { it.battery != null }.sortedBy { it.time }
     val dayMs = 24 * 3600 * 1000L
-    val green = AppTheme.colors.success
+    val green = batteryColor(100, charging = true)
     val grid = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
     val low = Danger.copy(alpha = 0.35f)
 
@@ -101,9 +118,16 @@ fun BatteryCurve(points: List<TracePoint>, dayStart: Long, color: Color) {
             val h = size.height
             fun x(t: Long) = ((t - dayStart).toFloat() / dayMs).coerceIn(0f, 1f) * w
             fun y(level: Int) = h - level.coerceIn(0, 100) / 100f * h
-            // Repères 25 / 50 / 75 % et seuil 20 % (batterie faible).
+            // Dégradé calé sur la hauteur : chaque niveau a toujours la même couleur.
+            val levelBrush = Brush.verticalGradient(*dischargeStops, startY = 0f, endY = h)
+            val areaBrush = Brush.verticalGradient(
+                *dischargeStops.map { (f, c) -> f to c.copy(alpha = 0.16f) }.toTypedArray(),
+                startY = 0f,
+                endY = h,
+            )
+            // Repères 25 / 50 / 75 % et seuil 15 % (batterie critique).
             listOf(25, 50, 75).forEach { drawLine(grid, Offset(0f, y(it)), Offset(w, y(it)), 1.dp.toPx()) }
-            drawLine(low, Offset(0f, y(20)), Offset(w, y(20)), 1.dp.toPx(), pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(8f, 8f)))
+            drawLine(low, Offset(0f, y(15)), Offset(w, y(15)), 1.dp.toPx(), pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(8f, 8f)))
             // Repères 6 h / 12 h / 18 h.
             listOf(6, 12, 18).forEach { hour ->
                 val gx = w * hour / 24f
@@ -116,23 +140,23 @@ fun BatteryCurve(points: List<TracePoint>, dayStart: Long, color: Color) {
             }
             area.lineTo(x(measured.last().time), h)
             area.close()
-            drawPath(area, Brush.verticalGradient(listOf(color.copy(alpha = 0.25f), color.copy(alpha = 0.02f))))
+            drawPath(area, areaBrush)
             for (i in 0 until measured.size - 1) {
                 val a = measured[i]
                 val b = measured[i + 1]
                 // Trou de plus de 2 h : on ne relie pas (téléphone éteint, hors ligne…).
                 if (b.time - a.time > MAX_GAP_MS) continue
-                drawLine(
-                    if (a.charging == true) green else color,
-                    Offset(x(a.time), y(a.battery!!)),
-                    Offset(x(b.time), y(b.battery!!)),
-                    strokeWidth = 3.dp.toPx(),
-                    cap = StrokeCap.Round,
-                )
+                val from = Offset(x(a.time), y(a.battery!!))
+                val to = Offset(x(b.time), y(b.battery!!))
+                if (a.charging == true) {
+                    drawLine(green, from, to, strokeWidth = 3.dp.toPx(), cap = StrokeCap.Round)
+                } else {
+                    drawLine(levelBrush, from, to, strokeWidth = 3.dp.toPx(), cap = StrokeCap.Round)
+                }
             }
             measured.lastOrNull()?.let { p ->
                 drawCircle(Color.White, 6.dp.toPx(), Offset(x(p.time), y(p.battery!!)))
-                drawCircle(if (p.charging == true) green else color, 4.dp.toPx(), Offset(x(p.time), y(p.battery!!)))
+                drawCircle(batteryColor(p.battery!!, p.charging == true), 4.dp.toPx(), Offset(x(p.time), y(p.battery!!)))
             }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -158,8 +182,15 @@ fun BatteryCurve(points: List<TracePoint>, dayStart: Long, color: Color) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Canvas(Modifier.size(10.dp)) { drawCircle(green) }
             Text("en charge", style = MaterialTheme.typography.labelSmall, color = Muted)
-            Canvas(Modifier.size(10.dp)) { drawCircle(color) }
-            Text("sur batterie", style = MaterialTheme.typography.labelSmall, color = Muted)
+            Spacer(Modifier.size(6.dp))
+            // Petite gélule bleu → orange → rouge : la couleur suit le niveau.
+            Canvas(Modifier.size(width = 26.dp, height = 10.dp)) {
+                drawRoundRect(
+                    Brush.horizontalGradient(listOf(Color(0xFF3B82F6), Color(0xFFF59F00), Color(0xFFE8590C), Color(0xFFE5484D))),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(size.height / 2, size.height / 2),
+                )
+            }
+            Text("sur batterie (selon le niveau)", style = MaterialTheme.typography.labelSmall, color = Muted)
         }
     }
 }
@@ -194,7 +225,6 @@ fun BatteryDialog(
     var day by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(today) }
     var points by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<List<TracePoint>?>(null) }
     var error by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
-    val color = profileColor(member.name, member.color)
     val dayStart = day.atStartOfDay(zone).toInstant().toEpochMilli()
 
     androidx.compose.runtime.LaunchedEffect(day) {
@@ -266,7 +296,7 @@ fun BatteryDialog(
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                         )
                     }
-                    else -> BatteryCurve(current, dayStart, color)
+                    else -> BatteryCurve(current, dayStart)
                 }
 
                 androidx.compose.material3.TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) { Text("Fermer") }

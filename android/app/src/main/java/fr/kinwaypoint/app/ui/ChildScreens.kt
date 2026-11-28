@@ -851,7 +851,7 @@ private fun ChildParentsMap(
         val message = when {
             !config.canSeeParents -> "Tu te vois sur la carte. Pour voir ta famille, un parent doit rescanner ton QR code."
             error != null -> error
-            parents.none { it.position != null && it.uniqueId != config.deviceId } -> "Personne d'autre ne partage sa position pour le moment."
+            parents.none { it.position != null && it.uniqueId != config.deviceId && !it.hidden } -> "Personne d'autre ne partage sa position pour le moment."
             else -> null
         }
         // En haut, sous la barre : la carte (et « Moi ») reste visible.
