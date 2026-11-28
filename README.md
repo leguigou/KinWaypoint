@@ -97,6 +97,9 @@ Un serveur **Traccar** collecte, stocke et déclenche les alertes.
   - **retour près d'un parent** (proximité calculée par le serveur).
 - **Appli ouverte** : une alerte reçue met à jour tout de suite l'accueil
   (bandeau SOS, cloche, fiches), sans fermer ni rouvrir l'appli.
+- **Écran des notifications** : lignes compactes regroupées par jour, SOS en
+  bandeau rouge avec « Voir sur la carte » ; le bouton carte n'apparaît que
+  lorsqu'il mène quelque part (pas pour « batterie faible », simple information).
 - **Pastille sur la cloche** de l'accueil : nombre de notifications arrivées
   depuis la dernière ouverture de l'écran des notifications (« 99+ » au-delà).
 

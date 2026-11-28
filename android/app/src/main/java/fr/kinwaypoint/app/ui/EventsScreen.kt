@@ -13,6 +13,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.NotificationsNone
 import androidx.compose.material.icons.filled.Map
@@ -88,7 +98,7 @@ fun EventsScreen(
                         icon = Icons.Default.NotificationsNone,
                     )
                 }
-                else -> LazyColumn(contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 40.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                else -> LazyColumn(contentPadding = PaddingValues(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 40.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     byDay.forEach { (day, dayEvents) ->
                         item(key = "day-$day") {
                             Text(
@@ -99,44 +109,140 @@ fun EventsScreen(
                                 },
                                 style = MaterialTheme.typography.titleSmall,
                                 color = Muted,
-                                modifier = Modifier.padding(top = 8.dp),
+                                modifier = Modifier.padding(top = 8.dp, start = 4.dp),
                             )
                         }
-                        items(dayEvents, key = { it.id }) { e ->
-                            val member = members.firstOrNull { it.id == e.deviceId }
-                            val name = member?.name ?: "Appareil ${e.deviceId}"
-                            val place = places.firstOrNull { it.id == e.placeId }
-                            val placeName = place?.name ?: "un lieu"
-                            val (text, sos) = when {
-                                e.type == "geofenceEnter" -> "$name est arrivé·e à $placeName" to false
-                                e.type == "geofenceExit" -> "$name a quitté $placeName" to false
-                                e.type == "deviceUnknown" -> "📵 Pas de nouvelles de $name depuis 1 h" to false
-                                e.type == "deviceOverspeed" -> "🚗 $name roule au-delà de la limite" to false
-                                e.type == "proximityEnter" -> "👋 $name est de retour près de toi" to false
-                                e.alarm.equals("lowBattery", ignoreCase = true) -> "🔋 Batterie faible pour $name" to false
-                                e.alarm.equals("general", ignoreCase = true) -> "✅ $name est bien arrivé·e" to false
-                                else -> "$name a déclenché un SOS" to true
-                            }
-                            SectionCard(container = if (sos) SoftRed else CardSurface, modifier = Modifier.fillMaxWidth()) {
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                    Avatar(name, size = 40.dp, photo = member?.let { photos[it.id] }, colorHex = member?.color)
-                                    Column(Modifier.weight(1f)) {
-                                        Text((place?.let { placeEmoji(it.icon) + " " } ?: if (sos) "🚨 " else "") + text, style = MaterialTheme.typography.bodyMedium)
-                                        Text(
-                                            Instant.ofEpochMilli(e.time).atZone(zone).format(DateTimeFormatter.ofPattern("HH:mm", Locale.FRANCE)),
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = Muted,
-                                        )
-                                    }
-                                    if (member != null) {
-                                        IconButton(onClick = { onOpenMember(member.id) }) {
-                                            Icon(Icons.Default.Map, contentDescription = "Voir sur la carte")
+                        // Les SOS sortent du lot (bandeau rouge) ; les autres notifications
+                        // consécutives sont regroupées dans une même carte, en lignes compactes.
+                        val segments = mutableListOf<List<FamilyEvent>>()
+                        dayEvents.forEach { e ->
+                            val last = segments.lastOrNull()
+                            if (e.isSos || last == null || last.first().isSos) segments += listOf(e) else segments[segments.lastIndex] = last + e
+                        }
+                        segments.forEach { segment ->
+                            item(key = "seg-${segment.first().id}") {
+                                if (segment.first().isSos) {
+                                    SosEventCard(segment.first(), members, photos, zone, onOpenMember)
+                                } else {
+                                    SectionCard(modifier = Modifier.fillMaxWidth()) {
+                                        segment.forEachIndexed { i, e ->
+                                            if (i > 0) androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                                            EventRow(e, members, photos, places, zone, onOpenMember)
                                         }
                                     }
                                 }
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+
+private val FamilyEvent.isSos: Boolean
+    get() = type == "alarm" && !alarm.equals("lowBattery", ignoreCase = true) && !alarm.equals("general", ignoreCase = true)
+
+/** Texte et utilité d'une notification : le bouton carte n'apparaît que s'il mène quelque part. */
+private fun describe(e: FamilyEvent, name: String, place: fr.kinwaypoint.app.net.Place?): Pair<String, Boolean> {
+    val placeName = place?.name ?: "un lieu"
+    return when {
+        e.type == "geofenceEnter" -> "${place?.let { placeEmoji(it.icon) + " " }.orEmpty()}$name est arrivé·e à $placeName" to true
+        e.type == "geofenceExit" -> "${place?.let { placeEmoji(it.icon) + " " }.orEmpty()}$name a quitté $placeName" to true
+        e.type == "deviceUnknown" -> "📵 Pas de nouvelles de $name depuis 1 h" to true
+        e.type == "deviceOverspeed" -> "🚗 $name roule au-delà de la limite" to true
+        e.type == "proximityEnter" -> "👋 $name est de retour près de toi" to true
+        // Simple information : pas de bouton.
+        e.alarm.equals("lowBattery", ignoreCase = true) -> "🪫 Batterie faible pour $name" to false
+        e.alarm.equals("general", ignoreCase = true) -> "✅ $name est bien arrivé·e" to true
+        else -> "🚨 $name a déclenché un SOS" to true
+    }
+}
+
+/** Ligne compacte : petit avatar, texte, heure ; bouton carte seulement si utile. */
+@Composable
+private fun EventRow(
+    e: FamilyEvent,
+    members: List<Member>,
+    photos: Map<Long, android.graphics.Bitmap>,
+    places: List<fr.kinwaypoint.app.net.Place>,
+    zone: ZoneId,
+    onOpenMember: (Long) -> Unit,
+) {
+    val member = members.firstOrNull { it.id == e.deviceId }
+    val name = member?.name ?: "Appareil ${e.deviceId}"
+    val (text, actionable) = describe(e, name, places.firstOrNull { it.id == e.placeId })
+    val canOpen = actionable && member != null
+    Row(
+        Modifier.fillMaxWidth()
+            .then(if (canOpen) Modifier.clickable { onOpenMember(member!!.id) } else Modifier)
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Avatar(name, size = 32.dp, photo = member?.let { photos[it.id] }, colorHex = member?.color)
+        Column(Modifier.weight(1f)) {
+            Text(text, style = MaterialTheme.typography.bodyMedium, maxLines = 2)
+            Text(
+                Instant.ofEpochMilli(e.time).atZone(zone).format(DateTimeFormatter.ofPattern("HH:mm", Locale.FRANCE)),
+                style = MaterialTheme.typography.labelSmall,
+                color = Muted,
+            )
+        }
+        if (canOpen) {
+            Icon(Icons.Default.Map, contentDescription = "Voir sur la carte", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+        }
+    }
+}
+
+/** SOS : bandeau rouge bien visible, avec un vrai bouton vers la carte. */
+@Composable
+private fun SosEventCard(
+    e: FamilyEvent,
+    members: List<Member>,
+    photos: Map<Long, android.graphics.Bitmap>,
+    zone: ZoneId,
+    onOpenMember: (Long) -> Unit,
+) {
+    val member = members.firstOrNull { it.id == e.deviceId }
+    val name = member?.name ?: "Appareil ${e.deviceId}"
+    androidx.compose.material3.Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = Color.Transparent),
+        elevation = androidx.compose.material3.CardDefaults.cardElevation(defaultElevation = 3.dp),
+    ) {
+        Column(
+            Modifier.fillMaxWidth()
+                .background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(Color(0xFFE5484D), Color(0xFFFF7A59))))
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Box(Modifier.size(40.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.22f)), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.Warning, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
+                }
+                Column(Modifier.weight(1f)) {
+                    Text("SOS de $name", style = MaterialTheme.typography.titleMedium, color = Color.White, fontWeight = FontWeight.Bold)
+                    Text(
+                        "Déclenché à " + Instant.ofEpochMilli(e.time).atZone(zone).format(DateTimeFormatter.ofPattern("HH:mm", Locale.FRANCE)),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.White.copy(alpha = 0.9f),
+                    )
+                }
+                Avatar(name, size = 36.dp, photo = member?.let { photos[it.id] }, colorHex = member?.color)
+            }
+            if (member != null) {
+                androidx.compose.material3.Button(
+                    onClick = { onOpenMember(member.id) },
+                    modifier = Modifier.fillMaxWidth().height(44.dp),
+                    shape = CircleShape,
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color(0xFFE5484D)),
+                ) {
+                    Icon(Icons.Default.Map, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.size(8.dp))
+                    Text("Voir sur la carte", fontWeight = FontWeight.SemiBold)
                 }
             }
         }
