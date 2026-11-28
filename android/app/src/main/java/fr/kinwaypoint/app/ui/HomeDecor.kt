@@ -108,7 +108,7 @@ fun TitleUnderline(modifier: Modifier = Modifier) {
  * à droite (rues, parcs, épingle avec ondes), état de la famille en bas.
  */
 @Composable
-fun MapHeroCard(status: String, online: Int, total: Int, onClick: () -> Unit) {
+fun MapHeroCard(status: String, online: Int, total: Int, onClick: () -> Unit, subtitle: String? = null) {
     val gradient = AppTheme.colors.heroGradient
     Box(
         Modifier.fillMaxWidth().height(150.dp)
@@ -166,11 +166,17 @@ fun MapHeroCard(status: String, online: Int, total: Int, onClick: () -> Unit) {
                     contentAlignment = Alignment.Center,
                 ) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp)) }
             }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (total > 0) {
-                    Box(Modifier.size(9.dp).clip(CircleShape).background(if (online > 0) Color(0xFF4ADE80) else Color.White.copy(alpha = 0.5f)))
+            // Deux lignes : état (« ● 3 sur 4 en ligne »), puis « Actualisé à … ».
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (total > 0) {
+                        Box(Modifier.size(9.dp).clip(CircleShape).background(if (online > 0) Color(0xFF4ADE80) else Color.White.copy(alpha = 0.5f)))
+                    }
+                    Text(status, color = Color.White.copy(alpha = 0.95f), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
                 }
-                Text(status, color = Color.White.copy(alpha = 0.92f), style = MaterialTheme.typography.bodySmall, maxLines = 2)
+                subtitle?.let {
+                    Text(it, color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                }
             }
         }
     }

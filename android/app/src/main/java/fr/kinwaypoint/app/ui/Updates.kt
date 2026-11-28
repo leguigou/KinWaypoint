@@ -15,6 +15,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material3.Button
 import androidx.compose.material3.LinearProgressIndicator
@@ -231,58 +238,136 @@ fun UpdateBanner() {
     LaunchedEffect(Unit) { update = checkForUpdate(context) }
     val u = update ?: return
 
-    SectionCard(container = SoftGreen) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            IconBadge(Icons.Default.SystemUpdate, MaterialTheme.colorScheme.primary, size = 40.dp)
-            Column(Modifier.weight(1f)) {
-                Text("Nouvelle version ${u.versionName}", style = MaterialTheme.typography.titleSmall)
-                Text(
-                    message ?: "Elle s'installe par-dessus : tes réglages sont conservés.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (message != null) Danger else Muted,
+    fun start() {
+        val ready = file
+        if (ready != null) {
+            // Déjà téléchargée (ex. retour après avoir autorisé l'installation).
+            if (!installUpdate(context, ready)) message = "Autorise KinWaypoint à installer des applis, puis touche « Installer »."
+            return
+        }
+        message = null
+        progress = 0f
+        scope.launch {
+            runCatching { downloadUpdate(context, u) { p -> progress = p } }
+                .onSuccess { apk ->
+                    file = apk
+                    if (!installUpdate(context, apk)) message = "Autorise KinWaypoint à installer des applis, puis touche « Installer »."
+                }
+                .onFailure { message = it.message ?: "Téléchargement impossible" }
+            progress = -1f
+        }
+    }
+
+    val primary = MaterialTheme.colorScheme.primary
+    // Carte mise en avant : fond clair, ombre douce teintée, reflet dégradé dans le coin.
+    androidx.compose.material3.Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(28.dp),
+        colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = AppTheme.colors.card),
+        elevation = androidx.compose.material3.CardDefaults.cardElevation(defaultElevation = 6.dp),
+    ) {
+        Box {
+            androidx.compose.foundation.Canvas(Modifier.matchParentSize()) {
+                drawCircle(
+                    androidx.compose.ui.graphics.Brush.radialGradient(
+                        listOf(primary.copy(alpha = 0.16f), androidx.compose.ui.graphics.Color.Transparent),
+                        center = androidx.compose.ui.geometry.Offset(size.width, 0f),
+                        radius = size.width * 0.45f,
+                    ),
+                    radius = size.width * 0.45f,
+                    center = androidx.compose.ui.geometry.Offset(size.width, 0f),
                 )
             }
-        }
-        if (progress >= 0f) {
-            // Barre pleine et épaisse, sans le point de fin ni l'espace ajoutés par Material 3.
-            LinearProgressIndicator(
-                progress = { progress },
-                modifier = Modifier.fillMaxWidth().height(10.dp).clip(CircleShape),
-                strokeCap = androidx.compose.ui.graphics.StrokeCap.Round,
-                gapSize = 0.dp,
-                drawStopIndicator = {},
-            )
-        }
-        Button(
-            enabled = progress < 0f,
-            shape = CircleShape,
-            onClick = {
-                val ready = file
-                if (ready != null) {
-                    // Déjà téléchargée (ex. retour après avoir autorisé l'installation).
-                    if (!installUpdate(context, ready)) message = "Autorise KinWaypoint à installer des applis, puis touche « Installer »."
-                    return@Button
+            Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Box(
+                        Modifier.size(56.dp).clip(RoundedCornerShape(18.dp))
+                            .background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(primary.copy(alpha = 0.10f), primary.copy(alpha = 0.22f)))),
+                        contentAlignment = Alignment.Center,
+                    ) { Icon(Icons.Default.SystemUpdate, contentDescription = null, tint = primary, modifier = Modifier.size(28.dp)) }
+                    Column(Modifier.weight(1f)) {
+                        Text("Nouvelle version ${u.versionName}", style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                        Text(
+                            message ?: "Elle s'installe par-dessus : tes réglages sont conservés.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (message != null) Danger else Muted,
+                        )
+                    }
                 }
-                message = null
-                progress = 0f
-                scope.launch {
-                    runCatching { downloadUpdate(context, u) { p -> progress = p } }
-                        .onSuccess { apk ->
-                            file = apk
-                            if (!installUpdate(context, apk)) message = "Autorise KinWaypoint à installer des applis, puis touche « Installer »."
+
+                if (progress >= 0f) {
+                    // Barre en relief : rail creusé, remplissage dégradé avec reflet en haut.
+                    ProgressBar3D(progress, primary)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Box(
+                            Modifier.size(44.dp).clip(RoundedCornerShape(14.dp)).background(primary.copy(alpha = 0.12f)),
+                            contentAlignment = Alignment.Center,
+                        ) { Icon(Icons.Default.VerifiedUser, contentDescription = null, tint = primary, modifier = Modifier.size(24.dp)) }
+                        Column {
+                            Text(
+                                "Téléchargement… ${(progress * 100).toInt()} %",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                            )
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Icon(Icons.Default.Lock, contentDescription = null, tint = Muted, modifier = Modifier.size(14.dp))
+                                // Vrai : l'empreinte SHA-256 du fichier est vérifiée avant l'installation.
+                                Text("Mise à jour sécurisée", style = MaterialTheme.typography.bodySmall, color = Muted)
+                            }
                         }
-                        .onFailure { message = it.message ?: "Téléchargement impossible" }
-                    progress = -1f
+                    }
+                } else {
+                    Button(
+                        onClick = { start() },
+                        shape = CircleShape,
+                        modifier = Modifier.fillMaxWidth().height(50.dp),
+                    ) {
+                        Text(
+                            if (file != null) "Installer" else "Mettre à jour maintenant",
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                        )
+                    }
                 }
-            },
-        ) {
-            Text(
-                when {
-                    progress >= 0f -> "Téléchargement… ${(progress * 100).toInt()} %"
-                    file != null -> "Installer"
-                    else -> "Mettre à jour maintenant"
-                },
-            )
+            }
+        }
+    }
+}
+
+
+/**
+ * Barre de progression « en relief » : rail légèrement creusé (dégradé
+ * sombre en haut), remplissage dégradé avec un reflet clair sur le dessus.
+ */
+@Composable
+private fun ProgressBar3D(progress: Float, color: androidx.compose.ui.graphics.Color) {
+    val p = progress.coerceIn(0f, 1f)
+    Box(
+        Modifier.fillMaxWidth().height(18.dp).clip(CircleShape)
+            .background(
+                androidx.compose.ui.graphics.Brush.verticalGradient(
+                    listOf(color.copy(alpha = 0.22f), color.copy(alpha = 0.08f)),
+                ),
+            ),
+    ) {
+        if (p > 0f) {
+            Box(
+                Modifier.fillMaxWidth(p).height(18.dp).clip(CircleShape)
+                    .background(
+                        androidx.compose.ui.graphics.Brush.verticalGradient(
+                            listOf(
+                                androidx.compose.ui.graphics.lerp(color, androidx.compose.ui.graphics.Color.White, 0.25f),
+                                color,
+                                androidx.compose.ui.graphics.lerp(color, androidx.compose.ui.graphics.Color.Black, 0.15f),
+                            ),
+                        ),
+                    ),
+            ) {
+                // Reflet : fine bande claire sur le haut du remplissage.
+                Box(
+                    Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 3.dp).height(5.dp).clip(CircleShape)
+                        .background(androidx.compose.ui.graphics.Color.White.copy(alpha = 0.35f)),
+                )
+            }
         }
     }
 }

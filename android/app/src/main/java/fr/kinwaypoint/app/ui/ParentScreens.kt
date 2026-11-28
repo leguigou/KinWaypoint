@@ -725,8 +725,9 @@ fun ParentHomeScreen(
                     status = when {
                         loading -> "Chargement…"
                         members.isEmpty() -> "Aucun membre pour l'instant"
-                        else -> "$online sur ${members.size} en ligne  |  Actualisé à ${formatTime(refreshedAt)}"
+                        else -> "$online sur ${members.size} en ligne"
                     },
+                    subtitle = if (!loading && members.isNotEmpty()) "Actualisé à ${formatTime(refreshedAt)}" else null,
                     online = online,
                     total = members.size,
                     onClick = { openMap(null) },
