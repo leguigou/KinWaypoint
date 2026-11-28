@@ -127,6 +127,10 @@ demande pas de mise à jour. En cas de doute, mettre à jour.
 - Accueil parent : décor dans `HomeDecor.kt` (`HomeBackdrop`, `RoundIconButton`,
   `TitleUnderline`, `MapHeroCard`, `WeeklyCard`, `MembersHeader`) ; couleurs
   tirées du thème pour rester lisible en mode sombre.
+- Vue satellite : calque raster `SATELLITE_LAYER` (orthophotos IGN,
+  Géoplateforme WMTS, sans clé) ajouté par `prepareLayers` sous le premier
+  calque de texte du fond, masqué par défaut ; `KinMapState.satellite` /
+  `toggleSatellite` (choix mémorisé). Hors de France, pas de photo.
 - Curseurs : toujours `KwSlider` (poignée ronde contourée, piste fine), jamais
   le `Slider` Material brut. Rangées de gélules (`FilterChip`) dans un
   `FlowRow` pour qu'elles passent à la ligne au lieu d'être écrasées.

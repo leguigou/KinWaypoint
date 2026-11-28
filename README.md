@@ -25,6 +25,9 @@ Un serveur **Traccar** collecte, stocke et déclenche les alertes.
 ## Fonctionnalités
 
 ### Carte et suivi
+- **Vue satellite** : bouton plan / satellite en haut à droite de la carte,
+  photos aériennes de l'IGN (gratuites, France entière, mention « © IGN »),
+  noms de rues gardés par-dessus ; le choix est mémorisé.
 - Carte familiale (MapLibre + OpenStreetMap, sans clé d'API) : avatar photo ou
   initiale de chacun, mise à jour **en direct** (WebSocket, actualisation
   périodique en secours).

@@ -62,6 +62,25 @@ private const val FALLBACK_STYLE = """
  "layers":[{"id":"osm","type":"raster","source":"osm"}]}
 """
 
+/**
+ * Vue satellite : photos aériennes de l'IGN (Géoplateforme, licence ouverte
+ * Etalab, gratuite, sans clé ni compte), France entière. Mention « © IGN »
+ * obligatoire (attribution de la source).
+ */
+private const val IGN_ORTHO_TILES =
+    "https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=ORTHOIMAGERY.ORTHOPHOTOS" +
+        "&STYLE=normal&TILEMATRIXSET=PM&FORMAT=image/jpeg&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}"
+internal const val SATELLITE_LAYER = "ign-ortho"
+
+private fun satellitePreferred(context: android.content.Context) =
+    context.getSharedPreferences("map", android.content.Context.MODE_PRIVATE).getBoolean("satellite", false)
+
+/** Bascule plan ↔ satellite et mémorise le choix pour les prochaines cartes. */
+internal fun KinMapState.toggleSatellite(context: android.content.Context) {
+    satellite = !satellite
+    context.getSharedPreferences("map", android.content.Context.MODE_PRIVATE).edit().putBoolean("satellite", satellite).apply()
+}
+
 internal const val FAMILY_SOURCE = "family"
 internal const val TRACE_SOURCE = "traces"
 internal const val HIGHLIGHT_SOURCE = "highlight"
@@ -79,6 +98,8 @@ internal class KinMapState {
     var style by mutableStateOf<Style?>(null)
     /** Carte détruite (écran quitté) : plus aucune opération sur elle. */
     @Volatile var destroyed = false
+    /** Vue satellite (photos IGN) ou plan ; choix mémorisé sur le téléphone. */
+    var satellite by mutableStateOf(false)
 }
 
 /**
@@ -137,11 +158,40 @@ internal fun KinMap(state: KinMapState, modifier: Modifier = Modifier, attributi
         }
     }
 
+    // Plan / satellite : choix mémorisé (relu à l'ouverture), appliqué à chaque carte.
+    remember { state.satellite = satellitePreferred(context); true }
+    androidx.compose.runtime.LaunchedEffect(state.style, state.satellite) {
+        state.style?.safely {
+            getLayer(SATELLITE_LAYER)?.setProperties(
+                PropertyFactory.visibility(if (state.satellite) org.maplibre.android.style.layers.Property.VISIBLE else org.maplibre.android.style.layers.Property.NONE),
+            )
+        }
+    }
+
     AndroidView(factory = { mapView }, modifier = modifier)
 }
 
 private fun prepareLayers(style: Style): Style {
     if (style.getSource(FAMILY_SOURCE) != null) return style
+
+    // Photos IGN (cachées tant que la vue satellite n'est pas choisie), glissées
+    // sous les noms de rues et de lieux du fond de carte : ils restent lisibles.
+    runCatching {
+        style.addSource(
+            org.maplibre.android.style.sources.RasterSource(
+                SATELLITE_LAYER,
+                org.maplibre.android.style.sources.TileSet("2.2.0", IGN_ORTHO_TILES).apply {
+                    attribution = "© IGN"
+                    maxZoom = 19f
+                },
+                256,
+            ),
+        )
+        val photos = org.maplibre.android.style.layers.RasterLayer(SATELLITE_LAYER, SATELLITE_LAYER)
+            .withProperties(PropertyFactory.visibility(org.maplibre.android.style.layers.Property.NONE))
+        val firstLabel = style.layers.firstOrNull { it is SymbolLayer }?.id
+        if (firstLabel != null) style.addLayerBelow(photos, firstLabel) else style.addLayer(photos)
+    }
 
     // Lieux : zone teintée + contour, sous tout le reste.
     style.addSource(GeoJsonSource(PLACE_AREA_SOURCE))

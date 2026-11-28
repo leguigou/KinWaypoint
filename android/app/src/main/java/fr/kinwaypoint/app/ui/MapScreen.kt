@@ -31,6 +31,8 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.Satellite
 import androidx.compose.material.icons.filled.Eco
 import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.filled.DirectionsCar
@@ -361,26 +363,25 @@ fun FamilyMapScreen(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             // Retour bien visible et facile à toucher (la gélule de titre, inutile, est retirée).
-            RoundIconButton(
-                Icons.AutoMirrored.Filled.ArrowBack,
-                "Retour",
-                onClick = onBack,
-                modifier = Modifier.size(52.dp),
-            )
+            RoundIconButton(Icons.AutoMirrored.Filled.ArrowBack, "Retour", onClick = onBack)
             Spacer(Modifier.weight(1f))
+            // Boutons ronds de même taille, à droite : plan / satellite, historique, cadrage.
+            RoundIconButton(
+                if (state.satellite) Icons.Default.Map else Icons.Default.Satellite,
+                if (state.satellite) "Vue plan" else "Vue satellite",
+                onClick = { state.toggleSatellite(context) },
+            )
             if (onOpenHistory != null) {
-                FilledTonalIconButton(onClick = onOpenHistory) {
-                    Icon(Icons.Default.History, contentDescription = "Historique")
-                }
+                RoundIconButton(Icons.Default.History, "Historique", onClick = onOpenHistory)
             }
             if (me == null) {
-                FilledTonalIconButton(onClick = actions.requestLocation) {
-                    Icon(Icons.Default.MyLocation, contentDescription = "Afficher ma position")
-                }
+                RoundIconButton(Icons.Default.MyLocation, "Afficher ma position", onClick = actions.requestLocation)
             }
-            FilledTonalIconButton(onClick = { state.map?.let { frameAll(it, entries.map { e -> e.latLng }, insets = insets) } }) {
-                Icon(Icons.Default.ZoomOutMap, contentDescription = "Voir tout le monde")
-            }
+            RoundIconButton(
+                Icons.Default.ZoomOutMap,
+                "Voir tout le monde",
+                onClick = { state.map?.let { frameAll(it, entries.map { e -> e.latLng }, insets = insets) } },
+            )
         }
 
         // SOS en cours : bandeau rouge, toucher = centrer sur la personne.
