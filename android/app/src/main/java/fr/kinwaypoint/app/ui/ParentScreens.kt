@@ -416,7 +416,12 @@ fun ParentHomeScreen(
             if (seenAt == 0L) { seenAt = refreshedAt; repository.markEventsSeen(seenAt) }
             val from = maxOf(seenAt + 1, refreshedAt - 7L * 24 * 3600 * 1000)
             withContext(Dispatchers.IO) {
-                runCatching { api.events(config.token, members.map { it.id }, from, refreshedAt + 60_000).count { it.time > seenAt } }
+                runCatching {
+                    // Comme l'écran des notifications : rien d'un membre désactivé, sauf un SOS.
+                    val hiddenIds = members.filter { it.hidden }.map { it.id }.toSet()
+                    api.events(config.token, members.map { it.id }, from, refreshedAt + 60_000)
+                        .count { it.time > seenAt && (it.isSos || it.deviceId !in hiddenIds) }
+                }
             }.onSuccess { unseenEvents = it }
         }.onFailure {
             if (it is AuthException) {
@@ -541,18 +546,19 @@ fun ParentHomeScreen(
     val names = members.associate { it.id to it.name }
     val newAlarms = alarms.filter { it.id > acknowledgedAlarmId }
 
+    val sosIds = alarms.filter { it.id > acknowledgedAlarmId }.map { it.deviceId }.toSet()
+    // Membres désactivés dans Paramètres → Famille : absents de TOUS les affichages (accueil,
+    // carte, bilan, historique, lieux, bandeaux). Un SOS en cours les fait réapparaître, pour
+    // ne jamais masquer une alerte. Le suivi et les réglages d'ensemble gardent la liste complète.
+    val shownMembers = members.filter { !it.hidden || it.id in sosIds }
+
     // Alerte de proximité : un enfant redevenu proche après s'être éloigné.
     val (proximityArrivals, dismissProximity) = rememberProximityAlerts(
         config = proximityConfig,
         parent = myLocation,
-        members = members,
+        members = shownMembers,
         ownDeviceId = ownDeviceId,
     )
-
-    val sosIds = alarms.filter { it.id > acknowledgedAlarmId }.map { it.deviceId }.toSet()
-    // Membres désactivés dans Paramètres → Famille : absents de l'accueil et de la carte.
-    // Un SOS en cours les fait réapparaître, pour ne jamais masquer une alerte.
-    val shownMembers = members.filter { !it.hidden || it.id in sosIds }
 
     listeningTo?.let { child ->
         ListenScreen(api = api, token = config.token, member = child, photo = photos[child.id], onBack = { listeningTo = null })
@@ -563,7 +569,7 @@ fun ParentHomeScreen(
         WeeklyScreen(
             api = api,
             token = config.token,
-            members = members,
+            members = shownMembers,
             photos = photos,
             places = places,
             ownDeviceId = ownDeviceId,
@@ -617,7 +623,7 @@ fun ParentHomeScreen(
             places = places,
             api = api,
             token = config.token,
-            members = members,
+            members = shownMembers,
             photos = photos,
             ownDeviceId = ownDeviceId,
             initialFocus = historyFocus,

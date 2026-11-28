@@ -215,10 +215,16 @@ demande pas de mise à jour. En cas de doute, mettre à jour.
     (`shownMembers`, y compris le compteur « N sur N en ligne » de
     `MapHeroCard`), carte (`FamilyMapScreen` filtre `hidden`, y compris la
     carte des enfants et son message « personne d'autre »). Tout compteur de
-    membres affiché part de la liste filtrée. Exception voulue : « Moi » reste TOUJOURS affiché sur
+    membres affiché part de la liste filtrée. Bilan, historique, lieux,
+    bandeaux de proximité, notifications de la cloche (et sa pastille) et
+    réglages par membre (fréquence, pas, couleurs, ordre) le masquent aussi.
+    Exception voulue : « Moi » reste TOUJOURS affiché sur
     son propre téléphone (désactivé ou fantôme), pour se situer.
-    Le suivi, les alertes, l'historique et les réglages gardent la liste
-    complète. Un membre avec un SOS en cours n'est jamais masqué.
+    Gardent la liste complète : le suivi, les réglages d'ensemble (économie,
+    vitesse, SMS, partage), les lieux enregistrés (`savePlace`) et la carte
+    « Membres affichés » (pour le réactiver). Un SOS (en cours ou dans la
+    liste des notifications) n'est jamais masqué. Les notifications Firebase
+    envoyées par Traccar ne passent pas par ce filtre.
 18. **SOS** : envoyé en `alarm=sos` (minuscules, comme `Position.ALARM_SOS`
     de Traccar et le modèle `alarm.vm`) ; en interne la file garde « SOS ».
     La règle de notification `AlertRule.SOS` est créée d'office par chaque

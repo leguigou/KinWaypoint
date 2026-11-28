@@ -170,7 +170,7 @@ fun PlacesScreen(
         if (framed) return@LaunchedEffect
         val points = places.map { LatLng(it.latitude, it.longitude) }
             .ifEmpty { listOfNotNull(me?.let { LatLng(it.latitude, it.longitude) }) }
-            .ifEmpty { members.mapNotNull { it.position?.let { p -> LatLng(p.latitude, p.longitude) } } }
+            .ifEmpty { members.filter { !it.hidden }.mapNotNull { it.position?.let { p -> LatLng(p.latitude, p.longitude) } } }
         if (points.isNotEmpty()) {
             frameAll(m, points, bottomPaddingPx = 120)
             framed = true
@@ -288,7 +288,8 @@ fun PlacesScreen(
                                 verticalArrangement = Arrangement.spacedBy(4.dp),
                             ) {
                                 FilterChip(selected = chosen == null, onClick = { chosen = null }, label = { Text("Tout le monde") })
-                                members.forEach { m ->
+                                // Membre désactivé : pas de gélule, mais un choix déjà fait est conservé.
+                                members.filter { !it.hidden || chosen?.contains(it.id) == true }.forEach { m ->
                                     val on = chosen?.contains(m.id) == true
                                     FilterChip(
                                         selected = on,
@@ -426,7 +427,7 @@ fun PlacesScreen(
                                                 "Rayon ${p.radius.toInt()} m · point d'intérêt"
                                             } else {
                                                 listOfNotNull(
-                                                    p.childIds?.let { ids -> members.filter { it.id in ids }.joinToString(", ") { it.name } }?.ifBlank { null } ?: "Tout le monde",
+                                                    p.childIds?.let { ids -> members.filter { it.id in ids && !it.hidden }.joinToString(", ") { it.name }.ifBlank { "Membre désactivé" } } ?: "Tout le monde",
                                                     p.schedule?.label() ?: "à toute heure",
                                                 ).joinToString(" · ")
                                             },
@@ -483,7 +484,7 @@ fun PlacesScreen(
             api = api,
             token = token,
             place = p,
-            members = members,
+            members = members.filter { !it.hidden },
             photos = photos,
             onEdit = { detail = null; startEdit(p) },
             onShowOnMap = {

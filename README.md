@@ -174,10 +174,13 @@ Un serveur **Traccar** collecte, stocke et déclenche les alertes.
 - **Désactiver un membre** provisoirement (Paramètres → Famille → Membres
   affichés) : il disparaît de l'accueil et de la carte pour toute la famille.
   Il disparaît aussi de la carte des enfants ; sur son propre téléphone, il
-  garde « Moi » pour se situer. Il ne compte plus dans « N sur N en ligne »
-  ; la ligne Famille des paramètres indique « 3 membres · 1 désactivé ». Son
-  suivi, ses alertes, son historique et le bilan continuent ; un SOS le fait
-  réapparaître.
+  garde « Moi » pour se situer. Il n'apparaît plus nulle part dans l'appli :
+  compteur « N sur N en ligne », bilan de la semaine, historique, liste des
+  notifications (et pastille de la cloche), lieux, bandeaux de proximité,
+  réglages de fréquence, de pas et de couleurs ; la ligne Famille indique
+  « 3 membres · 1 désactivé ». Son téléphone continue d'envoyer sa position.
+  Un SOS n'est jamais masqué. Les notifications envoyées par le serveur
+  (Traccar) sur le téléphone ne sont pas filtrées par l'appli.
 - **Check-up du téléphone** (Paramètres, en tête) : connexion au serveur,
   notifications autorisées, téléphone inscrit aux alertes, alerte SOS active,
   et, si la position est partagée, suivi actif et autorisations.

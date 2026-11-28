@@ -73,7 +73,12 @@ fun EventsScreen(
         val now = System.currentTimeMillis()
         withContext(Dispatchers.IO) {
             runCatching { api.events(token, members.map { it.id }, now - 7L * 24 * 3600 * 1000, now + 60_000) }
-        }.onSuccess { events = it; error = null }.onFailure { error = it.message ?: "Notifications indisponibles" }
+        }.onSuccess { list ->
+            // Membre désactivé : ses notifications ne s'affichent pas, sauf un SOS (jamais masqué).
+            val hiddenIds = members.filter { it.hidden }.map { it.id }.toSet()
+            events = list.filter { it.isSos || it.deviceId !in hiddenIds }
+            error = null
+        }.onFailure { error = it.message ?: "Notifications indisponibles" }
         loading = false
     }
 
@@ -141,7 +146,7 @@ fun EventsScreen(
 }
 
 
-private val FamilyEvent.isSos: Boolean
+internal val FamilyEvent.isSos: Boolean
     get() = type == "alarm" && !alarm.equals("lowBattery", ignoreCase = true) && !alarm.equals("general", ignoreCase = true)
 
 /** Texte et utilité d'une notification : le bouton carte n'apparaît que s'il mène quelque part. */

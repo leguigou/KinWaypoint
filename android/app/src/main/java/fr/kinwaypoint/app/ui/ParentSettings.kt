@@ -529,9 +529,9 @@ fun ParentSettingsScreen(
                     Text("Membres affichés", style = MaterialTheme.typography.titleMedium)
                 }
                 Text(
-                    "Désactive un membre pour le retirer provisoirement de l'accueil et de la carte, pour toute la famille. " +
-                        "Son téléphone continue d'envoyer sa position et ses alertes (SOS, lieux…) arrivent toujours ; " +
-                        "un SOS le fait réapparaître.",
+                    "Désactive un membre pour le retirer provisoirement de tous les affichages (accueil, carte, bilan, " +
+                        "historique, notifications), pour toute la famille. Son téléphone continue d'envoyer sa position ; " +
+                        "un SOS le fait toujours réapparaître.",
                     style = MaterialTheme.typography.bodySmall,
                     color = Muted,
                 )
@@ -571,10 +571,11 @@ fun ParentSettingsScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = Muted,
                 )
-                ReorderableMembers(members, photos) { reordered ->
+                // Seuls les membres affichés se déplacent ; les désactivés gardent leur place relative, à la fin.
+                ReorderableMembers(members.filter { !it.hidden }, photos) { reordered ->
                     launchOp {
                         withContext(Dispatchers.IO) {
-                            reordered.forEachIndexed { index, m -> if (m.order != index) api.setOrder(config.token, m.id, index) }
+                            (reordered + members.filter { it.hidden }).forEachIndexed { index, m -> if (m.order != index) api.setOrder(config.token, m.id, index) }
                         }
                         onMembersChanged()
                     }
@@ -625,7 +626,7 @@ fun ParentSettingsScreen(
                     color = Muted,
                 )
                 // Même présentation que l'objectif de pas : avatar, prénom, réglage choisi (le détail est dans la fenêtre).
-                members.forEach { m ->
+                members.filter { !it.hidden }.forEach { m ->
                     val c = m.cadence ?: fr.kinwaypoint.app.net.Cadence.BALANCED
                     Row(
                         modifier = Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small).clickable { cadenceFor = m }.padding(vertical = 6.dp),
@@ -646,7 +647,7 @@ fun ParentSettingsScreen(
                     Text("Objectif de pas quotidien", style = MaterialTheme.typography.titleMedium)
                 }
                 Text("Affiché en jauge sur la carte, dans la liste et sur le téléphone de l'enfant.", style = MaterialTheme.typography.bodySmall, color = Muted)
-                members.forEach { m ->
+                members.filter { !it.hidden }.forEach { m ->
                     Row(
                         modifier = Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small).clickable { goalFor = m }.padding(vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -666,7 +667,7 @@ fun ParentSettingsScreen(
                     Text("Couleurs des profils", style = MaterialTheme.typography.titleMedium)
                 }
                 Text("Chaque profil a sa couleur : avatar, tracé sur la carte et historique.", style = MaterialTheme.typography.bodySmall, color = Muted)
-                members.forEach { m ->
+                members.filter { !it.hidden }.forEach { m ->
                     Row(
                         modifier = Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small).clickable { colorFor = m }.padding(vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
