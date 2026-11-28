@@ -45,6 +45,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Eco
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -1133,6 +1134,8 @@ private fun MemberCard(
                             "silent" -> InfoChip(Icons.AutoMirrored.Filled.VolumeOff, "Silencieux", Warning)
                             "vibrate" -> InfoChip(Icons.Default.Vibration, "Vibreur", Muted)
                         }
+                        // Dernière fois que le téléphone a été déverrouillé (utilisé).
+                        position.unlockAt?.let { InfoChip(Icons.Default.LockOpen, "Déverrouillé ${relativeTime(it)}", Muted) }
                     }
                     position.battery?.let { BatteryBadge(it, position.charging == true, eco = position.eco, onClick = onBattery) }
                 }

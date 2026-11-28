@@ -27,7 +27,14 @@ class TrackerClient {
      * @param notificationToken jeton Firebase du téléphone, à transmettre une fois :
      *   Traccar l'enregistre sur l'appareil pour pouvoir le réveiller à distance.
      */
-    fun send(serverUrl: String, deviceId: String, fix: LocationFix, notificationToken: String? = null): Result<String> = runCatching {
+    fun send(
+        serverUrl: String,
+        deviceId: String,
+        fix: LocationFix,
+        notificationToken: String? = null,
+        /** Dernier déverrouillage du téléphone (ms), lu au moment de l'envoi : toujours la valeur la plus récente. */
+        lastUnlockAt: Long? = null,
+    ): Result<String> = runCatching {
         val body = FormBody.Builder()
             .add("id", deviceId)
             .add("timestamp", (fix.time / 1000L).toString())
@@ -55,6 +62,8 @@ class TrackerClient {
                 fix.kmh?.let { add("kmh", String.format(Locale.US, "%.1f", it)) }
                 // Wi-Fi activé ou coupé (« wifiOn » : pas un nom réservé du protocole OsmAnd).
                 fix.wifiOn?.let { add("wifiOn", it.toString()) }
+                // Dernier déverrouillage (secondes ; « unlock » n'est pas réservé par le protocole OsmAnd).
+                lastUnlockAt?.takeIf { it > 0 }?.let { add("unlock", (it / 1000L).toString()) }
                 // Économie d'énergie active (« eco » : pas un nom réservé du protocole OsmAnd).
                 if (fix.eco) add("eco", "true")
             }

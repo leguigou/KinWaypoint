@@ -111,6 +111,9 @@ Un serveur **Traccar** collecte, stocke et déclenche les alertes.
   voiture) avec distance, durée, vitesses moyenne et maximale ; le trajet choisi
   est tracé en gras sur la carte.
 - **Relecture d'une journée** : lecture, pause et curseur horaire.
+- **Dernier déverrouillage** : la carte du membre indique « Déverrouillé il y a
+  12 min » (dernière fois que l'écran de verrouillage a été passé), envoyé avec
+  la position suivante. L'enfant voit sur son accueil ce que sa famille voit.
 - **Couleurs de batterie** : vert avec l'éclair en charge, bleu en temps
   normal, orange clair ≤ 40 %, orange foncé ≤ 30 %, rouge ≤ 15 %.
 - **Courbe de batterie** : toucher le bouton batterie (« 71 % », en bas à droite

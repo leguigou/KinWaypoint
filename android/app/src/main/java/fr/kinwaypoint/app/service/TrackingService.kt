@@ -452,6 +452,20 @@ class TrackingService : Service(), LocationListener {
     }
 
     /** Branché / débranché : la cadence s'adapte aussitôt. */
+    /**
+     * Déverrouillage du téléphone (écran de verrouillage passé) : l'heure est
+     * gardée et part avec la position suivante. Les parents voient « Déverrouillé
+     * il y a … » ; l'enfant le sait (indiqué sur son écran d'accueil).
+     */
+    private val unlockReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            getSharedPreferences("unlock", Context.MODE_PRIVATE).edit().putLong("at", System.currentTimeMillis()).apply()
+        }
+    }
+
+    private fun lastUnlockAt(): Long? =
+        getSharedPreferences("unlock", Context.MODE_PRIVATE).getLong("at", 0L).takeIf { it > 0 }
+
     private val powerReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             val plugged = intent.action == Intent.ACTION_POWER_CONNECTED
@@ -475,6 +489,15 @@ class TrackingService : Service(), LocationListener {
                     addAction(Intent.ACTION_POWER_CONNECTED)
                     addAction(Intent.ACTION_POWER_DISCONNECTED)
                 },
+                ContextCompat.RECEIVER_NOT_EXPORTED,
+            )
+        }
+        // ACTION_USER_PRESENT n'est reçu que par un récepteur déclaré dans le code (pas le manifeste).
+        runCatching {
+            ContextCompat.registerReceiver(
+                this,
+                unlockReceiver,
+                IntentFilter(Intent.ACTION_USER_PRESENT),
                 ContextCompat.RECEIVER_NOT_EXPORTED,
             )
         }
@@ -906,7 +929,7 @@ class TrackingService : Service(), LocationListener {
 
             for (entry in batch) {
                 val token = pushTokenToSend()
-                val result = client.send(cfg.serverUrl, cfg.deviceId, entry.fix, token)
+                val result = client.send(cfg.serverUrl, cfg.deviceId, entry.fix, token, lastUnlockAt())
                 if (result.isFailure) {
                     // Garde-fou : une position refusée 10 fois de suite alors que le
                     // réseau fonctionne est écartée, sinon elle bloquerait toute la file.
@@ -1128,6 +1151,7 @@ class TrackingService : Service(), LocationListener {
 
     override fun onDestroy() {
         runCatching { unregisterReceiver(powerReceiver) }
+        runCatching { unregisterReceiver(unlockReceiver) }
         // Arrêt non demandé par l'appli (Android, volet « Applications actives ») :
         // le chien de garde vérifiera dans 30 s. S'il a été arrêté volontairement
         // (suivi désactivé), il ne fera rien.

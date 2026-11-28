@@ -254,6 +254,13 @@ demande pas de mise à jour. En cas de doute, mettre à jour.
     SMS sans Internet au moment du SOS (`SosSms.send`, autorisation
     `SEND_SMS`). Seulement pour le SOS, jamais pour « bien arrivé ».
 
+23. **Dernier déverrouillage** : `ACTION_USER_PRESENT` (récepteur déclaré
+    dans `TrackingService`, pas dans le manifeste), heure gardée dans les
+    préférences `unlock`, envoyée au moment de l'envoi (paramètre `unlock`,
+    secondes) — pas de colonne dans la `FixQueue`. Affiché côté parent
+    (`MemberPosition.unlockAt`) ; l'accueil de l'enfant dit ce qui est
+    partagé (transparence, jamais de suivi caché).
+
 ## Git
 
 - Travailler sur la branche indiquée par la session ; ne jamais réécrire

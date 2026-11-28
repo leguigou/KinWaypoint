@@ -112,6 +112,8 @@ data class MemberPosition(
     val kmh: Double? = null,
     /** Téléphone en économie d'énergie (sur le Wi-Fi d'une box, ou batterie sous le seuil). */
     val eco: Boolean = false,
+    /** Dernier déverrouillage du téléphone (ms), ou null si inconnu. */
+    val unlockAt: Long? = null,
 )
 
 /** Un lieu de la famille (zone circulaire Traccar) : maison, école… */
@@ -357,6 +359,7 @@ class TraccarApi(baseUrl: String) {
                     ?: activityFromSpeed(p.optDouble("speed", 0.0) * 1.852),
                 kmh = attrs?.takeIf { it.has("kmh") }?.optDouble("kmh") ?: p.optDouble("speed", 0.0) * 1.852,
                 eco = attrs?.let { a -> a.optBoolean("eco", false) || a.optString("eco") == "true" } == true,
+                unlockAt = attrs?.takeIf { it.has("unlock") }?.optDouble("unlock")?.takeIf { it > 0 }?.let { (it * 1000).toLong() },
             )
     }
 

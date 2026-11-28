@@ -183,6 +183,15 @@ fun ChildHomeScreen(
                 StatusCard(status = status, permissions = permissions)
             }
 
+            // Transparence : ce que la famille voit de ce téléphone.
+            if (config.isValid && config.enabled) {
+                Text(
+                    "Ta famille voit : ta position, ta batterie, tes pas et l'heure de ton dernier déverrouillage.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Muted,
+                )
+            }
+
             // Écoute en direct en cours : l'enfant le voit toujours.
             val listening by fr.kinwaypoint.app.service.ListenService.active.collectAsState()
             if (listening) {
