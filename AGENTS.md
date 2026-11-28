@@ -111,7 +111,8 @@ demande pas de mise à jour. En cas de doute, mettre à jour.
   Le QR affiché côté parent ne montre ni serveur ni identifiant en clair.
 - Fiches de la carte (`EntryCard`) : structure fixe, une information absente
   s'affiche « — » au lieu de faire disparaître sa ligne ; pas de pastilles ni de
-  date complète. Un seul tracé dessiné : celui de la fiche affichée.
+  date complète, pas de podomètre. Un seul tracé dessiné : celui de la fiche
+  affichée.
 - Check-up (`Checkup.kt`) : `CheckItem` (bon / à corriger / facultatif, bouton
   « Corriger »), affiché par `CheckupRow` + `CheckupDialog` en tête des
   réglages enfant et parent. Toute nouvelle autorisation ou condition de bon
@@ -203,9 +204,11 @@ demande pas de mise à jour. En cas de doute, mettre à jour.
     distance ne dépend pas du réveil Firebase, parfois retardé. Une demande
     `kwRing` antérieure au dernier arrêt n'est jamais rejouée.
 17. **Membre désactivé** : attribut `kwHidden` de l'appareil (`setHidden`),
-    filtré seulement à l'affichage (accueil, carte) via `shownMembers` ; le
-    suivi, les alertes, l'historique et les réglages gardent la liste complète.
-    Un membre avec un SOS en cours n'est jamais masqué.
+    filtré seulement à l'affichage, pour TOUT le monde : accueil parent
+    (`shownMembers`), carte (`FamilyMapScreen` filtre `hidden`, y compris la
+    carte des enfants), et « Moi » quand c'est son propre appareil (`hideMe`).
+    Le suivi, les alertes, l'historique et les réglages gardent la liste
+    complète. Un membre avec un SOS en cours n'est jamais masqué.
 18. **SOS** : envoyé en `alarm=sos` (minuscules, comme `Position.ALARM_SOS`
     de Traccar et le modèle `alarm.vm`) ; en interne la file garde « SOS ».
     La règle de notification `AlertRule.SOS` est créée d'office par chaque

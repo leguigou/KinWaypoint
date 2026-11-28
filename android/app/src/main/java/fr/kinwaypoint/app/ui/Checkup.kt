@@ -147,14 +147,22 @@ fun CheckupDialog(title: String, items: List<CheckItem>, onDismiss: () -> Unit) 
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
-                    ScoreRing(okCount, required.size, size = 72.dp, stroke = 6.dp)
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(title, style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.9f))
-                        Text(checkupHeadline(problems), style = MaterialTheme.typography.headlineSmall, color = Color.White, fontWeight = FontWeight.Bold)
+                    ScoreRing(okCount, required.size, size = 60.dp, stroke = 5.dp)
+                    // Chaque texte tient sur une ligne (plus petit plutôt que coupé en deux).
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(
-                            "$okCount sur ${required.size} vérifications réussies",
+                            title, style = MaterialTheme.typography.labelLarge, color = Color.White.copy(alpha = 0.9f),
+                            maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            checkupHeadline(problems), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold,
+                            maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            "$okCount/${required.size} vérifications réussies",
                             style = MaterialTheme.typography.bodySmall,
                             color = Color.White.copy(alpha = 0.85f),
+                            maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                         )
                     }
                 }

@@ -218,15 +218,13 @@ fun ChildHomeScreen(
             PermissionWarnings(permissions, actions)
 
             if (config.canSeeParents || (config.isValid && config.enabled)) {
-                FilledTonalButton(
+                // Grande carte bien visible, comme sur l'accueil des parents.
+                MapHeroCard(
+                    status = "Toi et ta famille sur la carte",
+                    online = 0,
+                    total = 0,
                     onClick = { parentsOpen = true },
-                    modifier = Modifier.fillMaxWidth().height(56.dp),
-                    shape = CircleShape,
-                ) {
-                    Icon(Icons.Default.Map, contentDescription = null)
-                    Spacer(Modifier.size(10.dp))
-                    Text("Ouvrir la carte")
-                }
+                )
             }
 
             if (config.isValid && config.enabled) {
@@ -838,8 +836,9 @@ private fun ChildParentsMap(
             onBack = onBack,
             title = "Ma famille",
             places = places,
-            // Son propre appareil apparaît comme « Moi ».
+            // Son propre appareil apparaît comme « Moi » (sauf s'il est désactivé par un parent).
             ownDeviceId = parents.firstOrNull { it.uniqueId == config.deviceId }?.id ?: 0L,
+            hideMe = parents.firstOrNull { it.uniqueId == config.deviceId }?.hidden == true,
         )
         val message = when {
             !config.canSeeParents -> "Tu te vois sur la carte. Pour voir ta famille, un parent doit rescanner ton QR code."

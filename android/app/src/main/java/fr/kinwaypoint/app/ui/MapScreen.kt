@@ -137,6 +137,8 @@ fun FamilyMapScreen(
     sosIds: Set<Long> = emptySet(),
     /** Fermer l'alerte SOS d'un membre (= « J'ai vu »). Null : pas de bouton fermer. */
     onDismissSos: ((Long) -> Unit)? = null,
+    /** Ne pas afficher « Moi » (appareil de ce téléphone désactivé par un parent). */
+    hideMe: Boolean = false,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -148,12 +150,14 @@ fun FamilyMapScreen(
 
     // « Moi » en dernier : sa position arrive après coup, elle ne doit pas décaler les pages.
     val entries: List<MapEntry> = buildList {
-        members.filter { it.id != ownDeviceId || ownDeviceId == 0L }.forEach { m ->
+        // Membres désactivés absents de la carte (sauf SOS en cours), pour tout le monde.
+        members.filter { (it.id != ownDeviceId || ownDeviceId == 0L) && (!it.hidden || it.id in sosIds) }.forEach { m ->
             m.position?.let { add(MapEntry(m.id, m.name, it.latitude, it.longitude, m, m.color)) }
         }
         val myPoint = me?.let { it.latitude to it.longitude }
             ?: ownMember?.position?.let { it.latitude to it.longitude }
-        myPoint?.let { (lat, lon) -> add(MapEntry(ME_ID, "Moi", lat, lon, null, ownMember?.color)) }
+        // Son propre appareil désactivé : il disparaît pour tout le monde, y compris ici.
+        if (!hideMe) myPoint?.let { (lat, lon) -> add(MapEntry(ME_ID, "Moi", lat, lon, null, ownMember?.color)) }
     }
     val currentEntries by rememberUpdatedState(entries)
 
@@ -191,7 +195,7 @@ fun FamilyMapScreen(
     val density0 = LocalDensity.current
     val neededHeights = remember { androidx.compose.runtime.mutableStateMapOf<Long, Int>() }
     // Fiches de structure identique : la hauteur ne dépend plus de leur contenu.
-    val estimated = 250.dp
+    val estimated = 200.dp
     val maxCard = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp * 0.5f).dp
     val measured = entries.mapNotNull { neededHeights[it.id] }.maxOrNull()
     val cardHeight = (measured?.let { with(density0) { it.toDp() } } ?: estimated).coerceIn(150.dp, maxCard)
@@ -628,10 +632,6 @@ private fun EntryCard(
                     modifier = Modifier.weight(1f),
                 )
             }
-
-            // 4. Objectif de pas (barre vide si le podomètre n'a encore rien donné).
-            val goal = member?.stepGoal ?: fr.kinwaypoint.app.net.DEFAULT_STEP_GOAL
-            StepGoalBar(position?.stepsToday() ?: 0, goal, color)
         }
             // 5. Le bouton reste en bas, à la même place sur toutes les fiches.
             Spacer(Modifier.height(10.dp))

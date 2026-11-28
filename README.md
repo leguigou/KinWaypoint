@@ -31,7 +31,7 @@ Un serveur **Traccar** collecte, stocke et déclenche les alertes.
 - Fiches glissantes par personne, **toutes de la même hauteur** et rangées de
   la même façon : état (« ● En ligne · il y a 3 min »), une ligne « où » (lieu
   et durée, trajet vers un lieu avec heure d'arrivée, ou déplacement), quatre
-  chiffres (batterie, précision, à pied, en voiture), objectif de pas, bouton
+  chiffres (batterie, précision, à pied, en voiture), bouton
   Itinéraire. Seul le **tracé de la personne affichée** est dessiné : il change
   quand on fait glisser les fiches.
 - **Ancienneté et précision** de chaque position en couleur (vert / orange /
@@ -166,7 +166,8 @@ Un serveur **Traccar** collecte, stocke et déclenche les alertes.
   partagé par toute la famille : liste, carte, historique.
 - **Désactiver un membre** provisoirement (Paramètres → Famille → Membres
   affichés) : il disparaît de l'accueil et de la carte pour toute la famille.
-  Son suivi et ses alertes continuent ; un SOS le fait réapparaître.
+  Il disparaît aussi de la carte des enfants et, sur son propre téléphone, de
+  « Moi ». Son suivi et ses alertes continuent ; un SOS le fait réapparaître.
 - **Check-up du téléphone** (Paramètres, en tête) : connexion au serveur,
   notifications autorisées, téléphone inscrit aux alertes, alerte SOS active,
   et, si la position est partagée, suivi actif et autorisations.

@@ -647,6 +647,7 @@ fun ParentHomeScreen(
             ownDeviceId = ownDeviceId,
             onOpenHistory = { historyFocus = null; historyOpen = true },
             members = shownMembers,
+            hideMe = members.firstOrNull { it.id == ownDeviceId }?.let { it.hidden && it.id !in sosIds } == true,
             photos = photos,
             focusId = mapFocus,
             permissions = permissions,
