@@ -206,7 +206,8 @@ demande pas de mise à jour. En cas de doute, mettre à jour.
 17. **Membre désactivé** : attribut `kwHidden` de l'appareil (`setHidden`),
     filtré seulement à l'affichage, pour TOUT le monde : accueil parent
     (`shownMembers`), carte (`FamilyMapScreen` filtre `hidden`, y compris la
-    carte des enfants), et « Moi » quand c'est son propre appareil (`hideMe`).
+    carte des enfants). Exception voulue : « Moi » reste TOUJOURS affiché sur
+    son propre téléphone (désactivé ou fantôme), pour se situer.
     Le suivi, les alertes, l'historique et les réglages gardent la liste
     complète. Un membre avec un SOS en cours n'est jamais masqué.
 18. **SOS** : envoyé en `alarm=sos` (minuscules, comme `Position.ALARM_SOS`

@@ -836,9 +836,8 @@ private fun ChildParentsMap(
             onBack = onBack,
             title = "Ma famille",
             places = places,
-            // Son propre appareil apparaît comme « Moi » (sauf s'il est désactivé par un parent).
+            // Son propre appareil apparaît comme « Moi » (toujours, pour se situer).
             ownDeviceId = parents.firstOrNull { it.uniqueId == config.deviceId }?.id ?: 0L,
-            hideMe = parents.firstOrNull { it.uniqueId == config.deviceId }?.hidden == true,
         )
         val message = when {
             !config.canSeeParents -> "Tu te vois sur la carte. Pour voir ta famille, un parent doit rescanner ton QR code."

@@ -137,8 +137,6 @@ fun FamilyMapScreen(
     sosIds: Set<Long> = emptySet(),
     /** Fermer l'alerte SOS d'un membre (= « J'ai vu »). Null : pas de bouton fermer. */
     onDismissSos: ((Long) -> Unit)? = null,
-    /** Ne pas afficher « Moi » (appareil de ce téléphone désactivé par un parent). */
-    hideMe: Boolean = false,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -156,8 +154,9 @@ fun FamilyMapScreen(
         }
         val myPoint = me?.let { it.latitude to it.longitude }
             ?: ownMember?.position?.let { it.latitude to it.longitude }
-        // Son propre appareil désactivé : il disparaît pour tout le monde, y compris ici.
-        if (!hideMe) myPoint?.let { (lat, lon) -> add(MapEntry(ME_ID, "Moi", lat, lon, null, ownMember?.color)) }
+        // « Moi » toujours affiché sur son propre téléphone (même désactivé ou fantôme) :
+        // on doit pouvoir se situer par rapport aux autres.
+        myPoint?.let { (lat, lon) -> add(MapEntry(ME_ID, "Moi", lat, lon, null, ownMember?.color)) }
     }
     val currentEntries by rememberUpdatedState(entries)
 
@@ -361,16 +360,13 @@ fun FamilyMapScreen(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            FilledTonalIconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Retour")
-            }
-            Card(
-                shape = CircleShape,
-                colors = CardDefaults.cardColors(containerColor = CardSurface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
-            ) {
-                Text(title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
-            }
+            // Retour bien visible et facile à toucher (la gélule de titre, inutile, est retirée).
+            RoundIconButton(
+                Icons.AutoMirrored.Filled.ArrowBack,
+                "Retour",
+                onClick = onBack,
+                modifier = Modifier.size(52.dp),
+            )
             Spacer(Modifier.weight(1f))
             if (onOpenHistory != null) {
                 FilledTonalIconButton(onClick = onOpenHistory) {

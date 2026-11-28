@@ -166,8 +166,9 @@ Un serveur **Traccar** collecte, stocke et déclenche les alertes.
   partagé par toute la famille : liste, carte, historique.
 - **Désactiver un membre** provisoirement (Paramètres → Famille → Membres
   affichés) : il disparaît de l'accueil et de la carte pour toute la famille.
-  Il disparaît aussi de la carte des enfants et, sur son propre téléphone, de
-  « Moi ». Son suivi et ses alertes continuent ; un SOS le fait réapparaître.
+  Il disparaît aussi de la carte des enfants ; sur son propre téléphone, il
+  garde « Moi » pour se situer. Son suivi et ses alertes continuent ; un SOS
+  le fait réapparaître.
 - **Check-up du téléphone** (Paramètres, en tête) : connexion au serveur,
   notifications autorisées, téléphone inscrit aux alertes, alerte SOS active,
   et, si la position est partagée, suivi actif et autorisations.
