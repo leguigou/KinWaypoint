@@ -14,6 +14,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.HealthAndSafety
@@ -143,9 +146,9 @@ fun CheckupDialog(title: String, items: List<CheckItem>, onDismiss: () -> Unit) 
                 Row(
                     Modifier.fillMaxWidth()
                         .background(androidx.compose.ui.graphics.Brush.linearGradient(checkupGradient(problems)))
-                        .padding(horizontal = 22.dp, vertical = 22.dp),
+                        .padding(start = 22.dp, top = 18.dp, end = 14.dp, bottom = 20.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
                     ScoreRing(okCount, required.size, size = 60.dp, stroke = 5.dp)
                     // Chaque texte tient sur une ligne (plus petit plutôt que coupé en deux).
@@ -164,6 +167,15 @@ fun CheckupDialog(title: String, items: List<CheckItem>, onDismiss: () -> Unit) 
                             color = Color.White.copy(alpha = 0.85f),
                             maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                         )
+                    }
+                    // Fermer : croix ronde en haut à droite, toujours visible (même sur petit écran).
+                    Box(
+                        Modifier.align(Alignment.Top).size(36.dp).clip(CircleShape)
+                            .background(Color.White.copy(alpha = 0.25f))
+                            .clickable(onClickLabel = "Fermer", onClick = onDismiss),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = "Fermer", tint = Color.White, modifier = Modifier.size(20.dp))
                     }
                 }
                 Column(
@@ -198,7 +210,7 @@ fun CheckupDialog(title: String, items: List<CheckItem>, onDismiss: () -> Unit) 
                         }
                     }
                 }
-                TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End).padding(end = 12.dp, bottom = 8.dp)) { Text("Fermer") }
+                Spacer(Modifier.height(8.dp))
             }
         }
     }
