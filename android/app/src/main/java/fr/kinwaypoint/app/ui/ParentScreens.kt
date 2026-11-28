@@ -653,7 +653,9 @@ fun ParentHomeScreen(
             actions = actions,
             onBack = { mapOpen = false },
         )
-    } else Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
+    } else Scaffold(containerColor = Color.Transparent) { padding ->
+      // Fond lavande dégradé avec halos discrets derrière l'en-tête.
+      HomeBackdrop {
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -667,23 +669,23 @@ fun ParentHomeScreen(
                 ) {
                     Column(Modifier.weight(1f)) {
                         Text(greeting(), style = MaterialTheme.typography.bodyMedium, color = Muted)
-                        Text("Ma famille", style = MaterialTheme.typography.headlineMedium)
+                        Text("Ma famille", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                        // Trait de pinceau sous le titre.
+                        TitleUnderline(Modifier.padding(start = 2.dp))
                     }
-                    FilledTonalIconButton(onClick = { refreshTick++ }) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Actualiser")
-                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    RoundIconButton(Icons.Default.Refresh, "Actualiser", onClick = { refreshTick++ })
                     // Cloche avec pastille : nombre de notifications non consultées.
                     Box {
-                        FilledTonalIconButton(onClick = {
-                            eventsOpen = true
-                            unseenEvents = 0
-                            scope.launch { repository.markEventsSeen() }
-                        }) {
-                            Icon(
-                                Icons.Default.Notifications,
-                                contentDescription = if (unseenEvents > 0) "Notifications, $unseenEvents nouvelles" else "Notifications",
-                            )
-                        }
+                        RoundIconButton(
+                            Icons.Default.Notifications,
+                            if (unseenEvents > 0) "Notifications, $unseenEvents nouvelles" else "Notifications",
+                            onClick = {
+                                eventsOpen = true
+                                unseenEvents = 0
+                                scope.launch { repository.markEventsSeen() }
+                            },
+                        )
                         if (unseenEvents > 0) {
                             // Rond parfait pour un chiffre ; gélule seulement à partir de 10.
                             val label = if (unseenEvents > 99) "99+" else unseenEvents.toString()
@@ -711,60 +713,30 @@ fun ParentHomeScreen(
                             }
                         }
                     }
-                    FilledTonalIconButton(onClick = { settingsOpen = true }) {
-                        Icon(Icons.Default.Settings, contentDescription = "Paramètres")
+                    RoundIconButton(Icons.Default.Settings, "Paramètres", onClick = { settingsOpen = true })
                     }
                 }
             }
 
-            // Grande carte « Carte de la famille » : point d'entrée principal.
+            // Grande carte « Voir la carte » : point d'entrée principal, avec un petit plan stylisé.
             item {
                 val online = members.count { it.online }
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .shadow(12.dp, MaterialTheme.shapes.large, ambientColor = AppTheme.colors.heroGradient.first(), spotColor = AppTheme.colors.heroGradient.first())
-                        .clip(MaterialTheme.shapes.large)
-                        .background(Brush.linearGradient(AppTheme.colors.heroGradient))
-                        .clickable { openMap(null) }
-                        .padding(20.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("Voir la carte", color = Color.White, style = MaterialTheme.typography.titleLarge)
-                        Text(
-                            when {
-                                loading -> "Chargement…"
-                                members.isEmpty() -> "Aucun membre pour l'instant"
-                                else -> "$online sur ${members.size} en ligne · actualisé à ${formatTime(refreshedAt)}"
-                            },
-                            color = Color.White.copy(alpha = 0.85f),
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                    Box(
-                        Modifier.size(52.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.2f)),
-                        contentAlignment = Alignment.Center,
-                    ) { Icon(Icons.Default.Map, contentDescription = null, tint = Color.White) }
-                }
+                MapHeroCard(
+                    status = when {
+                        loading -> "Chargement…"
+                        members.isEmpty() -> "Aucun membre pour l'instant"
+                        else -> "$online sur ${members.size} en ligne  |  Actualisé à ${formatTime(refreshedAt)}"
+                    },
+                    online = online,
+                    total = members.size,
+                    onClick = { openMap(null) },
+                )
             }
 
             item { UpdateBanner() }
 
             // Bilan de la semaine
-            item {
-                SectionCard(modifier = Modifier.clickable { weeklyOpen = true }) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                        IconBadge(Icons.Default.BarChart, MaterialTheme.colorScheme.secondary, size = 44.dp)
-                        Column(Modifier.weight(1f)) {
-                            Text("Bilan de la semaine", style = MaterialTheme.typography.titleMedium)
-                            Text("Pas, objectif, distance, temps passé à l'école…", style = MaterialTheme.typography.bodySmall, color = Muted)
-                        }
-                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = Muted)
-                    }
-                }
-            }
+            item { WeeklyCard(onClick = { weeklyOpen = true }) }
 
             items(proximityArrivals, key = { "prox-${it.memberId}" }) { arrival ->
                 val d = if (arrival.meters < 1000) "${arrival.meters} m" else formatDistance(arrival.meters.toFloat())
@@ -897,7 +869,7 @@ fun ParentHomeScreen(
             }
 
             if (shownMembers.isNotEmpty()) {
-                item { Text("Membres", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 4.dp)) }
+                item { MembersHeader(shownMembers.size) }
             }
 
             items(shownMembers, key = { it.id }) { member ->
@@ -957,6 +929,7 @@ fun ParentHomeScreen(
 
 
         }
+      }
     }
 
     if (showAddChild) {

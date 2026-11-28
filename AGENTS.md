@@ -123,6 +123,9 @@ demande pas de mise à jour. En cas de doute, mettre à jour.
 - QR code : `QrScanActivity` (portrait, cadre central = seule zone lue,
   `framingRectSize`), appelée par `PlatformActions.scanQr`. Ne pas revenir à
   l'écran zxing par défaut (paysage).
+- Accueil parent : décor dans `HomeDecor.kt` (`HomeBackdrop`, `RoundIconButton`,
+  `TitleUnderline`, `MapHeroCard`, `WeeklyCard`, `MembersHeader`) ; couleurs
+  tirées du thème pour rester lisible en mode sombre.
 - Curseurs : toujours `KwSlider` (poignée ronde contourée, piste fine), jamais
   le `Slider` Material brut. Rangées de gélules (`FilterChip`) dans un
   `FlowRow` pour qu'elles passent à la ligne au lieu d'être écrasées.
